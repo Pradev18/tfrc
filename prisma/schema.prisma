@@ -1,0 +1,498 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String?
+  passwordHash String
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  lastLoginAt  DateTime?
+  roles        UserRole[]
+  auditLogs    AuditLog[]
+  importJobs   ImportJob[]
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String?
+  users       UserRole[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  action      String
+  resource    String
+  description String?
+  roles       RolePermission[]
+
+  @@unique([action, resource])
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  resource   String
+  resourceId String?
+  oldValue   String?
+  newValue   String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([resource, resourceId])
+  @@index([createdAt])
+}
+
+enum EnvironmentStatus {
+  ACTIVE
+  INACTIVE
+  COMING_SOON
+}
+
+model Environment {
+  id               String            @id @default(cuid())
+  name             String
+  slug             String            @unique
+  description      String?
+  tagline          String?
+  icon             String?
+  logoUrl          String?
+  status           EnvironmentStatus @default(ACTIVE)
+  sortOrder        Int               @default(0)
+  departmentSource String?
+  theme            String            @default("{}")
+  seo              String            @default("{}")
+  navigation       String            @default("[]")
+  homepage         String            @default("{}")
+  settings         String            @default("{}")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  products         Product[]
+  categories       Category[]
+  banners          Banner[]
+  homepageSections HomepageSection[]
+
+  @@index([status, sortOrder])
+}
+
+model Category {
+  id            String      @id @default(cuid())
+  name          String
+  slug          String      @unique
+  description   String?
+  imageUrl      String?
+  parentId      String?
+  parent        Category?   @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children      Category[]  @relation("CategoryHierarchy")
+  environmentId String?
+  environment   Environment? @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  sortOrder     Int         @default(0)
+  isActive      Boolean     @default(true)
+  googlePath    String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  products      Product[]   @relation("ProductCategory")
+  subProducts   Product[]   @relation("ProductSubcategory")
+
+  @@index([parentId])
+  @@index([environmentId])
+  @@index([isActive, sortOrder])
+}
+
+model Brand {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  logoUrl     String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products    Product[]
+}
+
+model Tag {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  slug      String       @unique
+  createdAt DateTime     @default(now())
+  products  ProductTag[]
+}
+
+model Product {
+  id               String                 @id @default(cuid())
+  productId        String                 @unique
+  sku              String                 @unique
+  name             String
+  slug             String                 @unique
+  shortDescription String?
+  description      String?
+  environmentId    String?
+  environment      Environment?           @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  categoryId       String?
+  category         Category?              @relation("ProductCategory", fields: [categoryId], references: [id])
+  subcategoryId    String?
+  subcategory      Category?              @relation("ProductSubcategory", fields: [subcategoryId], references: [id])
+  brandId          String?
+  brand            Brand?                 @relation(fields: [brandId], references: [id])
+  status           ProductStatus          @default(ACTIVE)
+  condition        String                 @default("new")
+  gtin             String?
+  weight           String?
+  dimensions       String?
+  shippingInfo     String?
+  isFeatured       Boolean                @default(false)
+  isBestseller     Boolean                @default(false)
+  isNew            Boolean                @default(false)
+  googleCategory   String?
+  fbCategory       String?
+  departmentSource String?
+  seoTitle         String?
+  seoDescription   String?
+  deletedAt        DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  images           ProductImage[]
+  videos           ProductVideo[]
+  tags             ProductTag[]
+  variants         ProductVariant[]
+  prices           Price[]
+  inventory        Inventory?
+  inventoryTx      InventoryTransaction[]
+  promotionLinks   PromotionProduct[]
+
+  @@index([status])
+  @@index([environmentId])
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([isFeatured])
+  @@index([isBestseller])
+  @@index([isNew])
+  @@index([createdAt])
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  altText   String?
+  title     String?
+  sortOrder Int     @default(0)
+  isPrimary Boolean @default(false)
+
+  @@index([productId, sortOrder])
+}
+
+model ProductVideo {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  tag       String?
+  sortOrder Int     @default(0)
+
+  @@index([productId])
+}
+
+model ProductTag {
+  productId String
+  tagId     String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([productId, tagId])
+}
+
+model ProductVariant {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku       String   @unique
+  name      String
+  gtin      String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+}
+
+model Price {
+  id        String         @id @default(cuid())
+  productId String
+  product   Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  amount    Float
+  currency  String         @default("QAR")
+  type      PriceType
+  saleStart DateTime?
+  saleEnd   DateTime?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  history   PriceHistory[]
+
+  @@index([productId, type])
+}
+
+enum PriceType {
+  REGULAR
+  SALE
+}
+
+model PriceHistory {
+  id        String   @id @default(cuid())
+  priceId   String
+  price     Price    @relation(fields: [priceId], references: [id], onDelete: Cascade)
+  oldAmount Float
+  newAmount Float
+  changedBy String?
+  reason    String?
+  createdAt DateTime @default(now())
+}
+
+model Inventory {
+  id                String   @id @default(cuid())
+  productId         String   @unique
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity          Int      @default(0)
+  lowStockThreshold Int      @default(5)
+  isInStock         Boolean  @default(true)
+  locationId        String?
+  updatedAt         DateTime @updatedAt
+}
+
+model InventoryTransaction {
+  id          String          @id @default(cuid())
+  productId   String
+  product     Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type        InventoryTxType
+  quantity    Int
+  previousQty Int
+  newQty      Int
+  note        String?
+  createdBy   String?
+  createdAt   DateTime        @default(now())
+
+  @@index([productId, createdAt])
+}
+
+enum InventoryTxType {
+  SET
+  INCREASE
+  DECREASE
+  ADJUST
+}
+
+model Promotion {
+  id          String             @id @default(cuid())
+  name        String
+  description String?
+  type        String             @default("PERCENTAGE")
+  value       Float?
+  startDate   DateTime?
+  endDate     DateTime?
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  products    PromotionProduct[]
+}
+
+model PromotionProduct {
+  promotionId String
+  productId   String
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([promotionId, productId])
+}
+
+model Banner {
+  id            String       @id @default(cuid())
+  title         String
+  subtitle      String?
+  imageUrl      String?
+  ctaText       String?
+  ctaUrl        String?
+  environmentId String?
+  environment   Environment? @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  startDate     DateTime?
+  endDate       DateTime?
+  sortOrder     Int          @default(0)
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([environmentId])
+}
+
+model HomepageSection {
+  id            String       @id @default(cuid())
+  type          String
+  title         String?
+  subtitle      String?
+  config        String       @default("{}")
+  environmentId String?
+  environment   Environment? @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  sortOrder     Int          @default(0)
+  isEnabled     Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([environmentId])
+}
+
+model Media {
+  id        String   @id @default(cuid())
+  filename  String
+  url       String
+  altText   String?
+  title     String?
+  mimeType  String?
+  fileSize  Int?
+  width     Int?
+  height    Int?
+  createdAt DateTime @default(now())
+}
+
+model Redirect {
+  id         String   @id @default(cuid())
+  fromPath   String   @unique
+  toPath     String
+  statusCode Int      @default(301)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+}
+
+model Page {
+  id        String   @id @default(cuid())
+  title     String
+  slug      String   @unique
+  content   String?
+  heroImage String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Faq {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String
+  context   String   @default("general")
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model SiteSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  group     String   @default("general")
+  updatedAt DateTime @updatedAt
+}
+
+model WhatsAppSetting {
+  id              String   @id @default(cuid())
+  phoneNumber     String
+  defaultGreeting String   @default("Hi PawMart Qatar 👋")
+  productTemplate String   @default("I'm interested in:\n\nProduct: {{name}} {{productId}}\nPrice: {{price}}\n\nPlease confirm availability and delivery.")
+  isActive        Boolean  @default(true)
+  updatedAt       DateTime @updatedAt
+}
+
+model SocialLink {
+  id        String  @id @default(cuid())
+  platform  String
+  url       String
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+}
+
+model DeliverySetting {
+  id                    String   @id @default(cuid())
+  isAvailable           Boolean  @default(true)
+  message               String?
+  fee                   Float?
+  freeDeliveryThreshold Float?
+  deliveryTime          String?
+  coverage              String?
+  updatedAt             DateTime @updatedAt
+}
+
+model ImportJob {
+  id          String        @id @default(cuid())
+  fileName    String
+  status      ImportStatus  @default(PENDING)
+  totalRows   Int           @default(0)
+  validRows   Int           @default(0)
+  invalidRows Int           @default(0)
+  created     Int           @default(0)
+  updated     Int           @default(0)
+  failed      Int           @default(0)
+  warnings    Int           @default(0)
+  stats       String        @default("{}")
+  userId      String?
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  errors      ImportError[]
+  createdAt   DateTime      @default(now())
+  completedAt DateTime?
+}
+
+enum ImportStatus {
+  PENDING
+  PREVIEW
+  VALIDATING
+  IMPORTING
+  COMPLETED
+  FAILED
+}
+
+model ImportError {
+  id          String    @id @default(cuid())
+  importJobId String
+  importJob   ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+  row         Int
+  field       String?
+  message     String
+  severity    String    @default("error")
+}
