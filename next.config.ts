@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
+const isDocker = process.env.DOCKER_BUILD === "true";
+
 const nextConfig: NextConfig = {
-  // Use default output for Netlify (OpenNext adapter). Do not use "standalone" on Netlify.
+  ...(isDocker ? { output: "standalone" as const } : {}),
   images: {
     remotePatterns: [
       {

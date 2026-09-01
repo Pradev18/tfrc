@@ -1,0 +1,13 @@
+services:
+  tfrc:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: file:/app/prisma/prod.db
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      NEXT_PUBLIC_SITE_NAME: TFRC Vita Nova
+      NEXT_PUBLIC_WHATSAPP_PHONE: "97455049229"
+    restart: unless-stopped

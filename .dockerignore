@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+npm-debug.log*
+README.md
+NETLIFY.md
+VERCEL.md
+AWS.md
+terminals
+.cursor
+coverage
+*.md
