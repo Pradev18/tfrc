@@ -35,8 +35,8 @@ function LoginForm() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-muted px-4">
       <div className="w-full max-w-md rounded-lg border border-border bg-surface p-8 shadow-[var(--shadow-card)]">
-        <h1 className="text-display text-2xl text-primary">PawMart Admin</h1>
-        <p className="mt-2 text-sm text-text-muted">Sign in to manage your catalogue</p>
+        <h1 className="text-display text-2xl text-primary">TFRC Admin</h1>
+        <p className="mt-2 text-sm text-text-muted">Staff sign-in — manage catalogues, products & settings</p>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">
           <div>

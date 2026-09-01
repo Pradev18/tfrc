@@ -23,6 +23,7 @@ import { getProducts } from "@/services/product.service";
 import { resolveEnvironment } from "@/services/environment.service";
 
 import { getWhatsAppSettings } from "@/lib/whatsapp";
+import { getSiteUrl } from "@/lib/site-config";
 
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 
@@ -112,7 +113,7 @@ export default async function EnvironmentCategoryPage({ params, searchParams }: 
 
 
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  const siteUrl = getSiteUrl();
 
 
 

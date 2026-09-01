@@ -5,6 +5,24 @@ export function getSiteUrl(): string {
   return url.replace(/\/$/, "");
 }
 
+/**
+ * Resolve site URL for WhatsApp product links.
+ * Server: env → localhost default.
+ * Client: explicit prop → env → window.origin (works on any catalogue domain/path).
+ */
+export function resolveSiteUrl(explicit?: string): string {
+  const trimmed = explicit?.trim();
+  if (trimmed) return trimmed.replace(/\/$/, "");
+
+  if (typeof window !== "undefined") {
+    const envUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+    if (envUrl) return envUrl.replace(/\/$/, "");
+    return window.location.origin;
+  }
+
+  return getSiteUrl();
+}
+
 export function absoluteUrl(path: string): string {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   return `${getSiteUrl()}${normalized}`;

@@ -42,6 +42,8 @@ next-env.d.ts
 # prisma — local dev only; prod.db is committed for Netlify
 /prisma/dev.db
 /prisma/dev.db-journal
+/dev.db
+/dev.db-journal
 
 # uploads
 /public/uploads/*

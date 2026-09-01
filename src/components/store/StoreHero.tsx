@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
-import { MessageCircle, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
 import type { EnvironmentConfig } from "@/lib/environments";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 import { getCategoryHeroImage } from "@/lib/category-images";
@@ -9,87 +12,76 @@ interface StoreHeroProps {
   config: EnvironmentConfig;
   slug: string;
   waHref: string;
+  logoUrl?: string | null;
 }
 
-export function StoreHero({ config, slug, waHref }: StoreHeroProps) {
+export function StoreHero({ config, slug, waHref, logoUrl }: StoreHeroProps) {
   const v = getEnvVisual(slug);
   const headline = config.heroHeadline ?? config.tagline;
-  const brandImage = getCategoryHeroImage(slug);
+  const brandImage = logoUrl ?? getCategoryHeroImage(slug);
 
   return (
-    <section
-      className="relative overflow-hidden border-b"
-      style={{
-        ...envStyle(v),
-        backgroundColor: v.surface,
-        borderColor: v.border,
-      }}
-    >
-      <div className="container-pawmart py-8 md:py-12">
-        <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
-          <div className="max-w-xl">
-            <div className="flex items-center gap-3">
-              <span
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl"
-                style={{ backgroundColor: v.badgeBg, color: v.heading }}
+    <section className="store-section relative overflow-hidden pt-4 md:pt-6" style={envStyle(v)}>
+      <div className="container-pawmart">
+        <div className="glass-panel-elevated overflow-hidden rounded-2xl p-5 sm:rounded-3xl sm:p-6 md:p-10 lg:p-12">
+          <div className="grid items-center gap-6 sm:gap-8 lg:grid-cols-[1fr_min(420px,42%)] lg:gap-12">
+            <div className="max-w-xl">
+              <p
+                className="text-xs font-semibold uppercase tracking-[0.2em]"
+                style={{ color: v.accent }}
               >
-                <span className="text-sm font-bold" style={{ color: v.accent }}>
-                  {config.displayName.charAt(0)}
-                </span>
-              </span>
-              <span className="text-sm font-semibold" style={{ color: v.accent }}>
                 {config.displayName} · Qatar
-              </span>
+              </p>
+
+              <h1
+                className="mt-3 font-display text-2xl font-medium leading-[1.12] tracking-tight sm:mt-4 sm:text-3xl md:text-4xl lg:text-[2.75rem]"
+                style={{ color: v.heading }}
+              >
+                {headline}
+              </h1>
+
+              <p className="mt-4 text-base leading-relaxed md:text-lg" style={{ color: v.body }}>
+                {config.description}
+              </p>
+
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link
+                  href={`/${slug}#catalog`}
+                  className="glass-btn inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white transition-all hover:-translate-y-0.5"
+                  style={{ backgroundColor: v.cta, boxShadow: `0 8px 24px ${v.glow}` }}
+                >
+                  Shop all products
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <a
+                  href={waHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="glass-btn inline-flex items-center gap-2 rounded-full border border-[#128c47]/25 bg-[#128c47]/10 px-6 py-3 text-sm font-semibold text-[#0f7340] transition-all hover:-translate-y-0.5 hover:bg-[#128c47]/15"
+                >
+                  <WhatsAppIcon className="h-4 w-4" />
+                  Order on WhatsApp
+                </a>
+              </div>
             </div>
 
-            <h1
-              className="mt-5 text-3xl font-bold leading-tight tracking-tight md:text-4xl lg:text-5xl"
-              style={{ color: v.heading }}
-            >
-              {headline}
-            </h1>
-
-            <p className="mt-4 text-base leading-relaxed md:text-lg" style={{ color: v.body }}>
-              {config.description}
-            </p>
-
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                href={`/${slug}/catalogue`}
-                className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white transition-all hover:-translate-y-0.5 hover:opacity-95"
-                style={{ backgroundColor: v.cta, boxShadow: `0 4px 16px ${v.glow}` }}
-              >
-                Shop all products
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <a
-                href={waHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-full border px-6 py-3 text-sm font-semibold transition-all hover:-translate-y-0.5 hover:bg-[#faf9f7]"
-                style={{ borderColor: v.border, color: v.heading }}
-              >
-                <MessageCircle className="h-4 w-4 text-[#128c47]" />
-                Order on WhatsApp
-              </a>
+            <div className="relative mx-auto w-full max-w-[280px] sm:max-w-[340px] lg:max-w-[380px]">
+              {brandImage ? (
+                <EnvBrandBadge
+                  src={brandImage}
+                  alt={`${config.displayName} Qatar`}
+                  className="aspect-square min-h-[200px] rounded-2xl sm:min-h-[260px] md:min-h-[340px]"
+                  imageClassName="w-[78%] max-w-[300px]"
+                  sizes="(max-width: 768px) 80vw, 380px"
+                  priority
+                />
+              ) : (
+                <div
+                  className="env-brand-badge flex min-h-[260px] items-center justify-center rounded-2xl md:min-h-[340px]"
+                  style={{ background: v.gradientAccent }}
+                />
+              )}
             </div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-2xl">
-            {brandImage ? (
-              <EnvBrandBadge
-                src={brandImage}
-                alt={`${config.displayName} Qatar`}
-                className="aspect-square min-h-[280px] md:min-h-[380px]"
-                imageClassName="w-[72%] max-w-[320px]"
-                sizes="(max-width: 768px) 90vw, 420px"
-              />
-            ) : (
-              <div
-                className="env-brand-badge flex min-h-[280px] items-center justify-center md:min-h-[380px]"
-                style={{ background: v.gradientAccent }}
-              />
-            )}
           </div>
         </div>
       </div>

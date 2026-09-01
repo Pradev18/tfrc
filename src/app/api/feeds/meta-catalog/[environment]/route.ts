@@ -9,7 +9,7 @@ export async function GET(
 ) {
   const { environment } = await params;
 
-  if (!isValidEnvironmentSlug(environment)) {
+  if (!(await isValidEnvironmentSlug(environment))) {
     return NextResponse.json({ error: "Invalid environment" }, { status: 404 });
   }
 

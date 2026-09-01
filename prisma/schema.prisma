@@ -103,8 +103,27 @@ model Environment {
   categories       Category[]
   banners          Banner[]
   homepageSections HomepageSection[]
+  shopCategories   ShopCategory[]
+  importJobs       ImportJob[]
 
   @@index([status, sortOrder])
+}
+
+model ShopCategory {
+  id            String      @id @default(cuid())
+  environmentId String
+  environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  slug          String
+  name          String
+  keywords      String      @default("[]")
+  imageUrl      String?
+  sortOrder     Int         @default(0)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([environmentId, slug])
+  @@index([environmentId, sortOrder])
 }
 
 model Category {
@@ -435,8 +454,8 @@ model SiteSetting {
 model WhatsAppSetting {
   id              String   @id @default(cuid())
   phoneNumber     String
-  defaultGreeting String   @default("Hi PawMart Qatar 👋")
-  productTemplate String   @default("I'm interested in:\n\nProduct: {{name}} {{productId}}\nPrice: {{price}}\n\nPlease confirm availability and delivery.")
+  defaultGreeting String   @default("Hello, I would like to order from TFRC Vita Nova")
+  productTemplate String   @default("{{name}} — {{price}} (Ref: {{productId}})")
   isActive        Boolean  @default(true)
   updatedAt       DateTime @updatedAt
 }
@@ -461,22 +480,26 @@ model DeliverySetting {
 }
 
 model ImportJob {
-  id          String        @id @default(cuid())
-  fileName    String
-  status      ImportStatus  @default(PENDING)
-  totalRows   Int           @default(0)
-  validRows   Int           @default(0)
-  invalidRows Int           @default(0)
-  created     Int           @default(0)
-  updated     Int           @default(0)
-  failed      Int           @default(0)
-  warnings    Int           @default(0)
-  stats       String        @default("{}")
-  userId      String?
-  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
-  errors      ImportError[]
-  createdAt   DateTime      @default(now())
-  completedAt DateTime?
+  id            String        @id @default(cuid())
+  fileName      String
+  status        ImportStatus  @default(PENDING)
+  totalRows     Int           @default(0)
+  validRows     Int           @default(0)
+  invalidRows   Int           @default(0)
+  created       Int           @default(0)
+  updated       Int           @default(0)
+  failed        Int           @default(0)
+  warnings      Int           @default(0)
+  stats         String        @default("{}")
+  userId        String?
+  user          User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  environmentId String?
+  environment   Environment?  @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+  errors        ImportError[]
+  createdAt     DateTime      @default(now())
+  completedAt   DateTime?
+
+  @@index([environmentId])
 }
 
 enum ImportStatus {
@@ -496,4 +519,52 @@ model ImportError {
   field       String?
   message     String
   severity    String    @default("error")
+}
+
+model CustomerInquiry {
+  id              String   @id @default(cuid())
+  eventType       String
+  sessionId       String?
+  customerName    String?
+  customerPhone   String?
+  environmentSlug String?
+  environmentName String?
+  pagePath        String?
+  referrer        String?
+  userAgent       String?
+  ipAddress       String?
+  city            String?
+  region          String?
+  country         String?
+  timezone        String?
+  itemCount       Int      @default(0)
+  estimatedTotal  Float?
+  currency        String   @default("QAR")
+  whatsappMessage String?
+  whatsappUrl     String?
+  metadata        String?
+  createdAt       DateTime @default(now())
+  items           CustomerInquiryItem[]
+
+  @@index([createdAt])
+  @@index([eventType])
+  @@index([sessionId])
+  @@index([customerPhone])
+  @@index([environmentSlug])
+}
+
+model CustomerInquiryItem {
+  id              String          @id @default(cuid())
+  inquiryId       String
+  inquiry         CustomerInquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  productId       String
+  productName     String
+  slug            String
+  price           Float
+  currency        String          @default("QAR")
+  environmentSlug String?
+  environmentName String?
+
+  @@index([inquiryId])
+  @@index([productId])
 }

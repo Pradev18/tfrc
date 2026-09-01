@@ -10,9 +10,10 @@ import { ProductCard } from "@/components/public/ProductCard";
 
 import { PriceDisplay } from "@/components/public/PriceDisplay";
 
-import { WhatsAppButton } from "@/components/public/WhatsAppButton";
+import { TrackedWhatsAppButton } from "@/components/public/TrackedWhatsAppButton";
 
 import { AddToCartButton } from "@/components/public/AddToCartButton";
+import { ProductMobileOrderBar } from "@/components/store/ProductMobileOrderBar";
 
 import { Breadcrumbs, breadcrumbSchema } from "@/components/public/Breadcrumbs";
 
@@ -28,7 +29,7 @@ import {
 
 import { resolveEnvironment } from "@/services/environment.service";
 
-import { getWhatsAppSettings, generateWhatsAppLinkSync } from "@/lib/whatsapp";
+import { getWhatsAppSettings, generateWhatsAppLinkSync, buildWhatsAppMessage } from "@/lib/whatsapp";
 
 import { buildProductMetadata } from "@/lib/meta-seo";
 
@@ -145,31 +146,33 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
 
 
   const whatsappHref = generateWhatsAppLinkSync(
-
     waSettings,
-
     {
-
       name: product.name,
-
       productId: product.productId,
-
       regularPrice: pricing.regular,
-
       salePrice: pricing.sale,
-
       currency: pricing.currency,
-
       slug: product.slug,
-
       imageUrl: primaryImage?.url,
-
       environmentSlug: envSlug,
-
     },
-
     siteUrl
+  );
 
+  const whatsappMessage = buildWhatsAppMessage(
+    waSettings,
+    {
+      name: product.name,
+      productId: product.productId,
+      regularPrice: pricing.regular,
+      salePrice: pricing.sale,
+      currency: pricing.currency,
+      slug: product.slug,
+      imageUrl: primaryImage?.url,
+      environmentSlug: envSlug,
+    },
+    siteUrl
   );
 
 
@@ -180,11 +183,11 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
 
     { label: environment.config.displayName, href: `/${envSlug}` },
 
-    { label: "Shop", href: `/${envSlug}/catalogue` },
+    { label: "Shop", href: `/${envSlug}#catalog` },
 
     ...(product.category
 
-      ? [{ label: product.category.name, href: `/${envSlug}/catalogue/${product.category.slug}` }]
+      ? [{ label: product.category.name, href: `/${envSlug}?q=${encodeURIComponent(product.category.name)}#catalog` }]
 
       : []),
 
@@ -290,7 +293,33 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
 
         />
 
-        <WhatsAppButton href={whatsappHref} size="lg" fullWidth label="Order on WhatsApp" />
+        <TrackedWhatsAppButton
+          href={whatsappHref}
+          size="lg"
+          fullWidth
+          label="Order on WhatsApp"
+          inquiry={{
+            eventType: "PRODUCT_WHATSAPP",
+            environmentSlug: envSlug,
+            environmentName: environment.config.displayName,
+            itemCount: 1,
+            estimatedTotal: pricing.displayPrice,
+            currency: pricing.currency,
+            whatsappUrl: whatsappHref,
+            whatsappMessage,
+            items: [
+              {
+                productId: product.productId,
+                productName: product.name,
+                slug: product.slug,
+                price: pricing.displayPrice,
+                currency: pricing.currency,
+                environmentSlug: envSlug,
+                environmentName: environment.config.displayName,
+              },
+            ],
+          }}
+        />
 
       </div>
 
@@ -396,7 +425,7 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
 
 
 
-            <div className="lg:sticky lg:top-24 lg:self-start">
+            <div className="lg:sticky lg:top-[var(--store-header-height)] lg:self-start">
 
               {product.brand && (
 
@@ -426,7 +455,7 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
 
                     <a
 
-                      href={`/${envSlug}/catalogue/${product.category.slug}`}
+                      href={`/${envSlug}?q=${encodeURIComponent(product.category.name)}#catalog`}
 
                       className="rounded-lg border border-[#ebe8e3] bg-white px-3 py-1.5 text-xs font-medium text-[#141414] hover:border-[#141414]"
 
@@ -444,7 +473,7 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
 
                       <a
 
-                        href={`/${envSlug}/catalogue/${product.subcategory.slug}`}
+                        href={`/${envSlug}?q=${encodeURIComponent(product.subcategory.name)}#catalog`}
 
                         className="rounded-lg border border-[#ebe8e3] bg-white px-3 py-1.5 text-xs font-medium text-[#141414] hover:border-[#141414]"
 
@@ -476,7 +505,7 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
 
               </h2>
 
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 md:gap-4">
 
                 {related.map((p) => (
 
@@ -512,43 +541,44 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
 
 
 
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#ebe8e3] bg-white p-3 md:hidden">
-
-        <div className="flex gap-2">
-
-          <AddToCartButton
-
-            dbId={product.id}
-
-            productId={product.productId}
-
-            slug={product.slug}
-
-            name={product.name}
-
-            price={pricing.displayPrice}
-
-            currency={pricing.currency}
-
-            imageUrl={primaryImage?.url}
-
-            environmentSlug={envSlug}
-
-            environmentName={environment.config.displayName}
-
-            fullWidth
-
-            size="md"
-
-            accentColor={v.cta}
-
-          />
-
-        </div>
-
-      </div>
-
-      <div className="h-[4.5rem] md:hidden" />
+      <ProductMobileOrderBar
+        whatsappSettings={waSettings}
+        siteUrl={siteUrl}
+        singleProductWaHref={whatsappHref}
+        singleProductInquiry={{
+          eventType: "PRODUCT_WHATSAPP",
+          environmentSlug: envSlug,
+          environmentName: environment.config.displayName,
+          itemCount: 1,
+          estimatedTotal: pricing.displayPrice,
+          currency: pricing.currency,
+          whatsappUrl: whatsappHref,
+          whatsappMessage,
+          items: [
+            {
+              productId: product.productId,
+              productName: product.name,
+              slug: product.slug,
+              price: pricing.displayPrice,
+              currency: pricing.currency,
+              environmentSlug: envSlug,
+              environmentName: environment.config.displayName,
+            },
+          ],
+        }}
+        product={{
+          id: product.id,
+          productId: product.productId,
+          slug: product.slug,
+          name: product.name,
+          price: pricing.displayPrice,
+          currency: pricing.currency,
+          imageUrl: primaryImage?.url,
+          environmentSlug: envSlug,
+          environmentName: environment.config.displayName,
+        }}
+        accentColor={v.cta}
+      />
 
     </>
 

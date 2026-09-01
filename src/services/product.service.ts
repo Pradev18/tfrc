@@ -3,8 +3,8 @@ import { ProductStatus, Prisma } from "@prisma/client";
 import { getEffectivePrice } from "@/lib/pricing";
 import { getEnvironmentIdBySlug } from "@/services/environment.service";
 import { getDepartmentForSlug } from "@/lib/environments";
-import { getShopCategoryDef } from "@/lib/shop-categories";
-import { shopCategoryOrFilter } from "@/services/shop-category.service";
+import { getShopCategoryDef, getShopCategoryDefs, OTHER_SHOP_CATEGORY } from "@/lib/shop-categories";
+import { shopCategoryOrFilter, otherShopCategoryFilter } from "@/services/shop-category.service";
 
 export interface ProductFilters {
   search?: string;
@@ -22,6 +22,7 @@ export interface ProductFilters {
   sort?: "featured" | "newest" | "price_asc" | "price_desc" | "discount" | "name";
   page?: number;
   limit?: number;
+  listMode?: boolean;
 }
 
 export type ProductWithRelations = Prisma.ProductGetPayload<{
@@ -40,7 +41,30 @@ const productInclude = {
   tags: { include: { tag: true } },
 };
 
-export function mapProductPrices(product: ProductWithRelations) {
+/** Lightweight include for store grids — scales to large catalogues */
+export const productListInclude = {
+  images: { orderBy: { sortOrder: "asc" as const }, take: 2 },
+  videos: { take: 1, select: { id: true } },
+  prices: true,
+  brand: { select: { id: true, name: true, slug: true } },
+  inventory: { select: { isInStock: true } },
+};
+
+export type ProductListItem = Prisma.ProductGetPayload<{
+  include: typeof productListInclude;
+}>;
+
+type ProductWithPrices = {
+  prices: Array<{
+    type: string;
+    amount: number;
+    currency: string;
+    saleStart?: Date | null;
+    saleEnd?: Date | null;
+  }>;
+};
+
+export function mapProductPrices(product: ProductWithPrices) {
   const regular = product.prices.find((p) => p.type === "REGULAR");
   const sale = product.prices.find((p) => p.type === "SALE");
   const pricing = getEffectivePrice({
@@ -108,12 +132,23 @@ export async function getProducts(filters: ProductFilters = {}) {
   }
 
   if (filters.shopCategorySlug && filters.environmentSlug) {
-    const shopCat = getShopCategoryDef(filters.environmentSlug, filters.shopCategorySlug);
-    if (shopCat) {
+    if (filters.shopCategorySlug === OTHER_SHOP_CATEGORY.slug) {
+      const defs = getShopCategoryDefs(filters.environmentSlug);
       where.AND = [
         ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
-        { OR: shopCategoryOrFilter(shopCat) },
+        { OR: otherShopCategoryFilter(defs) },
       ];
+    } else {
+      const shopCat = getShopCategoryDef(filters.environmentSlug, filters.shopCategorySlug);
+      if (shopCat) {
+        const orFilter = shopCategoryOrFilter(shopCat);
+        if (orFilter.length > 0) {
+          where.AND = [
+            ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+            { OR: orFilter },
+          ];
+        }
+      }
     }
   }
 
@@ -152,7 +187,7 @@ export async function getProducts(filters: ProductFilters = {}) {
   const [items, total] = await Promise.all([
     prisma.product.findMany({
       where,
-      include: productInclude,
+      include: filters.listMode ? productListInclude : productInclude,
       orderBy,
       skip,
       take: limit,
@@ -290,6 +325,22 @@ export async function getSaleProducts(limit = 8, environmentSlug?: string) {
         (mapProductPrices(a).pricing.discountPercent ?? 0)
     )
     .slice(0, limit * 4);
+}
+
+/** All active products for an environment */
+export async function getAllEnvironmentProducts(environmentSlug: string) {
+  const environmentId = await getEnvironmentIdBySlug(environmentSlug);
+  if (!environmentId) return [];
+
+  return prisma.product.findMany({
+    where: {
+      status: ProductStatus.ACTIVE,
+      deletedAt: null,
+      environmentId,
+    },
+    include: productInclude,
+    orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
+  });
 }
 
 /** All active sale products for an environment (or platform-wide) */

@@ -368,6 +368,14 @@ async function main() {
     });
   }
 
+  const { generateShopCategories } = await import("@/services/catalogue-admin.service");
+  for (const env of await prisma.environment.findMany()) {
+    const existing = await prisma.shopCategory.count({ where: { environmentId: env.id } });
+    if (existing === 0) {
+      await generateShopCategories(env.id, env.slug);
+    }
+  }
+
   const productCount = await prisma.product.count();
   const categoryCount = await prisma.category.count();
 

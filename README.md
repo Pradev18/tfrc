@@ -1,16 +1,16 @@
-# PawMart Qatar
+# TFRC Vita Nova — Multi-catalogue platform
 
-Production-quality pet & home catalogue platform for Qatar.
+Production catalogue platform for TFRC (PawMart, Pro Tools, Kitchen & Home, + admin-created stores).
 
 ## Stack
 
 - Next.js 15 (App Router)
 - TypeScript
-- Tailwind CSS
-- Prisma + SQLite (dev) / PostgreSQL (production)
-- NextAuth.js
+- Tailwind CSS v4
+- Prisma + SQLite (dev/Docker) or PostgreSQL (production scale)
+- NextAuth.js admin
 
-## Quick Start
+## Quick Start (local)
 
 ```bash
 npm install
@@ -21,27 +21,42 @@ npm run dev
 
 - **Public site:** http://localhost:3000
 - **Admin:** http://localhost:3000/admin
-- **Login:** admin@pawmart.qa / admin123
+- **Login:** admin@pawmart.qa / admin123 (change before production)
 
-## Catalogue Data
+## Catalogues
 
-Initial data imported from 3 Excel files (~569 products):
+| Slug | Store |
+|------|-------|
+| `/pawmart` | PawMart — pet products |
+| `/hardware` | Pro Tools — tools & hardware |
+| `/household` | Kitchen & Home |
 
-- Pet Products (117)
-- Households (51)
-- Multi Tools (401)
+Admin can create additional catalogues without code changes.
 
 ## Features
 
-- Dynamic categories from Google product taxonomy
-- Image & video URLs from Excel (R2 CDN)
-- WhatsApp direct chat with pre-filled product messages
-- Admin import/export, products, categories, settings
-- SEO: sitemap, robots, JSON-LD, metadata
+- Multi-catalogue stores with admin CRUD
+- Cart + WhatsApp order messages (plain language + product links)
+- Silent customer activity tracking (admin only) + Excel export
+- Meta product catalog feeds per catalogue
+- Responsive mobile/tablet/desktop UI
 
 ## Production (Hostinger)
 
-1. Set `DATABASE_URL` to PostgreSQL
-2. Change `provider` in `prisma/schema.prisma` to `postgresql`
-3. Set `AUTH_SECRET`, `NEXTAUTH_URL`, `NEXT_PUBLIC_SITE_URL`
-4. Run `npm run build && npm start`
+See **[HOSTINGER.md](./HOSTINGER.md)** for the full deployment guide.
+
+Quick checklist:
+
+1. Set `NEXT_PUBLIC_SITE_URL=https://yourdomain.com` **before build**
+2. Set `AUTH_SECRET` and `AUTH_URL=https://yourdomain.com`
+3. Use Docker (`docker compose up`) or `npm run build && npm start`
+4. Change default admin password
+5. Configure WhatsApp in Admin → Settings
+6. Register Meta catalog feeds per catalogue
+7. Test orders from all catalogues
+
+## Other hosting
+
+- [VERCEL.md](./VERCEL.md)
+- [NETLIFY.md](./NETLIFY.md)
+- [AWS.md](./AWS.md)

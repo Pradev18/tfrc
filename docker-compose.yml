@@ -1,6 +1,9 @@
 services:
   tfrc:
-    build: .
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
     ports:
       - "3000:3000"
     environment:
@@ -8,6 +11,15 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
       AUTH_URL: ${AUTH_URL:-http://localhost:3000}
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
-      NEXT_PUBLIC_SITE_NAME: TFRC Vita Nova
-      NEXT_PUBLIC_WHATSAPP_PHONE: "97455049229"
+      NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-TFRC Vita Nova}
+      NEXT_PUBLIC_WHATSAPP_PHONE: ${NEXT_PUBLIC_WHATSAPP_PHONE:-97455049229}
+      NEXT_PUBLIC_META_PIXEL_ID: ${NEXT_PUBLIC_META_PIXEL_ID:-}
+      META_DOMAIN_VERIFICATION: ${META_DOMAIN_VERIFICATION:-}
+    volumes:
+      - tfrc-db:/app/prisma
+      - tfrc-uploads:/app/public/uploads
     restart: unless-stopped
+
+volumes:
+  tfrc-db:
+  tfrc-uploads:

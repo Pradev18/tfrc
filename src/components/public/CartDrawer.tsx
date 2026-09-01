@@ -1,12 +1,24 @@
 "use client";
 
 import Image from "next/image";
-import { X, Trash2, MessageCircle } from "lucide-react";
+import { X, Trash2 } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
 import { useCart } from "@/context/CartContext";
+import { cartItemsForWhatsApp } from "@/hooks/useCartWhatsApp";
 import {
-  buildCartWhatsAppUrl,
+  buildCartWhatsAppCheckoutUrl,
+  buildCartWhatsAppMessage,
   type WhatsAppSettings,
 } from "@/lib/whatsapp";
+import { CartCatalogLinks } from "@/components/public/CartCatalogLinks";
+import { CartContactFields } from "@/components/public/CartContactFields";
+import { WhatsAppOrderGate } from "@/components/public/WhatsAppOrderGate";
+import {
+  cartEstimatedTotal,
+  cartItemsToInquiryItems,
+  primaryEnvironmentFromCart,
+} from "@/lib/inquiry-helpers";
+import { resolveSiteUrl } from "@/lib/site-config";
 import { trackMetaInitiateCheckout } from "@/components/analytics/MetaPixel";
 import { formatCurrency } from "@/lib/utils";
 
@@ -31,23 +43,18 @@ export function CartDrawer({
     productTemplate: "",
   };
 
+  const resolvedSiteUrl = resolveSiteUrl(siteUrl);
+  const waItems = cartItemsForWhatsApp(items);
   const waHref =
     items.length > 0
-      ? buildCartWhatsAppUrl(
-          settings,
-          items.map((i) => ({
-            name: i.name,
-            productId: i.productId,
-            regularPrice: i.price,
-            currency: i.currency,
-            slug: i.slug,
-            imageUrl: i.imageUrl,
-            environmentSlug: i.environmentSlug,
-            displayPrice: i.price,
-          })),
-          siteUrl
-        )
+      ? buildCartWhatsAppCheckoutUrl(settings, waItems, resolvedSiteUrl)
       : `https://wa.me/${settings.phoneNumber}`;
+
+  const waMessage =
+    items.length > 0
+      ? buildCartWhatsAppMessage(settings, waItems, resolvedSiteUrl)
+      : undefined;
+  const env = primaryEnvironmentFromCart(items);
 
   if (!open) return null;
 
@@ -88,7 +95,8 @@ export function CartDrawer({
               <p className="text-text-muted">Browse a catalogue and tap</p>
               <p className="mt-1 font-semibold text-primary">&quot;Add to Cart&quot;</p>
               <p className="mt-4 text-sm text-text-subtle">
-                Select multiple products, then order everything on WhatsApp in one message.
+                Select products, add them to WhatsApp Business Catalog, then send your order
+                message with one tap.
               </p>
             </div>
           ) : (
@@ -132,6 +140,9 @@ export function CartDrawer({
                   </button>
                 </li>
               ))}
+              <div className="pt-2">
+                <CartCatalogLinks items={items} phoneNumber={settings.phoneNumber} />
+              </div>
             </ul>
           )}
         </div>
@@ -155,33 +166,49 @@ export function CartDrawer({
               >
                 Clear all
               </button>
+              <p className="text-center text-[11px] text-text-muted">
+                {items.length === 1
+                  ? "Sends your order on WhatsApp with product details and a link your team can open."
+                  : `Sends a clear order summary on WhatsApp with all ${items.length} products and links for your team to confirm.`}
+              </p>
+              <CartContactFields />
             </>
           )}
 
-          <a
-            href={waHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`flex w-full items-center justify-center gap-2 rounded-md py-3.5 text-sm font-semibold text-white transition-colors ${
-              items.length > 0
-                ? "bg-whatsapp hover:bg-whatsapp-hover"
-                : "bg-text-subtle cursor-not-allowed opacity-60"
-            }`}
-            onClick={(e) => {
-              if (items.length === 0) {
-                e.preventDefault();
-                return;
-              }
-              trackMetaInitiateCheckout(
-                items.reduce((s, i) => s + i.price, 0),
-                items[0]?.currency ?? "QAR",
-                items.length
-              );
-            }}
-          >
-            <MessageCircle className="h-5 w-5" />
-            {items.length > 0 ? "Order on WhatsApp" : "Add products first"}
-          </a>
+          {items.length > 0 ? (
+            <WhatsAppOrderGate
+              href={waHref}
+              inquiry={{
+                eventType: "CART_CHECKOUT",
+                ...env,
+                itemCount: items.length,
+                estimatedTotal: cartEstimatedTotal(items),
+                currency: items[0]?.currency ?? "QAR",
+                whatsappMessage: waMessage,
+                items: cartItemsToInquiryItems(items),
+              }}
+              onAfterNavigate={() => {
+                trackMetaInitiateCheckout(
+                  cartEstimatedTotal(items),
+                  items[0]?.currency ?? "QAR",
+                  items.length
+                );
+                clearCart();
+                onClose();
+              }}
+              className="flex w-full min-h-[48px] items-center justify-center gap-2 rounded-md bg-whatsapp py-3.5 text-sm font-semibold text-white transition-colors hover:bg-whatsapp-hover"
+            >
+              <WhatsAppIcon className="h-5 w-5" />
+              {items.length === 1
+                ? "Send order on WhatsApp"
+                : `Send order for ${items.length} products`}
+            </WhatsAppOrderGate>
+          ) : (
+            <span className="flex w-full min-h-[48px] cursor-not-allowed items-center justify-center gap-2 rounded-md bg-text-subtle py-3.5 text-sm font-semibold text-white opacity-60">
+              <WhatsAppIcon className="h-5 w-5" />
+              Add products first
+            </span>
+          )}
         </div>
       </aside>
     </>

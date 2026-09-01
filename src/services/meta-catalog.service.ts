@@ -51,7 +51,8 @@ export async function generateMetaCatalogCsv(environmentSlug?: string): Promise<
     "item_group_id",
   ];
 
-  const rows = products.map((product) => {
+  const rows = products
+    .map((product) => {
     const regular = product.prices.find((p) => p.type === "REGULAR");
     const sale = product.prices.find((p) => p.type === "SALE");
     const pricing = getEffectivePrice({
@@ -61,7 +62,8 @@ export async function generateMetaCatalogCsv(environmentSlug?: string): Promise<
       saleStart: sale?.saleStart,
       saleEnd: sale?.saleEnd,
     });
-    const envSlug = product.environment?.slug ?? "pawmart";
+    const envSlug = product.environment?.slug;
+    if (!envSlug) return null;
     const primaryImage = product.images[0]?.url ?? "";
     const inStock = product.inventory?.isInStock ?? true;
     const description =
@@ -88,7 +90,8 @@ export async function generateMetaCatalogCsv(environmentSlug?: string): Promise<
         : "",
       product.sku,
     ].map((v) => csvEscape(String(v)));
-  });
+  })
+    .filter((row): row is string[] => row !== null);
 
   return [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
 }

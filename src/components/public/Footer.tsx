@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { getSiteSettings, getSocialLinks } from "@/services/settings.service";
 import { getWhatsAppSettings } from "@/lib/whatsapp";
-import { ENVIRONMENT_CONFIGS, PLATFORM } from "@/lib/environments";
+import { PLATFORM } from "@/lib/environments";
+import { getActiveEnvironments } from "@/services/environment.service";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { EnvIcon } from "@/components/public/EnvIcon";
+import { TfrcStaffLink } from "@/components/public/TfrcStaffLink";
 
 export async function Footer() {
-  const [settings, socialLinks, waSettings] = await Promise.all([
+  const [settings, socialLinks, waSettings, activeEnvs] = await Promise.all([
     getSiteSettings(),
     getSocialLinks(),
     getWhatsAppSettings(),
+    getActiveEnvironments(),
   ]);
 
   const tagline = settings.site_tagline ?? PLATFORM.description;
@@ -50,7 +53,7 @@ export async function Footer() {
                   All Catalogues
                 </Link>
               </li>
-              {ENVIRONMENT_CONFIGS.map((env) => {
+              {activeEnvs.map((env) => {
                 const v = getEnvVisual(env.slug);
                 return (
                   <li key={env.slug}>
@@ -64,7 +67,7 @@ export async function Footer() {
                       >
                         <EnvIcon slug={env.slug} className="h-3 w-3" />
                       </span>
-                      {env.displayName}
+                      {env.config.displayName}
                     </Link>
                   </li>
                 );
@@ -107,6 +110,7 @@ export async function Footer() {
           <p className="text-[11px] text-white/35">
             © {new Date().getFullYear()} {PLATFORM.fullName}. Qatar.
           </p>
+          <TfrcStaffLink className="text-white/30 hover:text-white/50" />
           <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-white/30">
             Order on WhatsApp
           </p>

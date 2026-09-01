@@ -1,32 +1,37 @@
 import type { MetadataRoute } from "next";
 import prisma from "@/lib/db";
-import { ENVIRONMENT_CONFIGS } from "@/lib/environments";
+import { getSiteUrl } from "@/lib/site-config";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const baseUrl = getSiteUrl();
 
-  const products = await prisma.product.findMany({
-    where: { status: "ACTIVE", deletedAt: null },
-    select: { slug: true, updatedAt: true, environment: { select: { slug: true } } },
-  });
-
-  const categories = await prisma.category.findMany({
-    where: { isActive: true, environmentId: { not: null } },
-    select: { slug: true, updatedAt: true, environment: { select: { slug: true } } },
-  });
+  const [products, categories, environments] = await Promise.all([
+    prisma.product.findMany({
+      where: { status: "ACTIVE", deletedAt: null },
+      select: { slug: true, updatedAt: true, environment: { select: { slug: true } } },
+    }),
+    prisma.category.findMany({
+      where: { isActive: true, environmentId: { not: null } },
+      select: { slug: true, updatedAt: true, environment: { select: { slug: true } } },
+    }),
+    prisma.environment.findMany({
+      where: { status: "ACTIVE" },
+      select: { slug: true, updatedAt: true },
+    }),
+  ]);
 
   return [
     { url: baseUrl, lastModified: new Date(), changeFrequency: "daily", priority: 1 },
-    ...ENVIRONMENT_CONFIGS.flatMap((env) => [
+    ...environments.flatMap((env) => [
       {
         url: `${baseUrl}/${env.slug}`,
-        lastModified: new Date(),
+        lastModified: env.updatedAt,
         changeFrequency: "daily" as const,
         priority: 0.95,
       },
       {
         url: `${baseUrl}/${env.slug}/catalogue`,
-        lastModified: new Date(),
+        lastModified: env.updatedAt,
         changeFrequency: "daily" as const,
         priority: 0.9,
       },

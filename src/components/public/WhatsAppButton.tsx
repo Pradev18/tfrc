@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MessageCircle } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
 import { cn } from "@/lib/utils";
 
 interface WhatsAppButtonProps {
@@ -36,7 +36,7 @@ export function WhatsAppButton({
       )}
       aria-label={`${label} via WhatsApp`}
     >
-      <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
+      <WhatsAppIcon className="h-4 w-4 shrink-0" />
       {label}
     </Link>
   );

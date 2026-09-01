@@ -1,0 +1,55 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdminSession } from "@/lib/admin-auth";
+import {
+  getCatalogueById,
+  updateCatalogue,
+  deleteCatalogue,
+  generateShopCategories,
+} from "@/services/catalogue-admin.service";
+
+interface RouteContext {
+  params: Promise<{ id: string }>;
+}
+
+export async function GET(_req: NextRequest, context: RouteContext) {
+  const { error } = await requireAdminSession();
+  if (error) return error;
+
+  const { id } = await context.params;
+  const catalogue = await getCatalogueById(id);
+  if (!catalogue) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json({ catalogue });
+}
+
+export async function PATCH(req: NextRequest, context: RouteContext) {
+  const { session, error } = await requireAdminSession();
+  if (error) return error;
+
+  const { id } = await context.params;
+  try {
+    const body = await req.json();
+    const env = await updateCatalogue(id, body, session!.user?.id);
+    return NextResponse.json({ catalogue: env });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Update failed" },
+      { status: 400 }
+    );
+  }
+}
+
+export async function DELETE(_req: NextRequest, context: RouteContext) {
+  const { session, error } = await requireAdminSession();
+  if (error) return error;
+
+  const { id } = await context.params;
+  try {
+    await deleteCatalogue(id, session!.user?.id);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Delete failed" },
+      { status: 400 }
+    );
+  }
+}

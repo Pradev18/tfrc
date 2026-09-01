@@ -26,12 +26,6 @@ export default function NotFound() {
           >
             All catalogues
           </Link>
-          <Link
-            href="/pawmart"
-            className="rounded-full border border-[#d4cfc8] px-8 py-3.5 text-sm font-semibold text-[#141414] transition-colors hover:border-[#141414]"
-          >
-            PawMart
-          </Link>
         </div>
       </main>
     </div>

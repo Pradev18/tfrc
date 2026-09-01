@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { resolveEnvironment, isValidEnvironmentSlug } from "@/services/environment.service";
 import { StoreHeader } from "@/components/public/StoreHeader";
-import { Footer } from "@/components/public/Footer";
+import { StoreFooter } from "@/components/store/StoreFooter";
 import { buildPageMetadata } from "@/lib/meta-seo";
 import { getEnvironmentHeroImages } from "@/services/category.service";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
@@ -14,7 +14,7 @@ interface LayoutProps {
 
 export async function generateMetadata({ params }: LayoutProps): Promise<Metadata> {
   const { environment: slug } = await params;
-  if (!isValidEnvironmentSlug(slug)) return { title: "Not Found" };
+  if (!(await isValidEnvironmentSlug(slug))) return { title: "Not Found" };
   const env = await resolveEnvironment(slug);
   if (!env) return { title: "Not Found" };
 
@@ -33,7 +33,7 @@ export async function generateMetadata({ params }: LayoutProps): Promise<Metadat
 export default async function EnvironmentLayout({ children, params }: LayoutProps) {
   const { environment: slug } = await params;
 
-  if (!isValidEnvironmentSlug(slug)) notFound();
+  if (!(await isValidEnvironmentSlug(slug))) notFound();
 
   const environment = await resolveEnvironment(slug);
   if (!environment) notFound();
@@ -41,10 +41,10 @@ export default async function EnvironmentLayout({ children, params }: LayoutProp
   const v = getEnvVisual(slug);
 
   return (
-    <div style={{ ...envStyle(v), backgroundColor: v.sectionAlt }}>
+    <div style={{ ...envStyle(v), backgroundColor: v.sectionAlt }} className="overflow-x-hidden">
       <StoreHeader environment={environment} />
       <main>{children}</main>
-      <Footer />
+      <StoreFooter environment={environment} />
     </div>
   );
 }

@@ -71,29 +71,41 @@ export function EnvironmentHeader({
     const q = searchQuery.trim();
     setSearchOpen(false);
     setSearchQuery("");
-    router.push(q ? `/${envSlug}/catalogue?q=${encodeURIComponent(q)}` : `/${envSlug}/catalogue`);
+    router.push(q ? `/${envSlug}?q=${encodeURIComponent(q)}#catalog` : `/${envSlug}#catalog`);
   }
 
   const navLinkStyle = { color: v.heading };
 
   return (
     <>
-      <div
-        className="py-2 text-center"
-        style={{ backgroundColor: v.badgeBg, borderBottom: `1px solid ${v.badgeBorder}` }}
-      >
-        <p
-          className="text-[10px] font-semibold uppercase tracking-[0.18em]"
-          style={{ color: v.badgeText }}
+      <div className="store-site-header sticky top-0 z-50">
+        <div
+          className="hidden py-1.5 text-center sm:block"
+          style={{ backgroundColor: v.badgeBg, borderBottom: `1px solid ${v.badgeBorder}` }}
         >
-          {environment.config.tagline} · WhatsApp orders · Qatar delivery
-        </p>
-      </div>
+          <p
+            className="text-[10px] font-semibold uppercase tracking-[0.18em]"
+            style={{ color: v.badgeText }}
+          >
+            {environment.config.tagline} · WhatsApp orders · Qatar delivery
+          </p>
+        </div>
+        <div
+          className="py-1.5 text-center sm:hidden"
+          style={{ backgroundColor: v.badgeBg, borderBottom: `1px solid ${v.badgeBorder}` }}
+        >
+          <p
+            className="text-[10px] font-semibold uppercase tracking-[0.14em]"
+            style={{ color: v.badgeText }}
+          >
+            WhatsApp orders · Qatar
+          </p>
+        </div>
 
-      <header className="glass-nav sticky top-0 z-50">
+        <header className="glass-nav">
         <div className="container-pawmart" ref={menuRef}>
           <div className="flex h-16 items-center justify-between gap-3 md:h-[4.5rem]">
-            <Link href={`/${envSlug}`} prefetch className="group flex shrink-0 items-center gap-3">
+            <Link href={`/${envSlug}`} prefetch className="group flex min-w-0 shrink items-center gap-2 sm:gap-3">
               {brandImage ? (
                 <span className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#0a0a0a]">
                   <Image
@@ -112,9 +124,9 @@ export function EnvironmentHeader({
                   <EnvIcon slug={envSlug} className="h-4 w-4" />
                 </span>
               )}
-              <div className="flex flex-col leading-none">
+              <div className="flex min-w-0 flex-col leading-none">
                 <span
-                  className="font-display text-lg font-medium tracking-tight md:text-xl"
+                  className="truncate font-display text-base font-medium tracking-tight sm:text-lg md:text-xl"
                   style={{ color: v.heading }}
                 >
                   {environment.config.displayName}
@@ -123,7 +135,7 @@ export function EnvironmentHeader({
                   className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.25em]"
                   style={{ color: v.muted }}
                 >
-                  by TFRC Vita Nova
+                  by TFRC
                 </span>
               </div>
             </Link>
@@ -137,7 +149,7 @@ export function EnvironmentHeader({
                 Home
               </Link>
               <Link
-                href={`/${envSlug}/catalogue`}
+                href={`/${envSlug}#catalog`}
                 className="nav-link px-3 py-5 text-[13px] font-medium"
                 style={navLinkStyle}
               >
@@ -165,7 +177,7 @@ export function EnvironmentHeader({
                       {shopCategories.map((cat) => (
                         <Link
                           key={cat.slug}
-                          href={`/${envSlug}/catalogue?shop=${cat.slug}`}
+                          href={`/${envSlug}?shop=${cat.slug}#category-${cat.slug}`}
                           className="flex items-center justify-between rounded-xl px-4 py-2.5 text-sm transition-colors hover:bg-black/[0.03]"
                           style={{ color: v.body }}
                           onClick={() => setCategoriesOpen(false)}
@@ -182,9 +194,9 @@ export function EnvironmentHeader({
               )}
 
               <Link
-                href={`/${envSlug}/catalogue?sale=true&sort=discount`}
+                href={`/${envSlug}#deals`}
                 className="nav-link px-3 py-5 text-[13px] font-medium"
-                style={{ color: "#dc2626" }}
+                style={{ color: v.accent }}
               >
                 Deals
               </Link>
@@ -245,20 +257,20 @@ export function EnvironmentHeader({
               <button
                 type="button"
                 onClick={() => setSearchOpen(true)}
-                className="flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-black/[0.04]"
+                className="touch-target flex items-center justify-center rounded-full transition-colors hover:bg-black/[0.04]"
                 style={{ color: v.heading }}
                 aria-label="Search"
               >
                 <Search className="h-5 w-5" strokeWidth={1.5} />
               </button>
               <CartButton onClick={() => setCartOpen(true)} />
-              <div className="hidden md:block">
+              <div className="hidden sm:block">
                 <WhatsAppButton href={waHref} size="sm" />
               </div>
               <button
                 type="button"
                 onClick={() => setMobileOpen(true)}
-                className="flex h-10 w-10 items-center justify-center rounded-full lg:hidden"
+                className="touch-target flex items-center justify-center rounded-full lg:hidden"
                 style={{ color: v.heading }}
                 aria-label="Open menu"
               >
@@ -268,6 +280,7 @@ export function EnvironmentHeader({
           </div>
         </div>
       </header>
+      </div>
 
       {searchOpen && (
         <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm">
@@ -332,7 +345,7 @@ export function EnvironmentHeader({
                 Home
               </Link>
               <Link
-                href={`/${envSlug}/catalogue`}
+                href={`/${envSlug}#catalog`}
                 className="block py-3 font-medium"
                 style={{ color: v.heading }}
                 onClick={() => setMobileOpen(false)}
@@ -340,9 +353,9 @@ export function EnvironmentHeader({
                 Shop All
               </Link>
               <Link
-                href={`/${envSlug}/catalogue?sale=true&sort=discount`}
+                href={`/${envSlug}#deals`}
                 className="block py-3 font-medium"
-                style={{ color: "#dc2626" }}
+                style={{ color: v.accent }}
                 onClick={() => setMobileOpen(false)}
               >
                 Today&apos;s Deals
@@ -358,7 +371,7 @@ export function EnvironmentHeader({
                   {shopCategories.map((cat) => (
                     <Link
                       key={cat.slug}
-                      href={`/${envSlug}/catalogue?shop=${cat.slug}`}
+                      href={`/${envSlug}?shop=${cat.slug}#category-${cat.slug}`}
                       className="flex items-center justify-between py-2 pl-2 text-sm"
                       style={{ color: v.body }}
                       onClick={() => setMobileOpen(false)}

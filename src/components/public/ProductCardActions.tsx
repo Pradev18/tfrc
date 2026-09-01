@@ -1,13 +1,18 @@
 "use client";
 
 import { AddToCartButton } from "@/components/public/AddToCartButton";
-import { generateWhatsAppLinkSync, type WhatsAppSettings } from "@/lib/whatsapp";
-import type { ProductWithRelations } from "@/services/product.service";
+import {
+  buildWhatsAppMessage,
+  generateWhatsAppLinkSync,
+  type WhatsAppSettings,
+} from "@/lib/whatsapp";
+import { WhatsAppOrderGate } from "@/components/public/WhatsAppOrderGate";
+import type { ProductListItem, ProductWithRelations } from "@/services/product.service";
 import type { EffectivePrice } from "@/lib/pricing";
-import { MessageCircle } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
 
 interface ProductCardActionsProps {
-  product: ProductWithRelations;
+  product: ProductWithRelations | ProductListItem;
   pricing: EffectivePrice;
   primaryImageUrl?: string;
   environmentSlug: string;
@@ -38,12 +43,56 @@ export function ProductCardActions({
       slug: product.slug,
       imageUrl: primaryImageUrl,
       environmentSlug,
+      environmentName,
+    },
+    siteUrl
+  );
+
+  const whatsappMessage = buildWhatsAppMessage(
+    whatsappSettings,
+    {
+      name: product.name,
+      productId: product.productId,
+      regularPrice: pricing.regular,
+      salePrice: pricing.sale,
+      currency: pricing.currency,
+      slug: product.slug,
+      imageUrl: primaryImageUrl,
+      environmentSlug,
+      environmentName,
     },
     siteUrl
   );
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-col sm:gap-2">
+      <WhatsAppOrderGate
+        href={whatsappHref}
+        inquiry={{
+          eventType: "PRODUCT_WHATSAPP",
+          environmentSlug,
+          environmentName,
+          itemCount: 1,
+          estimatedTotal: pricing.displayPrice,
+          currency: pricing.currency,
+          whatsappMessage,
+          items: [
+            {
+              productId: product.productId,
+              productName: product.name,
+              slug: product.slug,
+              price: pricing.displayPrice,
+              currency: pricing.currency,
+              environmentSlug,
+              environmentName,
+            },
+          ],
+        }}
+        className="glass-btn inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full bg-[#128c47] px-2 py-2.5 text-[11px] font-semibold text-white transition-all hover:bg-[#0f7340] sm:gap-2 sm:px-4 sm:text-xs md:text-[13px]"
+      >
+        <WhatsAppIcon className="h-4 w-4 shrink-0" />
+        <span className="truncate">WhatsApp</span>
+      </WhatsAppOrderGate>
       <AddToCartButton
         dbId={product.id}
         productId={product.productId}
@@ -56,16 +105,8 @@ export function ProductCardActions({
         environmentName={environmentName}
         fullWidth
         accentColor={accentColor}
+        variant="outline"
       />
-      <a
-        href={whatsappHref}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center justify-center gap-1.5 rounded-full border border-[#ebe8e3] py-2 text-[11px] font-semibold text-[#6b6560] transition-colors hover:border-[#128c47] hover:text-[#128c47]"
-      >
-        <MessageCircle className="h-3.5 w-3.5" />
-        WhatsApp
-      </a>
     </div>
   );
 }

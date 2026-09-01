@@ -1,12 +1,12 @@
 import prisma from "@/lib/db";
 import {
   ENVIRONMENT_CONFIGS,
-  getEnvironmentConfig,
   type EnvironmentConfig,
   type EnvironmentTheme,
   type EnvironmentSEO,
 } from "@/lib/environments";
 import type { Environment, EnvironmentStatus } from "@prisma/client";
+import { buildConfigFromEnvironment } from "@/lib/environment-config";
 
 export type ParsedEnvironment = Environment & {
   config: EnvironmentConfig;
@@ -23,7 +23,7 @@ function parseJson<T>(raw: string, fallback: T): T {
 }
 
 export function enrichEnvironment(env: Environment): ParsedEnvironment {
-  const config = getEnvironmentConfig(env.slug) ?? ENVIRONMENT_CONFIGS[0];
+  const config = buildConfigFromEnvironment(env);
   return {
     ...env,
     config,
@@ -59,7 +59,12 @@ export async function resolveEnvironment(slug: string) {
   return getEnvironmentBySlug(slug);
 }
 
-export function isValidEnvironmentSlug(slug: string): boolean {
+export async function isValidEnvironmentSlug(slug: string): Promise<boolean> {
+  const env = await prisma.environment.findUnique({
+    where: { slug },
+    select: { status: true },
+  });
+  if (env) return env.status === "ACTIVE";
   return ENVIRONMENT_CONFIGS.some((e) => e.slug === slug);
 }
 
@@ -80,7 +85,10 @@ export async function seedEnvironmentDefinitions() {
         seo: JSON.stringify(cfg.seo),
         navigation: JSON.stringify([]),
         homepage: JSON.stringify({}),
-        settings: JSON.stringify({}),
+        settings: JSON.stringify({
+          heroHeadline: cfg.heroHeadline,
+          ctaLabel: cfg.ctaLabel,
+        }),
       },
       update: {
         name: cfg.displayName,

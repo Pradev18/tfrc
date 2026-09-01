@@ -3,6 +3,7 @@
 import { Check, Plus } from "lucide-react";
 import { useCart } from "@/context/CartContext";
 import { trackMetaAddToCart } from "@/components/analytics/MetaPixel";
+import { trackCustomerInquiry } from "@/lib/track-inquiry";
 import { cn } from "@/lib/utils";
 
 interface AddToCartButtonProps {
@@ -18,6 +19,7 @@ interface AddToCartButtonProps {
   fullWidth?: boolean;
   size?: "sm" | "md";
   accentColor?: string;
+  variant?: "solid" | "outline";
 }
 
 export function AddToCartButton({
@@ -33,6 +35,7 @@ export function AddToCartButton({
   fullWidth,
   size = "sm",
   accentColor,
+  variant = "solid",
 }: AddToCartButtonProps) {
   const { isInCart, toggleItem } = useCart();
   const inCart = isInCart(productId);
@@ -57,6 +60,45 @@ export function AddToCartButton({
         value: price,
         currency,
       });
+      trackCustomerInquiry({
+        eventType: "ADD_TO_CART",
+        environmentSlug,
+        environmentName,
+        itemCount: 1,
+        estimatedTotal: price,
+        currency,
+        items: [
+          {
+            productId,
+            productName: name,
+            slug,
+            price,
+            currency,
+            environmentSlug,
+            environmentName,
+          },
+        ],
+      });
+    } else {
+      trackCustomerInquiry({
+        eventType: "REMOVE_FROM_CART",
+        environmentSlug,
+        environmentName,
+        itemCount: 1,
+        estimatedTotal: price,
+        currency,
+        items: [
+          {
+            productId,
+            productName: name,
+            slug,
+            price,
+            currency,
+            environmentSlug,
+            environmentName,
+          },
+        ],
+      });
     }
 
     toggleItem(item);
@@ -72,13 +114,13 @@ export function AddToCartButton({
         "inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-all active:scale-[0.98]",
         size === "sm" ? "px-4 py-2.5 text-[11px]" : "px-6 py-3.5 text-xs",
         fullWidth && "w-full",
-        inCart
+        inCart || variant === "outline"
           ? "border-2 bg-transparent"
           : "text-white hover:opacity-90"
       )}
       style={
-        inCart
-          ? { borderColor: accent, color: accent, backgroundColor: `${accent}12` }
+        inCart || variant === "outline"
+          ? { borderColor: accent, color: accent, backgroundColor: inCart ? `${accent}12` : "transparent" }
           : { backgroundColor: accent, color: "#ffffff" }
       }
     >

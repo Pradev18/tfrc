@@ -1,4 +1,5 @@
 import { EnvironmentHeader } from "@/components/public/EnvironmentHeader";
+import { getSiteUrl } from "@/lib/site-config";
 import { getShopCategories } from "@/services/shop-category.service";
 import { getCategoryHeroImage } from "@/lib/category-images";
 import { getWhatsAppSettings } from "@/lib/whatsapp";
@@ -11,8 +12,8 @@ export async function StoreHeader({ environment }: { environment: ParsedEnvironm
   ]);
 
   const waHref = `https://wa.me/${waSettings.phoneNumber}?text=${encodeURIComponent(waSettings.defaultGreeting)}`;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "";
-  const brandImage = getCategoryHeroImage(environment.slug);
+  const siteUrl = getSiteUrl();
+  const brandImage = environment.logoUrl ?? getCategoryHeroImage(environment.slug);
 
   return (
     <EnvironmentHeader
