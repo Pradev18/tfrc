@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { isDynamicCatalogueImage, normalizeCatalogueImageSrc } from "@/lib/media-url";
 
 interface EnvBrandBadgeProps {
   src: string;
@@ -19,6 +20,9 @@ export function EnvBrandBadge({
   priority,
   sizes = "(max-width: 768px) 90vw, 320px",
 }: EnvBrandBadgeProps) {
+  const resolved = normalizeCatalogueImageSrc(src);
+  const dynamic = isDynamicCatalogueImage(resolved);
+
   return (
     <div
       className={cn(
@@ -27,18 +31,30 @@ export function EnvBrandBadge({
       )}
     >
       <div className="env-brand-badge-glow pointer-events-none absolute inset-0" aria-hidden />
-      <Image
-        src={src}
-        alt={alt}
-        width={640}
-        height={640}
-        priority={priority}
-        className={cn(
-          "relative z-10 h-auto w-[78%] max-w-[280px] object-contain drop-shadow-2xl transition-transform duration-500 ease-out group-hover:scale-[1.03]",
-          imageClassName
-        )}
-        sizes={sizes}
-      />
+      {dynamic ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={resolved}
+          alt={alt}
+          className={cn(
+            "relative z-10 h-auto w-[78%] max-w-[280px] object-contain drop-shadow-2xl transition-transform duration-500 ease-out group-hover:scale-[1.03]",
+            imageClassName
+          )}
+        />
+      ) : (
+        <Image
+          src={resolved}
+          alt={alt}
+          width={640}
+          height={640}
+          priority={priority}
+          className={cn(
+            "relative z-10 h-auto w-[78%] max-w-[280px] object-contain drop-shadow-2xl transition-transform duration-500 ease-out group-hover:scale-[1.03]",
+            imageClassName
+          )}
+          sizes={sizes}
+        />
+      )}
     </div>
   );
 }

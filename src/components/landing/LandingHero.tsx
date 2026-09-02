@@ -4,6 +4,7 @@ import { TfrcBrand } from "@/components/brand/TfrcBrand";
 import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
 import { LANDING_PORTALS } from "@/lib/platform-images";
 import type { LandingPortal } from "@/lib/platform-images";
+import { isDynamicCatalogueImage, normalizeCatalogueImageSrc } from "@/lib/media-url";
 
 interface CataloguePortalCardProps {
   portal: LandingPortal;
@@ -11,6 +12,9 @@ interface CataloguePortalCardProps {
 }
 
 export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps) {
+  const image = normalizeCatalogueImageSrc(portal.image);
+  const dynamic = isDynamicCatalogueImage(image);
+
   return (
     <Link
       href={`/${portal.slug}`}
@@ -19,16 +23,25 @@ export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps)
     >
       <div className="landing-portal-badge relative aspect-square overflow-hidden rounded-xl">
         <div className="env-brand-badge-glow pointer-events-none absolute inset-0" aria-hidden />
-        {portal.image ? (
-          <Image
-            src={portal.image}
-            alt={portal.displayName}
-            width={240}
-            height={240}
-            className="relative z-10 mx-auto h-full w-[76%] object-contain p-2 transition-transform duration-500 ease-out group-hover:scale-[1.05]"
-            sizes="(max-width:640px) 42vw, 168px"
-            priority={index < 3}
-          />
+        {image ? (
+          dynamic ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={image}
+              alt={portal.displayName}
+              className="relative z-10 mx-auto h-full w-[76%] object-contain p-2 transition-transform duration-500 ease-out group-hover:scale-[1.05]"
+            />
+          ) : (
+            <Image
+              src={image}
+              alt={portal.displayName}
+              width={240}
+              height={240}
+              className="relative z-10 mx-auto h-full w-[76%] object-contain p-2 transition-transform duration-500 ease-out group-hover:scale-[1.05]"
+              sizes="(max-width:640px) 42vw, 168px"
+              priority={index < 3}
+            />
+          )
         ) : (
           <div className="relative z-10 flex h-full items-center justify-center font-display text-4xl font-medium text-[#141414]/20">
             {portal.displayName.charAt(0)}

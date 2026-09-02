@@ -1,10 +1,10 @@
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, writeFile, readFile, access } from "fs/promises";
+import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
 const MAX_BYTES = 5 * 1024 * 1024;
-const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
 
 function detectImageType(buffer: Buffer): { mime: string; extension: string } | null {
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
@@ -29,22 +29,97 @@ function detectImageType(buffer: Buffer): { mime: string; extension: string } | 
   return null;
 }
 
+function normalizeBrowserMime(type: string): string {
+  const value = (type || "").toLowerCase().trim();
+  if (value === "image/jpg") return "image/jpeg";
+  return value;
+}
+
+function uploadDirectories(): string[] {
+  const cwd = process.cwd();
+  return [
+    path.join(cwd, "public", "uploads"),
+    path.join(cwd, "uploads"),
+    path.join(cwd, ".next", "standalone", "public", "uploads"),
+    path.join(cwd, ".next", "public", "uploads"),
+    path.join("/tmp", "vitanova-uploads"),
+  ];
+}
+
+export function mediaPublicUrl(filename: string): string {
+  return `/api/media/${encodeURIComponent(filename)}`;
+}
+
 export async function saveUploadedImage(file: File): Promise<string> {
-  if (!ALLOWED.has(file.type)) {
-    throw new Error("Only JPEG, PNG, WebP, or GIF images are allowed");
-  }
   if (file.size === 0 || file.size > MAX_BYTES) {
     throw new Error("Image must be under 5 MB");
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const detected = detectImageType(buffer);
-  if (!detected || detected.mime !== file.type) {
-    throw new Error("File content does not match a supported image format");
+  if (!detected) {
+    throw new Error("Only JPEG, PNG, WebP, or GIF images are allowed");
   }
 
-  await mkdir(UPLOAD_DIR, { recursive: true });
+  const browserMime = normalizeBrowserMime(file.type);
+  // Prefer magic-byte detection. Only reject when browser clearly reports a non-image type.
+  if (browserMime && !browserMime.startsWith("image/") && browserMime !== "application/octet-stream") {
+    throw new Error("Only JPEG, PNG, WebP, or GIF images are allowed");
+  }
+
   const filename = `${randomUUID()}.${detected.extension}`;
-  await writeFile(path.join(UPLOAD_DIR, filename), buffer);
-  return `/uploads/${filename}`;
+  let written = false;
+  const errors: string[] = [];
+
+  for (const dir of uploadDirectories()) {
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(path.join(dir, filename), buffer);
+      written = true;
+    } catch (error) {
+      errors.push(`${dir}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  if (!written) {
+    // Last-resort Hostinger fallback: keep small logos inside the database URL itself.
+    if (buffer.length <= 450_000) {
+      return `data:${detected.mime};base64,${buffer.toString("base64")}`;
+    }
+    throw new Error(
+      `Could not save image on the server. ${errors[0] ?? "Upload directory is not writable."}`
+    );
+  }
+
+  return mediaPublicUrl(filename);
+}
+
+export async function readUploadedImage(
+  filename: string
+): Promise<{ buffer: Buffer; contentType: string } | null> {
+  const safe = path.basename(filename);
+  if (safe !== filename || safe.includes("..")) return null;
+  const extension = safe.split(".").pop()?.toLowerCase() ?? "";
+  if (!ALLOWED_EXTENSIONS.has(extension)) return null;
+
+  for (const dir of uploadDirectories()) {
+    const fullPath = path.join(dir, safe);
+    try {
+      await access(fullPath, fs.constants.R_OK);
+      const buffer = await readFile(fullPath);
+      const detected = detectImageType(buffer);
+      return {
+        buffer,
+        contentType:
+          detected?.mime ??
+          (extension === "jpg" || extension === "jpeg"
+            ? "image/jpeg"
+            : `image/${extension}`),
+      };
+    } catch {
+      /* try next */
+    }
+  }
+
+  return null;
 }

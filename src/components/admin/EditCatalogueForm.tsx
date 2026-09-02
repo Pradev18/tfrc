@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { announceSiteDataUpdate } from "@/components/LiveDataRefresh";
+import { CatalogueImage } from "@/components/admin/CatalogueImage";
 
 interface EditCatalogueFormProps {
   catalogue: {
@@ -22,7 +22,9 @@ interface EditCatalogueFormProps {
 export function EditCatalogueForm({ catalogue }: EditCatalogueFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const [form, setForm] = useState({
     name: catalogue.name,
     slug: catalogue.slug,
@@ -37,29 +39,33 @@ export function EditCatalogueForm({ catalogue }: EditCatalogueFormProps) {
   async function uploadImage(file: File) {
     const fd = new FormData();
     fd.append("file", file);
-    const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+    const res = await fetch("/api/admin/upload", {
+      method: "POST",
+      body: fd,
+      cache: "no-store",
+    });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
+    if (!res.ok) throw new Error(data.error || "Upload failed");
     return data.url as string;
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function saveCatalogue(nextForm: typeof form, successMessage: string) {
     setLoading(true);
-    setMessage("");
+    setError("");
     const res = await fetch(`/api/admin/catalogues/${catalogue.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: form.name,
-        slug: form.slug,
-        tagline: form.tagline,
-        description: form.description,
-        logoUrl: form.logoUrl,
-        heroHeadline: form.heroHeadline,
-        status: form.status,
-        sortOrder: form.sortOrder,
+        name: nextForm.name,
+        slug: nextForm.slug,
+        tagline: nextForm.tagline,
+        description: nextForm.description,
+        logoUrl: nextForm.logoUrl,
+        heroHeadline: nextForm.heroHeadline,
+        status: nextForm.status,
+        sortOrder: nextForm.sortOrder,
       }),
+      cache: "no-store",
     });
     const data = (await res.json()) as {
       catalogue?: {
@@ -74,22 +80,48 @@ export function EditCatalogueForm({ catalogue }: EditCatalogueFormProps) {
       error?: string;
     };
     setLoading(false);
-    if (res.ok && data.catalogue) {
-      setForm((current) => ({
-        ...current,
-        name: data.catalogue!.name,
-        slug: data.catalogue!.slug,
-        tagline: data.catalogue!.tagline ?? "",
-        description: data.catalogue!.description ?? "",
-        logoUrl: data.catalogue!.logoUrl ?? "",
-        status: data.catalogue!.status,
-        sortOrder: data.catalogue!.sortOrder,
-      }));
-      setMessage("Saved — home page card updated");
-      announceSiteDataUpdate();
-      router.refresh();
-    } else {
-      setMessage(data.error ?? "Save failed");
+    if (!res.ok || !data.catalogue) {
+      setError(data.error ?? "Save failed");
+      return false;
+    }
+
+    setForm((current) => ({
+      ...current,
+      name: data.catalogue!.name,
+      slug: data.catalogue!.slug,
+      tagline: data.catalogue!.tagline ?? "",
+      description: data.catalogue!.description ?? "",
+      logoUrl: data.catalogue!.logoUrl ?? "",
+      status: data.catalogue!.status,
+      sortOrder: data.catalogue!.sortOrder,
+    }));
+    setMessage(successMessage);
+    announceSiteDataUpdate();
+    router.refresh();
+    return true;
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await saveCatalogue(form, "Saved — catalogue card updated everywhere");
+  }
+
+  async function handleImageChange(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    setMessage("Uploading image…");
+    try {
+      const url = await uploadImage(file);
+      const nextForm = { ...form, logoUrl: url };
+      setForm(nextForm);
+      setMessage("Image uploaded — saving catalogue…");
+      await saveCatalogue(nextForm, "Image applied — admin + home page updated");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Image upload failed");
+      setMessage("");
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -97,6 +129,11 @@ export function EditCatalogueForm({ catalogue }: EditCatalogueFormProps) {
     <form onSubmit={handleSubmit} className="mx-auto max-w-xl space-y-5">
       {message && (
         <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">{message}</p>
+      )}
+      {error && (
+        <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+          {error}
+        </p>
       )}
 
       <label className="block">
@@ -147,26 +184,25 @@ export function EditCatalogueForm({ catalogue }: EditCatalogueFormProps) {
 
       <label className="block">
         <span className="text-sm font-medium">Card image</span>
+        <p className="mt-1 text-xs text-text-muted">
+          Choose a JPEG/PNG/WebP/GIF under 5 MB. It saves automatically after upload.
+        </p>
         <input
           type="file"
-          accept="image/*"
-          className="mt-1 text-sm"
-          onChange={async (e) => {
-            const f = e.target.files?.[0];
-            if (!f) return;
-            try {
-              const url = await uploadImage(f);
-              setForm((prev) => ({ ...prev, logoUrl: url }));
-            } catch {
-              setMessage("Image upload failed");
-            }
+          accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
+          disabled={uploading || loading}
+          className="mt-2 text-sm disabled:opacity-60"
+          onChange={(e) => {
+            void handleImageChange(e.target.files?.[0]);
+            e.target.value = "";
           }}
         />
         {form.logoUrl && (
-          <div className="relative mt-3 h-36 w-36 overflow-hidden rounded-xl border">
-            <Image src={form.logoUrl} alt="" fill className="object-contain p-2" />
+          <div className="relative mt-3 h-36 w-36 overflow-hidden rounded-xl border bg-white">
+            <CatalogueImage src={form.logoUrl} className="h-full w-full object-contain p-2" />
           </div>
         )}
+        {uploading && <p className="mt-2 text-xs text-text-muted">Uploading & applying image…</p>}
       </label>
 
       <div className="grid grid-cols-2 gap-4">
@@ -187,13 +223,15 @@ export function EditCatalogueForm({ catalogue }: EditCatalogueFormProps) {
           <input
             type="number"
             value={form.sortOrder}
-            onChange={(e) => setForm((f) => ({ ...f, sortOrder: parseInt(e.target.value, 10) || 0 }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, sortOrder: parseInt(e.target.value, 10) || 0 }))
+            }
             className="mt-1 w-full rounded-lg border border-border px-3 py-2"
           />
         </label>
       </div>
 
-      <button type="submit" disabled={loading} className="btn-primary w-full py-3">
+      <button type="submit" disabled={loading || uploading} className="btn-primary w-full py-3">
         {loading ? "Saving…" : "Save catalogue card"}
       </button>
     </form>

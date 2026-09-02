@@ -3,6 +3,7 @@ import { getSiteUrl } from "@/lib/site-config";
 import { getShopCategories } from "@/services/shop-category.service";
 import { getCategoryHeroImage } from "@/lib/category-images";
 import { getWhatsAppSettings } from "@/lib/whatsapp.server";
+import { normalizeCatalogueImageSrc } from "@/lib/media-url";
 import type { ParsedEnvironment } from "@/services/environment.service";
 
 export async function StoreHeader({ environment }: { environment: ParsedEnvironment }) {
@@ -13,7 +14,10 @@ export async function StoreHeader({ environment }: { environment: ParsedEnvironm
 
   const waHref = `https://wa.me/${waSettings.phoneNumber}?text=${encodeURIComponent(waSettings.defaultGreeting)}`;
   const siteUrl = getSiteUrl();
-  const brandImage = environment.logoUrl ?? getCategoryHeroImage(environment.slug);
+  const brandImage =
+    normalizeCatalogueImageSrc(environment.logoUrl) ||
+    getCategoryHeroImage(environment.slug) ||
+    "";
 
   return (
     <EnvironmentHeader

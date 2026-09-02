@@ -2,7 +2,7 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { listCatalogues } from "@/services/catalogue-admin.service";
-import Image from "next/image";
+import { CatalogueImage } from "@/components/admin/CatalogueImage";
 
 export default async function CataloguesListPage() {
   const session = await auth();
@@ -32,7 +32,10 @@ export default async function CataloguesListPage() {
             <div className="flex items-start gap-4">
               <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-surface-muted">
                 {cat.cardImage ? (
-                  <Image src={cat.cardImage} alt="" fill className="object-contain p-1" />
+                  <CatalogueImage
+                    src={cat.cardImage}
+                    className="h-full w-full object-contain p-1"
+                  />
                 ) : (
                   <span className="flex h-full items-center justify-center text-2xl">{cat.icon}</span>
                 )}

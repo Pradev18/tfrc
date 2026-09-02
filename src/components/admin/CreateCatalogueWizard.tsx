@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { slugify } from "@/lib/slugify";
 import { announceSiteDataUpdate } from "@/components/LiveDataRefresh";
 import { CatalogueImportForm } from "@/components/admin/CatalogueImportForm";
+import { CatalogueImage } from "@/components/admin/CatalogueImage";
 
 type Step = "details" | "import" | "done";
 
@@ -13,6 +13,7 @@ export function CreateCatalogueWizard() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("details");
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [catalogueId, setCatalogueId] = useState("");
 
@@ -28,7 +29,11 @@ export function CreateCatalogueWizard() {
   async function uploadImage(imageFile: File) {
     const fd = new FormData();
     fd.append("file", imageFile);
-    const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+    const res = await fetch("/api/admin/upload", {
+      method: "POST",
+      body: fd,
+      cache: "no-store",
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error ?? "Upload failed");
     return data.url as string;
@@ -146,33 +151,38 @@ export function CreateCatalogueWizard() {
 
           <label className="block">
             <span className="text-sm font-medium">Card image</span>
+            <p className="mt-1 text-xs text-text-muted">JPEG, PNG, WebP or GIF under 5 MB.</p>
             <input
               type="file"
-              accept="image/*"
-              className="mt-1 w-full text-sm"
+              accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
+              disabled={uploading || loading}
+              className="mt-2 w-full text-sm disabled:opacity-60"
               onChange={async (e) => {
                 const f = e.target.files?.[0];
+                e.target.value = "";
                 if (!f) return;
-                setLoading(true);
+                setUploading(true);
+                setError("");
                 try {
                   const url = await uploadImage(f);
                   setForm((prev) => ({ ...prev, logoUrl: url }));
                 } catch (err) {
                   setError(err instanceof Error ? err.message : "Upload failed");
                 } finally {
-                  setLoading(false);
+                  setUploading(false);
                 }
               }}
             />
+            {uploading && <p className="mt-2 text-xs text-text-muted">Uploading image…</p>}
             {form.logoUrl && (
-              <div className="relative mt-3 h-32 w-32 overflow-hidden rounded-xl border">
-                <Image src={form.logoUrl} alt="Preview" fill className="object-contain p-2" />
+              <div className="relative mt-3 h-32 w-32 overflow-hidden rounded-xl border bg-white">
+                <CatalogueImage src={form.logoUrl} className="h-full w-full object-contain p-2" />
               </div>
             )}
           </label>
 
-          <button type="submit" disabled={loading} className="btn-primary w-full py-3">
-            {loading ? "Creating…" : "Continue to product upload →"}
+          <button type="submit" disabled={loading || uploading} className="btn-primary w-full py-3">
+            {loading ? "Creating…" : uploading ? "Wait for image…" : "Continue to product upload →"}
           </button>
         </form>
       )}

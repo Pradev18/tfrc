@@ -7,6 +7,7 @@ import type { EnvironmentConfig } from "@/lib/environments";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 import { getCategoryHeroImage } from "@/lib/category-images";
 import { EnvBrandBadge } from "@/components/landing/EnvBrandBadge";
+import { normalizeCatalogueImageSrc } from "@/lib/media-url";
 
 interface StoreHeroProps {
   config: EnvironmentConfig;
@@ -18,7 +19,8 @@ interface StoreHeroProps {
 export function StoreHero({ config, slug, waHref, logoUrl }: StoreHeroProps) {
   const v = getEnvVisual(slug);
   const headline = config.heroHeadline ?? config.tagline;
-  const brandImage = logoUrl ?? getCategoryHeroImage(slug);
+  const brandImage =
+    normalizeCatalogueImageSrc(logoUrl) || getCategoryHeroImage(slug) || "";
 
   return (
     <section className="store-section relative overflow-hidden pt-4 md:pt-6" style={envStyle(v)}>

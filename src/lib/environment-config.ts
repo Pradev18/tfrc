@@ -8,6 +8,7 @@ import {
 } from "@/lib/environments";
 import { CATEGORY_HERO_IMAGES } from "@/lib/category-images";
 import { ENV_VISUALS, type EnvVisual } from "@/lib/env-visuals";
+import { normalizeCatalogueImageSrc } from "@/lib/media-url";
 
 export interface EnvironmentSettings {
   ctaLabel?: string;
@@ -71,7 +72,9 @@ export function getEnvironmentVisuals(env: Environment): EnvVisual {
 }
 
 export function getEnvironmentCardImage(env: Environment): string {
-  return env.logoUrl ?? CATEGORY_HERO_IMAGES[env.slug] ?? "";
+  const logo = normalizeCatalogueImageSrc(env.logoUrl);
+  if (logo) return logo;
+  return CATEGORY_HERO_IMAGES[env.slug] ?? "";
 }
 
 export function getAllLegacySlugs(): string[] {
