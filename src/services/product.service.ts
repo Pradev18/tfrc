@@ -5,6 +5,7 @@ import { getEnvironmentIdBySlug } from "@/services/environment.service";
 import { getDepartmentForSlug } from "@/lib/environments";
 import { getShopCategoryDef, getShopCategoryDefs, OTHER_SHOP_CATEGORY } from "@/lib/shop-categories";
 import { shopCategoryOrFilter, otherShopCategoryFilter } from "@/services/shop-category.service";
+import { getCachedEnvironment, getCachedProducts } from "@/lib/catalog-cache";
 
 export interface ProductFilters {
   search?: string;
@@ -78,6 +79,28 @@ export function mapProductPrices(product: ProductWithPrices) {
 }
 
 export async function getProducts(filters: ProductFilters = {}) {
+  const page = filters.page ?? 1;
+  const limit = filters.limit ?? 24;
+
+  try {
+    return await getProductsFromPrisma(filters);
+  } catch (error) {
+    console.error("[products] prisma failed, using catalog cache:", error);
+    if (!filters.environmentSlug) throw error;
+
+    const cached = getCachedProducts(filters.environmentSlug, {
+      page,
+      limit,
+      q: filters.search,
+      brandSlug: filters.brandSlug,
+      onSale: filters.onSale,
+    });
+    if (!cached) throw error;
+    return cached;
+  }
+}
+
+async function getProductsFromPrisma(filters: ProductFilters = {}) {
   const page = filters.page ?? 1;
   const limit = filters.limit ?? 24;
   const skip = (page - 1) * limit;
@@ -233,19 +256,48 @@ function collectCategoryIds(cat: {
 }
 
 export async function getProductBySlug(slug: string, environmentSlug?: string) {
-  const environmentId = environmentSlug
-    ? await getEnvironmentIdBySlug(environmentSlug)
-    : null;
+  try {
+    const environmentId = environmentSlug
+      ? await getEnvironmentIdBySlug(environmentSlug)
+      : null;
 
-  return prisma.product.findFirst({
-    where: {
-      slug,
-      status: ProductStatus.ACTIVE,
-      deletedAt: null,
-      ...(environmentId ? { environmentId } : {}),
-    },
-    include: productInclude,
-  });
+    const product = await prisma.product.findFirst({
+      where: {
+        slug,
+        status: ProductStatus.ACTIVE,
+        deletedAt: null,
+        ...(environmentId ? { environmentId } : {}),
+      },
+      include: productInclude,
+    });
+    if (product) return product;
+  } catch (error) {
+    console.error("[products] getProductBySlug prisma failed:", error);
+  }
+
+  if (!environmentSlug) return null;
+  const cached = getCachedEnvironment(environmentSlug);
+  const hit = cached?.products.find((p) => p.slug === slug);
+  if (!hit) return null;
+
+  return {
+    ...hit,
+    status: ProductStatus.ACTIVE,
+    deletedAt: null,
+    environmentId: cached!.id,
+    videos: [],
+    category: null,
+    subcategory: null,
+    environment: { slug: environmentSlug, name: cached!.name },
+    tags: [],
+    createdAt: new Date(hit.createdAt),
+    updatedAt: new Date(hit.createdAt),
+    prices: hit.prices.map((p) => ({
+      ...p,
+      saleStart: p.saleStart ? new Date(p.saleStart) : null,
+      saleEnd: p.saleEnd ? new Date(p.saleEnd) : null,
+    })),
+  } as unknown as ProductWithRelations;
 }
 
 export async function getProductEnvironmentSlug(productId: string): Promise<string | null> {

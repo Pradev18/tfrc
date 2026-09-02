@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && node scripts/ensure-prod-db.mjs && next build",
-    "hostinger:build": "prisma generate && node scripts/ensure-prod-db.mjs && NODE_OPTIONS=--max-old-space-size=4096 next build",
+    "build": "prisma generate && node scripts/ensure-prod-db.mjs && node scripts/export-catalog-cache.mjs && next build && node scripts/copy-db-to-next.mjs",
+    "hostinger:build": "prisma generate && node scripts/ensure-prod-db.mjs && node scripts/export-catalog-cache.mjs && NODE_OPTIONS=--max-old-space-size=4096 next build && node scripts/copy-db-to-next.mjs",
     "hostinger:setup": "node scripts/ensure-prod-db.mjs",
     "start": "node scripts/ensure-prod-db.mjs && next start",
     "lint": "next lint",

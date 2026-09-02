@@ -7,6 +7,7 @@ import {
   OTHER_SHOP_CATEGORY,
   type ShopCategoryDef,
 } from "@/lib/shop-categories";
+import { getCachedEnvironment } from "@/lib/catalog-cache";
 
 export interface ShopCategoryItem {
   slug: string;
@@ -43,8 +44,56 @@ function parseKeywords(raw: string): string[] {
 
 /** Count-based category index — does not load entire catalogue into memory */
 export async function getShopCategories(environmentSlug: string): Promise<ShopCategoryItem[]> {
+  try {
+    return await getShopCategoriesFromPrisma(environmentSlug);
+  } catch (error) {
+    console.error("[shop-categories] prisma failed, using cache:", error);
+    return getShopCategoriesFromCache(environmentSlug);
+  }
+}
+
+function getShopCategoriesFromCache(environmentSlug: string): ShopCategoryItem[] {
+  const cached = getCachedEnvironment(environmentSlug);
+  if (!cached) return [];
+
+  const defs = getEffectiveShopCategoryDefs(
+    environmentSlug,
+    cached.products.map((p) => p.name)
+  );
+
+  return defs
+    .map((def) => {
+      if (def.isFallback || def.slug === OTHER_SHOP_CATEGORY.slug) {
+        const keywordSet = defs
+          .filter((d) => !d.isFallback && d.keywords.length)
+          .flatMap((d) => d.keywords.map((k) => k.toLowerCase()));
+        const other = cached.products.filter(
+          (p) => !keywordSet.some((kw) => p.name.toLowerCase().includes(kw))
+        );
+        return {
+          slug: OTHER_SHOP_CATEGORY.slug,
+          name: OTHER_SHOP_CATEGORY.name,
+          productCount: other.length,
+          imageUrl: other[0]?.images[0]?.url ?? null,
+        };
+      }
+      const matched = cached.products.filter((p) =>
+        def.keywords.some((kw) => p.name.toLowerCase().includes(kw.toLowerCase()))
+      );
+      if (matched.length === 0) return null;
+      return {
+        slug: def.slug,
+        name: def.name,
+        productCount: matched.length,
+        imageUrl: matched[0]?.images[0]?.url ?? null,
+      };
+    })
+    .filter(Boolean) as ShopCategoryItem[];
+}
+
+async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<ShopCategoryItem[]> {
   const environmentId = await getEnvironmentIdBySlug(environmentSlug);
-  if (!environmentId) return [];
+  if (!environmentId) return getShopCategoriesFromCache(environmentSlug);
 
   const baseWhere = {
     environmentId,

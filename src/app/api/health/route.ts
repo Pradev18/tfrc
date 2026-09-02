@@ -37,10 +37,39 @@ export async function GET() {
     report.environments = environments;
     report.products = products;
     report.whatsappSettings = whatsapp;
+
+    const { loadCatalogCache } = await import("@/lib/catalog-cache");
+    const cache = loadCatalogCache();
+    report.catalogCache = cache
+      ? {
+          generatedAt: cache.generatedAt,
+          environments: Object.keys(cache.environments),
+          products: Object.values(cache.environments).reduce((n, e) => n + e.products.length, 0),
+        }
+      : null;
+
     return NextResponse.json(report);
   } catch (error) {
     report.ok = false;
     report.error = error instanceof Error ? error.message : String(error);
+    try {
+      const { loadCatalogCache } = await import("@/lib/catalog-cache");
+      const cache = loadCatalogCache();
+      report.catalogCache = cache
+        ? {
+            generatedAt: cache.generatedAt,
+            environments: Object.keys(cache.environments),
+            products: Object.values(cache.environments).reduce((n, e) => n + e.products.length, 0),
+          }
+        : null;
+      if (cache) {
+        report.ok = true;
+        report.fallback = "catalog-cache";
+        return NextResponse.json(report);
+      }
+    } catch {
+      /* ignore */
+    }
     return NextResponse.json(report, { status: 500 });
   }
 }

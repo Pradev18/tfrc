@@ -1,12 +1,14 @@
 import prisma from "@/lib/db";
 import {
   ENVIRONMENT_CONFIGS,
+  getEnvironmentConfig,
   type EnvironmentConfig,
   type EnvironmentTheme,
   type EnvironmentSEO,
 } from "@/lib/environments";
 import type { Environment, EnvironmentStatus } from "@prisma/client";
 import { buildConfigFromEnvironment } from "@/lib/environment-config";
+import { getCachedEnvironment, loadCatalogCache } from "@/lib/catalog-cache";
 
 export type ParsedEnvironment = Environment & {
   config: EnvironmentConfig;
@@ -32,27 +34,102 @@ export function enrichEnvironment(env: Environment): ParsedEnvironment {
   };
 }
 
-export async function getActiveEnvironments() {
-  const envs = await prisma.environment.findMany({
-    where: { status: "ACTIVE" },
-    orderBy: { sortOrder: "asc" },
-  });
-  return envs.map(enrichEnvironment);
-}
+function environmentFromCacheOrConfig(slug: string): ParsedEnvironment | null {
+  const cached = getCachedEnvironment(slug);
+  if (cached) {
+    const env = {
+      id: cached.id,
+      name: cached.name,
+      slug: cached.slug,
+      description: cached.description,
+      tagline: cached.tagline,
+      icon: cached.icon,
+      logoUrl: cached.logoUrl,
+      departmentSource: cached.departmentSource,
+      sortOrder: 0,
+      status: "ACTIVE" as EnvironmentStatus,
+      theme: cached.theme,
+      seo: cached.seo,
+      navigation: "[]",
+      homepage: "{}",
+      settings: cached.settings,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } satisfies Environment;
+    return enrichEnvironment(env);
+  }
 
-export async function getEnvironmentBySlug(slug: string) {
-  const env = await prisma.environment.findUnique({ where: { slug } });
-  if (!env || env.status !== "ACTIVE") return null;
+  const cfg = getEnvironmentConfig(slug);
+  if (!cfg) return null;
+
+  const env = {
+    id: `static-${slug}`,
+    name: cfg.displayName,
+    slug: cfg.slug,
+    description: cfg.description,
+    tagline: cfg.tagline,
+    icon: cfg.icon,
+    logoUrl: null,
+    departmentSource: cfg.departmentSource,
+    sortOrder: 0,
+    status: "ACTIVE" as EnvironmentStatus,
+    theme: JSON.stringify(cfg.theme),
+    seo: JSON.stringify(cfg.seo),
+    navigation: "[]",
+    homepage: "{}",
+    settings: JSON.stringify({
+      heroHeadline: cfg.heroHeadline,
+      ctaLabel: cfg.ctaLabel,
+    }),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  } satisfies Environment;
+
   return enrichEnvironment(env);
 }
 
+export async function getActiveEnvironments() {
+  try {
+    const envs = await prisma.environment.findMany({
+      where: { status: "ACTIVE" },
+      orderBy: { sortOrder: "asc" },
+    });
+    if (envs.length > 0) return envs.map(enrichEnvironment);
+  } catch (error) {
+    console.error("[env] getActiveEnvironments prisma failed:", error);
+  }
+
+  const cache = loadCatalogCache();
+  if (cache) {
+    return Object.keys(cache.environments)
+      .map((slug) => environmentFromCacheOrConfig(slug))
+      .filter(Boolean) as ParsedEnvironment[];
+  }
+
+  return ENVIRONMENT_CONFIGS.map((cfg) => environmentFromCacheOrConfig(cfg.slug)!);
+}
+
+export async function getEnvironmentBySlug(slug: string) {
+  try {
+    const env = await prisma.environment.findUnique({ where: { slug } });
+    if (env && env.status === "ACTIVE") return enrichEnvironment(env);
+  } catch (error) {
+    console.error("[env] getEnvironmentBySlug prisma failed:", error);
+  }
+  return environmentFromCacheOrConfig(slug);
+}
+
 export async function getEnvironmentIdBySlug(slug: string): Promise<string | null> {
-  const env = await prisma.environment.findUnique({
-    where: { slug },
-    select: { id: true, status: true },
-  });
-  if (!env || env.status !== "ACTIVE") return null;
-  return env.id;
+  try {
+    const env = await prisma.environment.findUnique({
+      where: { slug },
+      select: { id: true, status: true },
+    });
+    if (env && env.status === "ACTIVE") return env.id;
+  } catch (error) {
+    console.error("[env] getEnvironmentIdBySlug prisma failed:", error);
+  }
+  return getCachedEnvironment(slug)?.id ?? null;
 }
 
 export async function resolveEnvironment(slug: string) {
@@ -60,11 +137,17 @@ export async function resolveEnvironment(slug: string) {
 }
 
 export async function isValidEnvironmentSlug(slug: string): Promise<boolean> {
-  const env = await prisma.environment.findUnique({
-    where: { slug },
-    select: { status: true },
-  });
-  if (env) return env.status === "ACTIVE";
+  try {
+    const env = await prisma.environment.findUnique({
+      where: { slug },
+      select: { status: true },
+    });
+    if (env) return env.status === "ACTIVE";
+  } catch (error) {
+    console.error("[env] isValidEnvironmentSlug prisma failed:", error);
+  }
+
+  if (getCachedEnvironment(slug)) return true;
   return ENVIRONMENT_CONFIGS.some((e) => e.slug === slug);
 }
 

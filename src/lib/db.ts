@@ -6,14 +6,24 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 function candidateSqlitePaths(relativeOrAbsolute: string): string[] {
   const cleaned = relativeOrAbsolute.replace(/^\.\//, "");
-  if (path.isAbsolute(cleaned)) return [cleaned];
-
   const cwd = process.cwd();
+
+  if (path.isAbsolute(cleaned)) {
+    return [
+      cleaned,
+      path.join(cwd, "prod.db"),
+      path.join(cwd, ".next", "prod.db"),
+      path.join(cwd, "prisma", "prod.db"),
+    ];
+  }
+
   return [
     path.join(cwd, cleaned),
+    path.join(cwd, "prod.db"),
+    path.join(cwd, ".next", "prod.db"),
     path.join(cwd, "prisma", "prod.db"),
     path.join(cwd, "..", "prisma", "prod.db"),
-    path.join(cwd, "..", "..", "prisma", "prod.db"),
+    path.join(cwd, "..", "prod.db"),
   ];
 }
 
@@ -36,7 +46,6 @@ function getDatasourceUrl(): string | undefined {
     }
   }
 
-  // Prefer creating/using a writable copy under /tmp on locked hosts
   const bundled = candidates.find((p) => {
     try {
       return fs.existsSync(p) && fs.statSync(p).size > 1000;

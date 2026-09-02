@@ -150,7 +150,17 @@ export async function getRootCategoryCovers(environmentSlug?: string): Promise<R
 
 /** Hero collage for environment */
 export async function getEnvironmentHeroImages(environmentSlug: string): Promise<string[]> {
-  return getEnvironmentShowcaseImages(environmentSlug, 4);
+  try {
+    return await getEnvironmentShowcaseImages(environmentSlug, 4);
+  } catch (error) {
+    console.error("[categories] hero images failed:", error);
+    const { getCachedEnvironment } = await import("@/lib/catalog-cache");
+    const cached = getCachedEnvironment(environmentSlug);
+    return (cached?.products ?? [])
+      .map((p) => p.images[0]?.url)
+      .filter(Boolean)
+      .slice(0, 4) as string[];
+  }
 }
 
 /** Multiple product images for marketing collages (always from Excel catalogue URLs) */

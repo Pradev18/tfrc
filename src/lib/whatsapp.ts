@@ -33,18 +33,23 @@ const DEFAULT_SETTINGS: WhatsAppSettings = {
 };
 
 export async function getWhatsAppSettings(): Promise<WhatsAppSettings> {
-  const setting = await prisma.whatsAppSetting.findFirst({
-    where: { isActive: true },
-    orderBy: { updatedAt: "desc" },
-  });
+  try {
+    const setting = await prisma.whatsAppSetting.findFirst({
+      where: { isActive: true },
+      orderBy: { updatedAt: "desc" },
+    });
 
-  if (!setting) return DEFAULT_SETTINGS;
+    if (!setting) return DEFAULT_SETTINGS;
 
-  return {
-    phoneNumber: setting.phoneNumber.replace(/\D/g, ""),
-    defaultGreeting: setting.defaultGreeting,
-    productTemplate: setting.productTemplate,
-  };
+    return {
+      phoneNumber: setting.phoneNumber.replace(/\D/g, ""),
+      defaultGreeting: setting.defaultGreeting,
+      productTemplate: setting.productTemplate,
+    };
+  } catch (error) {
+    console.error("[whatsapp] settings prisma failed:", error);
+    return DEFAULT_SETTINGS;
+  }
 }
 
 export function interpolateTemplate(
