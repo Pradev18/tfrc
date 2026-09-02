@@ -51,5 +51,8 @@ export async function GET(req: NextRequest, context: RouteContext) {
     prisma.product.count({ where }),
   ]);
 
-  return NextResponse.json({ products, total, page, limit });
+  return NextResponse.json(
+    { products, total, page, limit },
+    { headers: { "Cache-Control": "no-store, max-age=0" } }
+  );
 }

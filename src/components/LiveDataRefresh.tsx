@@ -3,15 +3,15 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-const POLL_INTERVAL_MS = 10_000;
+const POLL_INTERVAL_MS = 5_000;
 
 export function announceSiteDataUpdate() {
-  window.dispatchEvent(new Event("site-data-refresh"));
   try {
     localStorage.setItem("site-data-updated", String(Date.now()));
   } catch {
     // Storage can be disabled; the current tab still refreshes directly.
   }
+  window.dispatchEvent(new Event("site-data-refresh"));
 }
 
 export function LiveDataRefresh() {
@@ -24,16 +24,15 @@ export function LiveDataRefresh() {
       if (checkingRef.current || document.visibilityState === "hidden") return;
       checkingRef.current = true;
       try {
-        const response = await fetch("/api/site-revision", {
+        const response = await fetch(`/api/site-revision?_=${Date.now()}`, {
           cache: "no-store",
-          headers: { Accept: "application/json" },
+          headers: { Accept: "application/json", "Cache-Control": "no-store" },
         });
         if (!response.ok) return;
         const data = (await response.json()) as { revision?: string | null };
         if (!data.revision) return;
 
         if (revisionRef.current && revisionRef.current !== data.revision) {
-          window.dispatchEvent(new Event("site-data-refresh"));
           router.refresh();
         }
         revisionRef.current = data.revision;
@@ -42,20 +41,25 @@ export function LiveDataRefresh() {
       }
     }
 
-    function refreshFromAnotherTab() {
-      window.dispatchEvent(new Event("site-data-refresh"));
+    function refreshNow() {
       router.refresh();
       void checkRevision();
     }
 
+    function onStorage(event: StorageEvent) {
+      if (event.key === "site-data-updated") refreshNow();
+    }
+
     void checkRevision();
     const interval = window.setInterval(checkRevision, POLL_INTERVAL_MS);
-    window.addEventListener("storage", refreshFromAnotherTab);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("site-data-refresh", refreshNow);
     document.addEventListener("visibilitychange", checkRevision);
 
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener("storage", refreshFromAnotherTab);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("site-data-refresh", refreshNow);
       document.removeEventListener("visibilitychange", checkRevision);
     };
   }, [router]);

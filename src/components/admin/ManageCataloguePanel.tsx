@@ -44,7 +44,8 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
   const loadProducts = useCallback(async () => {
     setLoading(true);
     const res = await fetch(
-      `/api/admin/catalogues/${catalogueId}/products?q=${encodeURIComponent(q)}&page=${page}&limit=${pageSize}`
+      `/api/admin/catalogues/${catalogueId}/products?q=${encodeURIComponent(q)}&page=${page}&limit=${pageSize}&_=${Date.now()}`,
+      { cache: "no-store", headers: { "Cache-Control": "no-store" } }
     );
     const data = await res.json();
     const nextTotal = data.total ?? 0;
@@ -58,7 +59,9 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
   }, [catalogueId, q, page, pageSize]);
 
   const loadCategories = useCallback(async () => {
-    const res = await fetch(`/api/admin/catalogues/${catalogueId}/categories`);
+    const res = await fetch(`/api/admin/catalogues/${catalogueId}/categories?_=${Date.now()}`, {
+      cache: "no-store",
+    });
     const data = await res.json();
     setCategories(data.categories ?? []);
   }, [catalogueId]);
@@ -319,11 +322,26 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
           <CatalogueImportForm
             catalogueId={catalogueId}
             catalogueName={catalogueName}
-            onImported={() => {
-              setMessage("Catalogue replaced successfully");
+            onImported={(importResult) => {
+              setMessage(
+                `Catalogue replaced — ${importResult.validRows} products live (created ${importResult.created}, updated ${importResult.updated}, archived ${importResult.archived})`
+              );
               setPage(1);
-              if (page === 1) loadProducts();
-              loadCategories();
+              setQ("");
+              setTab("products");
+              // Force reload even if page was already 1
+              window.setTimeout(() => {
+                void fetch(
+                  `/api/admin/catalogues/${catalogueId}/products?page=1&limit=${pageSize}&_=${Date.now()}`,
+                  { cache: "no-store" }
+                )
+                  .then((res) => res.json())
+                  .then((data) => {
+                    setProducts(data.products ?? []);
+                    setTotal(data.total ?? 0);
+                  });
+                void loadCategories();
+              }, 50);
             }}
           />
         </div>

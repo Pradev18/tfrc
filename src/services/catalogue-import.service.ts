@@ -8,7 +8,7 @@ import {
 } from "@/lib/import/catalog-parser";
 import { Prisma, ProductStatus } from "@prisma/client";
 import { generateShopCategories } from "@/services/catalogue-admin.service";
-import { refreshCatalogCacheFromDatabase } from "@/lib/catalog-cache-refresh.server";
+import { persistRuntimeCatalogueData } from "@/lib/persist-runtime-data.server";
 
 function parseSaleWindow(value: string | null): {
   saleStart: Date | null;
@@ -335,9 +335,9 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
 
   await generateShopCategories(environmentId, environmentSlug);
   try {
-    await refreshCatalogCacheFromDatabase();
+    await persistRuntimeCatalogueData();
   } catch (error) {
-    console.error("[catalog-import] cache refresh failed:", error);
+    console.error("[catalog-import] persist after import failed:", error);
   }
 
   await prisma.importJob.update({

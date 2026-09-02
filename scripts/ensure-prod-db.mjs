@@ -59,12 +59,50 @@ if (!url.startsWith("file:")) {
   process.exit(0);
 }
 
+function findNewestExistingDb(preferredPath) {
+  const candidates = [
+    preferredPath,
+    path.join(root, "prod.db"),
+    path.join(root, "prisma", "prod.db"),
+    path.join(root, ".next", "prod.db"),
+    path.join(process.cwd(), "prod.db"),
+    path.join(process.cwd(), "prisma", "prod.db"),
+    path.join("/tmp", "vitanova-prod.db"),
+    path.join("/tmp", "vitanova-db", "prod.db"),
+  ];
+  let best = null;
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) continue;
+      const stat = fs.statSync(candidate);
+      if (stat.size < 1000) continue;
+      if (!best || stat.mtimeMs > best.mtimeMs) {
+        best = { path: candidate, mtimeMs: stat.mtimeMs, size: stat.size };
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return best;
+}
+
 let dbPath = resolveSqlitePath(url);
 const bundled = findBundledDb();
+const newest = findNewestExistingDb(dbPath);
 
 if (!dbPath) {
   console.error("[db] Could not resolve DATABASE_URL path");
   process.exit(1);
+}
+
+// Prefer the newest existing copy so a successful runtime import is not
+// silently replaced by an older bundled/build artifact on restart.
+if (newest && path.resolve(newest.path) !== path.resolve(dbPath)) {
+  console.log(
+    `[db] Preferring newest database at ${newest.path} (${newest.size} bytes) over ${dbPath}`
+  );
+  dbPath = newest.path;
+  process.env.DATABASE_URL = `file:${dbPath}`;
 }
 
 let dbDir = path.dirname(dbPath);

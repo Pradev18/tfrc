@@ -72,8 +72,8 @@ export function useStoreProductFeed(
 
       try {
         const res = await fetch(
-          buildFeedUrl(environmentSlug, filters, shopSlug, page, onSaleOnly),
-          { signal: controller.signal }
+          `${buildFeedUrl(environmentSlug, filters, shopSlug, page, onSaleOnly)}&_=${Date.now()}`,
+          { signal: controller.signal, cache: "no-store" }
         );
 
         if (!res.ok) throw new Error("Failed to load");

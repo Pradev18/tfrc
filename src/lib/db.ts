@@ -1,74 +1,42 @@
 import path from "path";
 import fs from "fs";
 import { PrismaClient } from "@prisma/client";
+import { pickNewestSqlitePath, sqlitePathFromUrl } from "@/lib/sqlite-paths";
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient;
+  prismaReady?: Promise<void>;
+};
 
-function candidateSqlitePaths(relativeOrAbsolute: string): string[] {
-  const cleaned = relativeOrAbsolute.replace(/^\.\//, "");
-  const cwd = process.cwd();
-
-  if (path.isAbsolute(cleaned)) {
-    return [
-      cleaned,
-      path.join(cwd, "prod.db"),
-      path.join(cwd, ".next", "prod.db"),
-      path.join(cwd, "prisma", "prod.db"),
-    ];
-  }
-
-  return [
-    path.join(cwd, cleaned),
-    path.join(cwd, "prod.db"),
-    path.join(cwd, ".next", "prod.db"),
-    path.join(cwd, "prisma", "prod.db"),
-    path.join(cwd, "..", "prisma", "prod.db"),
-    path.join(cwd, "..", "prod.db"),
-  ];
-}
-
-/** Resolve relative SQLite paths; fall back to bundled prod.db; copy to /tmp if needed. */
+/** Resolve relative SQLite paths; prefer the newest usable DB copy. */
 function getDatasourceUrl(): string | undefined {
   const url = process.env.DATABASE_URL ?? "file:./prod.db";
   if (!url.startsWith("file:")) return url;
 
-  const filePath = url.replace(/^file:/, "");
-  const candidates = candidateSqlitePaths(filePath);
-
-  for (const absolute of candidates) {
-    try {
-      if (fs.existsSync(absolute) && fs.statSync(absolute).size > 1000) {
-        process.env.DATABASE_URL = `file:${absolute}`;
-        return `file:${absolute}`;
-      }
-    } catch {
-      /* ignore */
-    }
+  const preferred = url.replace(/^file:/, "").replace(/^\.\//, "");
+  const newest = pickNewestSqlitePath(preferred);
+  if (newest) {
+    process.env.DATABASE_URL = `file:${newest}`;
+    return `file:${newest}`;
   }
 
-  const bundled = candidates.find((p) => {
-    try {
-      return fs.existsSync(p) && fs.statSync(p).size > 1000;
-    } catch {
-      return false;
-    }
-  });
+  const fallback = path.isAbsolute(preferred)
+    ? preferred
+    : path.join(process.cwd(), preferred);
 
-  const tmpDb = path.join("/tmp", "vitanova-prod.db");
+  // Last resort: writable /tmp when app directory cannot keep a DB.
   try {
-    if (bundled) {
-      fs.copyFileSync(bundled, tmpDb);
-      process.env.DATABASE_URL = `file:${tmpDb}`;
-      return `file:${tmpDb}`;
-    }
+    fs.mkdirSync(path.dirname(fallback), { recursive: true });
+    const probe = path.join(path.dirname(fallback), `.write-test-${process.pid}`);
+    fs.writeFileSync(probe, "ok");
+    fs.unlinkSync(probe);
+    process.env.DATABASE_URL = `file:${fallback}`;
+    return `file:${fallback}`;
   } catch {
-    /* ignore */
+    const tmpDb = path.join("/tmp", "vitanova-prod.db");
+    process.env.DATABASE_URL = `file:${tmpDb}`;
+    return `file:${tmpDb}`;
   }
-
-  const fallback = path.isAbsolute(filePath)
-    ? filePath
-    : path.join(process.cwd(), filePath.replace(/^\.\//, ""));
-  return `file:${fallback}`;
 }
 
 const datasourceUrl = getDatasourceUrl();
@@ -79,6 +47,22 @@ export const prisma =
     ...(datasourceUrl ? { datasources: { db: { url: datasourceUrl } } } : {}),
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
+
+async function ensureSqlitePragmas() {
+  const active = sqlitePathFromUrl(process.env.DATABASE_URL);
+  if (!active) return;
+  try {
+    await prisma.$queryRawUnsafe("PRAGMA journal_mode=WAL;");
+    await prisma.$queryRawUnsafe("PRAGMA synchronous=NORMAL;");
+    await prisma.$queryRawUnsafe("PRAGMA busy_timeout=15000;");
+  } catch (error) {
+    console.warn("[db] Could not apply SQLite pragmas:", error);
+  }
+}
+
+if (!globalForPrisma.prismaReady) {
+  globalForPrisma.prismaReady = ensureSqlitePragmas();
+}
 
 globalForPrisma.prisma = prisma;
 

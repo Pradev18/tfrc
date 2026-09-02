@@ -51,6 +51,8 @@ export interface CatalogCache {
 }
 
 let cached: CatalogCache | null | undefined;
+let cachedFile: string | null = null;
+let cachedMtime = 0;
 
 function candidateCachePaths(): string[] {
   const cwd = process.cwd();
@@ -58,19 +60,42 @@ function candidateCachePaths(): string[] {
     path.join(cwd, "data", "catalog-cache.json"),
     path.join(cwd, "catalog-cache.json"),
     path.join(cwd, ".next", "catalog-cache.json"),
+    path.join(cwd, ".next", "standalone", "data", "catalog-cache.json"),
+    path.join(cwd, ".next", "standalone", "catalog-cache.json"),
     path.join(cwd, "..", "data", "catalog-cache.json"),
     path.join(cwd, "..", "catalog-cache.json"),
   ];
 }
 
-export function loadCatalogCache(): CatalogCache | null {
-  if (cached !== undefined) return cached;
+function primaryCacheWritePaths(): string[] {
+  const cwd = process.cwd();
+  return [
+    path.join(cwd, "data", "catalog-cache.json"),
+    path.join(cwd, "catalog-cache.json"),
+    path.join(cwd, ".next", "catalog-cache.json"),
+    path.join(cwd, ".next", "standalone", "data", "catalog-cache.json"),
+    path.join(cwd, ".next", "standalone", "catalog-cache.json"),
+  ];
+}
 
+export function invalidateCatalogCacheMemory(): void {
+  cached = undefined;
+  cachedFile = null;
+  cachedMtime = 0;
+}
+
+export function loadCatalogCache(): CatalogCache | null {
   for (const file of candidateCachePaths()) {
     try {
       if (!fs.existsSync(file)) continue;
+      const mtime = fs.statSync(file).mtimeMs;
+      if (cached !== undefined && cachedFile === file && cachedMtime === mtime) {
+        return cached;
+      }
       const raw = fs.readFileSync(file, "utf8");
       cached = JSON.parse(raw) as CatalogCache;
+      cachedFile = file;
+      cachedMtime = mtime;
       return cached;
     } catch {
       /* try next */
@@ -78,24 +103,34 @@ export function loadCatalogCache(): CatalogCache | null {
   }
 
   cached = null;
+  cachedFile = null;
+  cachedMtime = 0;
   return null;
 }
 
 export function saveCatalogCache(nextCache: CatalogCache): void {
   cached = nextCache;
+  const payload = JSON.stringify(nextCache);
+  let wrote = false;
 
-  for (const file of [...new Set(candidateCachePaths())]) {
+  for (const file of [...new Set([...primaryCacheWritePaths(), ...candidateCachePaths()])]) {
     try {
-      if (!fs.existsSync(file) && !file.endsWith(path.join("data", "catalog-cache.json"))) {
-        continue;
-      }
       fs.mkdirSync(path.dirname(file), { recursive: true });
       const temporary = `${file}.${process.pid}.tmp`;
-      fs.writeFileSync(temporary, JSON.stringify(nextCache));
+      fs.writeFileSync(temporary, payload);
       fs.renameSync(temporary, file);
+      if (!wrote) {
+        cachedFile = file;
+        cachedMtime = fs.statSync(file).mtimeMs;
+        wrote = true;
+      }
     } catch (error) {
       console.warn(`[catalog-cache] Could not refresh ${file}:`, error);
     }
+  }
+
+  if (!wrote) {
+    console.error("[catalog-cache] Failed to persist catalogue cache to disk");
   }
 }
 

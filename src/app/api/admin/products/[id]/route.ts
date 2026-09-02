@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireAdminSession } from "@/lib/admin-auth";
 import prisma from "@/lib/db";
 import { ProductStatus } from "@prisma/client";
 import { touchSiteRevision } from "@/lib/site-revision.server";
-import { refreshCatalogCacheSafely } from "@/lib/catalog-cache-refresh.server";
+import { persistRuntimeCatalogueDataSafely } from "@/lib/persist-runtime-data.server";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
+
+export const dynamic = "force-dynamic";
 
 export async function PATCH(req: NextRequest, context: RouteContext) {
   const { session, error } = await requireAdminSession();
@@ -16,7 +19,10 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   const body = await req.json();
 
-  const product = await prisma.product.findUnique({ where: { id } });
+  const product = await prisma.product.findUnique({
+    where: { id },
+    include: { environment: { select: { slug: true } } },
+  });
   if (!product) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const updated = await prisma.product.update({
@@ -34,10 +40,18 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       where: { productId: id, type: "REGULAR" },
     });
     if (regular) {
-      await prisma.price.update({ where: { id: regular.id }, data: { amount: Number(body.regularPrice) } });
+      await prisma.price.update({
+        where: { id: regular.id },
+        data: { amount: Number(body.regularPrice) },
+      });
     } else {
       await prisma.price.create({
-        data: { productId: id, amount: Number(body.regularPrice), type: "REGULAR", currency: "QAR" },
+        data: {
+          productId: id,
+          amount: Number(body.regularPrice),
+          type: "REGULAR",
+          currency: "QAR",
+        },
       });
     }
   }
@@ -49,10 +63,18 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     if (body.salePrice === null || body.salePrice === "") {
       if (sale) await prisma.price.delete({ where: { id: sale.id } });
     } else if (sale) {
-      await prisma.price.update({ where: { id: sale.id }, data: { amount: Number(body.salePrice) } });
+      await prisma.price.update({
+        where: { id: sale.id },
+        data: { amount: Number(body.salePrice) },
+      });
     } else {
       await prisma.price.create({
-        data: { productId: id, amount: Number(body.salePrice), type: "SALE", currency: "QAR" },
+        data: {
+          productId: id,
+          amount: Number(body.salePrice),
+          type: "SALE",
+          currency: "QAR",
+        },
       });
     }
   }
@@ -83,8 +105,16 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   });
 
   await touchSiteRevision();
-  await refreshCatalogCacheSafely();
-  return NextResponse.json({ product: updated });
+  await persistRuntimeCatalogueDataSafely();
+  revalidatePath("/", "layout");
+  if (product.environment?.slug) {
+    revalidatePath(`/${product.environment.slug}`);
+    revalidatePath(`/${product.environment.slug}`, "layout");
+  }
+  return NextResponse.json(
+    { product: updated },
+    { headers: { "Cache-Control": "no-store, max-age=0" } }
+  );
 }
 
 export async function DELETE(_req: NextRequest, context: RouteContext) {
@@ -92,6 +122,11 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
   if (error) return error;
 
   const { id } = await context.params;
+  const product = await prisma.product.findUnique({
+    where: { id },
+    include: { environment: { select: { slug: true } } },
+  });
+  if (!product) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   await prisma.product.update({
     where: { id },
@@ -108,6 +143,14 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
   });
 
   await touchSiteRevision();
-  await refreshCatalogCacheSafely();
-  return NextResponse.json({ ok: true });
+  await persistRuntimeCatalogueDataSafely();
+  revalidatePath("/", "layout");
+  if (product.environment?.slug) {
+    revalidatePath(`/${product.environment.slug}`);
+    revalidatePath(`/${product.environment.slug}`, "layout");
+  }
+  return NextResponse.json(
+    { ok: true },
+    { headers: { "Cache-Control": "no-store, max-age=0" } }
+  );
 }

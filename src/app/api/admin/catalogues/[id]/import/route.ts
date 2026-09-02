@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { getCatalogueById } from "@/services/catalogue-admin.service";
 import { importCatalogueExcel } from "@/services/catalogue-import.service";
@@ -10,6 +11,9 @@ interface RouteContext {
 
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(["xlsx", "xls", "csv"]);
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest, context: RouteContext) {
   const { session, error } = await requireAdminSession();
@@ -51,14 +55,27 @@ export async function POST(req: NextRequest, context: RouteContext) {
       userId: session!.user?.id,
       preview,
     });
-    if (!preview && result.applied) await touchSiteRevision();
+
+    if (!preview && result.applied) {
+      await touchSiteRevision();
+      revalidatePath("/", "layout");
+      revalidatePath(`/${catalogue.slug}`);
+      revalidatePath(`/${catalogue.slug}`, "layout");
+      revalidatePath(`/admin/catalogues/${id}`);
+      revalidatePath("/admin/catalogues");
+      revalidatePath("/admin/imports");
+      revalidatePath("/sitemap.xml");
+      revalidatePath("/api/store/" + catalogue.slug + "/products");
+    }
+
     return NextResponse.json(result, {
       status: !preview && !result.applied ? 422 : 200,
+      headers: { "Cache-Control": "no-store, max-age=0" },
     });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Import failed" },
-      { status: 400 }
+      { status: 400, headers: { "Cache-Control": "no-store" } }
     );
   }
 }
