@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Image from "next/image";
 import { announceSiteDataUpdate } from "@/components/LiveDataRefresh";
 import { CatalogueImportForm } from "@/components/admin/CatalogueImportForm";
+import { CatalogueImage } from "@/components/admin/CatalogueImage";
 
 const PAGE_SIZE_OPTIONS = [15, 30, 50] as const;
 
@@ -35,6 +35,7 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
     { id: string; name: string; slug: string; keywords: string[]; sortOrder: number }[]
   >([]);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const canPaginate = total > pageSize;
@@ -43,19 +44,26 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(
-      `/api/admin/catalogues/${catalogueId}/products?q=${encodeURIComponent(q)}&page=${page}&limit=${pageSize}&_=${Date.now()}`,
-      { cache: "no-store", headers: { "Cache-Control": "no-store" } }
-    );
-    const data = await res.json();
-    const nextTotal = data.total ?? 0;
-    const nextTotalPages = Math.max(1, Math.ceil(nextTotal / pageSize));
-    setProducts(data.products ?? []);
-    setTotal(nextTotal);
-    if (page > nextTotalPages) {
-      setPage(nextTotalPages);
+    setError("");
+    try {
+      const res = await fetch(
+        `/api/admin/catalogues/${catalogueId}/products?q=${encodeURIComponent(q)}&page=${page}&limit=${pageSize}&_=${Date.now()}`,
+        { cache: "no-store", headers: { "Cache-Control": "no-store" } }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not load products");
+      const nextTotal = data.total ?? 0;
+      const nextTotalPages = Math.max(1, Math.ceil(nextTotal / pageSize));
+      setProducts(data.products ?? []);
+      setTotal(nextTotal);
+      if (page > nextTotalPages) {
+        setPage(nextTotalPages);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load products");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [catalogueId, q, page, pageSize]);
 
   const loadCategories = useCallback(async () => {
@@ -73,47 +81,64 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
 
   function searchProducts() {
     setPage(1);
-    // loadProducts runs via effect when page is already 1; force reload otherwise
     if (page === 1) loadProducts();
   }
 
   async function saveProduct(product: ProductRow, patch: Record<string, unknown>) {
+    setError("");
     const res = await fetch(`/api/admin/products/${product.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
+      cache: "no-store",
     });
+    const data = await res.json().catch(() => ({}));
     if (res.ok) {
-      setMessage("Product updated");
+      setMessage("Product updated — storefront refreshed");
       announceSiteDataUpdate();
       loadProducts();
+    } else {
+      setError((data as { error?: string }).error || "Product update failed");
     }
   }
 
   async function deleteProduct(id: string) {
     if (!confirm("Archive this product?")) return;
-    const response = await fetch(`/api/admin/products/${id}`, { method: "DELETE" });
+    setError("");
+    const response = await fetch(`/api/admin/products/${id}`, {
+      method: "DELETE",
+      cache: "no-store",
+    });
     if (response.ok) {
+      setMessage("Product archived");
       announceSiteDataUpdate();
       if (products.length === 1 && page > 1) {
         setPage((current) => current - 1);
       } else {
         loadProducts();
       }
+    } else {
+      setError("Could not archive product");
     }
   }
 
   async function regenerateCategories() {
     setLoading(true);
+    setError("");
     const res = await fetch(`/api/admin/catalogues/${catalogueId}/categories`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "regenerate" }),
+      cache: "no-store",
     });
     const data = await res.json();
-    setMessage(`Regenerated ${data.regenerated ?? 0} categories`);
-    if (res.ok) announceSiteDataUpdate();
-    loadCategories();
+    if (res.ok) {
+      setMessage(`Regenerated ${data.regenerated ?? 0} categories`);
+      announceSiteDataUpdate();
+      loadCategories();
+    } else {
+      setError(data.error || "Could not regenerate categories");
+    }
     setLoading(false);
   }
 
@@ -142,6 +167,11 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
 
       {message && (
         <p className="mb-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">{message}</p>
+      )}
+      {error && (
+        <p role="alert" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
+          {error}
+        </p>
       )}
 
       {tab === "products" && (
@@ -178,7 +208,10 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
                     >
                       <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-surface-muted sm:h-14 sm:w-14">
                         {p.images[0] ? (
-                          <Image src={p.images[0].url} alt="" fill className="object-cover" />
+                          <CatalogueImage
+                            src={p.images[0].url}
+                            className="h-full w-full object-cover"
+                          />
                         ) : null}
                       </div>
                       <div className="min-w-0 flex-1">

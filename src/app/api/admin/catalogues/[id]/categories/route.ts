@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { generateShopCategories, getCatalogueById } from "@/services/catalogue-admin.service";
 import prisma from "@/lib/db";
 import { slugify } from "@/lib/slugify";
 import { touchSiteRevision } from "@/lib/site-revision.server";
+import { persistRuntimeCatalogueDataSafely } from "@/lib/persist-runtime-data.server";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
+}
+
+async function revalidateCatalogueStore(slug: string, catalogueId: string) {
+  revalidatePath("/", "layout");
+  revalidatePath(`/${slug}`);
+  revalidatePath(`/${slug}`, "layout");
+  revalidatePath(`/admin/catalogues/${catalogueId}`);
 }
 
 export async function GET(_req: NextRequest, context: RouteContext) {
@@ -17,12 +26,15 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   const catalogue = await getCatalogueById(id);
   if (!catalogue) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  return NextResponse.json({
-    categories: catalogue.shopCategories.map((c) => ({
-      ...c,
-      keywords: JSON.parse(c.keywords || "[]"),
-    })),
-  });
+  return NextResponse.json(
+    {
+      categories: catalogue.shopCategories.map((c) => ({
+        ...c,
+        keywords: JSON.parse(c.keywords || "[]"),
+      })),
+    },
+    { headers: { "Cache-Control": "no-store, max-age=0" } }
+  );
 }
 
 export async function POST(req: NextRequest, context: RouteContext) {
@@ -38,7 +50,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
   if (body.action === "regenerate") {
     const count = await generateShopCategories(id, catalogue.slug);
     await touchSiteRevision();
-    return NextResponse.json({ regenerated: count });
+    await persistRuntimeCatalogueDataSafely();
+    await revalidateCatalogueStore(catalogue.slug, id);
+    return NextResponse.json(
+      { regenerated: count },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   if (body.action === "create") {
@@ -52,7 +69,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
       },
     });
     await touchSiteRevision();
-    return NextResponse.json({ category: cat }, { status: 201 });
+    await persistRuntimeCatalogueDataSafely();
+    await revalidateCatalogueStore(catalogue.slug, id);
+    return NextResponse.json(
+      { category: cat },
+      { status: 201, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
@@ -68,6 +90,9 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
+  const catalogue = await getCatalogueById(id);
+  if (!catalogue) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
   const result = await prisma.shopCategory.updateMany({
     where: { id: body.categoryId, environmentId: id },
     data: {
@@ -83,7 +108,12 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
   const category = await prisma.shopCategory.findUnique({ where: { id: body.categoryId } });
   await touchSiteRevision();
-  return NextResponse.json({ category });
+  await persistRuntimeCatalogueDataSafely();
+  await revalidateCatalogueStore(catalogue.slug, id);
+  return NextResponse.json(
+    { category },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
 
 export async function DELETE(req: NextRequest, context: RouteContext) {
@@ -96,6 +126,9 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
+  const catalogue = await getCatalogueById(id);
+  if (!catalogue) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
   const result = await prisma.shopCategory.deleteMany({
     where: { id: body.categoryId, environmentId: id },
   });
@@ -103,5 +136,7 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "Category not found" }, { status: 404 });
   }
   await touchSiteRevision();
-  return NextResponse.json({ ok: true });
+  await persistRuntimeCatalogueDataSafely();
+  await revalidateCatalogueStore(catalogue.slug, id);
+  return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }

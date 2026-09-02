@@ -13,7 +13,10 @@ export async function GET() {
   const { error } = await requireAdminSession();
   if (error) return error;
   const catalogues = await listCatalogues(true);
-  return NextResponse.json({ catalogues });
+  return NextResponse.json(
+    { catalogues },
+    { headers: { "Cache-Control": "no-store, max-age=0" } }
+  );
 }
 
 export async function POST(req: NextRequest) {

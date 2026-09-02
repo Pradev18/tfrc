@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-const POLL_INTERVAL_MS = 5_000;
+const POLL_INTERVAL_MS = 4_000;
 
 export function announceSiteDataUpdate() {
   try {
@@ -32,34 +32,39 @@ export function LiveDataRefresh() {
         const data = (await response.json()) as { revision?: string | null };
         if (!data.revision) return;
 
-        if (revisionRef.current && revisionRef.current !== data.revision) {
+        const previous = revisionRef.current;
+        revisionRef.current = data.revision;
+        if (previous && previous !== data.revision) {
+          // Keep product grids + RSC trees in sync across open tabs.
+          window.dispatchEvent(new Event("site-data-refresh"));
           router.refresh();
         }
-        revisionRef.current = data.revision;
       } finally {
         checkingRef.current = false;
       }
     }
 
-    function refreshNow() {
+    function onSiteDataRefresh() {
       router.refresh();
-      void checkRevision();
     }
 
     function onStorage(event: StorageEvent) {
-      if (event.key === "site-data-updated") refreshNow();
+      if (event.key !== "site-data-updated") return;
+      window.dispatchEvent(new Event("site-data-refresh"));
+      router.refresh();
+      void checkRevision();
     }
 
     void checkRevision();
     const interval = window.setInterval(checkRevision, POLL_INTERVAL_MS);
     window.addEventListener("storage", onStorage);
-    window.addEventListener("site-data-refresh", refreshNow);
+    window.addEventListener("site-data-refresh", onSiteDataRefresh);
     document.addEventListener("visibilitychange", checkRevision);
 
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("storage", onStorage);
-      window.removeEventListener("site-data-refresh", refreshNow);
+      window.removeEventListener("site-data-refresh", onSiteDataRefresh);
       document.removeEventListener("visibilitychange", checkRevision);
     };
   }, [router]);

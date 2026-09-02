@@ -166,6 +166,7 @@ export function CreateCatalogueWizard() {
                 try {
                   const url = await uploadImage(f);
                   setForm((prev) => ({ ...prev, logoUrl: url }));
+                  setError("");
                 } catch (err) {
                   setError(err instanceof Error ? err.message : "Upload failed");
                 } finally {
@@ -174,6 +175,9 @@ export function CreateCatalogueWizard() {
               }}
             />
             {uploading && <p className="mt-2 text-xs text-text-muted">Uploading image…</p>}
+            {form.logoUrl && !uploading && (
+              <p className="mt-2 text-xs text-green-700">Image ready — continue to save it with the catalogue.</p>
+            )}
             {form.logoUrl && (
               <div className="relative mt-3 h-32 w-32 overflow-hidden rounded-xl border bg-white">
                 <CatalogueImage src={form.logoUrl} className="h-full w-full object-contain p-2" />

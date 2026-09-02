@@ -36,11 +36,19 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     await touchSiteRevision();
     await persistRuntimeCatalogueDataSafely();
     revalidatePath("/", "layout");
-    if (previous?.slug) revalidatePath(`/${previous.slug}`);
+    if (previous?.slug) {
+      revalidatePath(`/${previous.slug}`);
+      revalidatePath(`/${previous.slug}`, "layout");
+    }
     revalidatePath(`/${env.slug}`);
+    revalidatePath(`/${env.slug}`, "layout");
     revalidatePath("/admin/catalogues");
+    revalidatePath(`/admin/catalogues/${id}`);
     revalidatePath("/sitemap.xml");
-    return NextResponse.json({ catalogue: env });
+    return NextResponse.json(
+      { catalogue: env },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Update failed" },
@@ -60,9 +68,13 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
     await persistRuntimeCatalogueDataSafely();
     revalidatePath("/", "layout");
     revalidatePath(`/${deleted.slug}`);
+    revalidatePath(`/${deleted.slug}`, "layout");
     revalidatePath("/admin/catalogues");
     revalidatePath("/sitemap.xml");
-    return NextResponse.json({ ok: true, deleted });
+    return NextResponse.json(
+      { ok: true, deleted },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Delete failed" },
