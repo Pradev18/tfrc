@@ -4,6 +4,7 @@ import prisma from "@/lib/db";
 import { parseExcelBuffer } from "@/lib/import/catalog-parser";
 import { createCategorySlug, rowToProductSlug, rowImages, rowCategorySegments } from "@/lib/import/catalog-parser";
 import { ProductStatus } from "@prisma/client";
+import { touchSiteRevision } from "@/lib/site-revision.server";
 
 async function upsertCategoryTree(segments: string[], cache: Map<string, string>) {
   let parentId: string | null = null;
@@ -199,6 +200,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  await touchSiteRevision();
   return NextResponse.json({
     totalRows: parsed.rows.length + parsed.errors.length,
     validRows: parsed.rows.length,

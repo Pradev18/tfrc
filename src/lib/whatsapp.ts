@@ -27,7 +27,8 @@ export interface WhatsAppSettings {
 export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   phoneNumber: "97455049229",
   defaultGreeting: "Hello, I would like to order from TFRC Vita Nova",
-  productTemplate: "{{name}} — {{price}} (Ref: {{productId}})",
+  productTemplate:
+    "{{index}}. {{name}}{{catalogue}}\n   Price: {{price}}\n   Ref: {{productId}}\n   Link: {{link}}",
 };
 
 export function interpolateTemplate(
@@ -53,20 +54,27 @@ function buildProductPageUrl(
 }
 
 function formatOrderItemLine(
+  settings: WhatsAppSettings,
   index: number,
   item: CartWhatsAppItem,
   siteUrl?: string
 ): string {
   const priceStr = formatCurrency(item.displayPrice, item.currency ?? "QAR");
-  const catalogue = item.environmentName ? ` — ${item.environmentName}` : "";
-  const lines = [
-    `${index}. ${item.name}${catalogue}`,
-    `   Price: ${priceStr}`,
-    `   Ref: ${item.productId}`,
-  ];
   const link = buildProductPageUrl(item, siteUrl);
-  if (link) lines.push(`   Link: ${link}`);
-  return lines.join("\n");
+  const template = settings.productTemplate.trim() || DEFAULT_WHATSAPP_SETTINGS.productTemplate;
+  return interpolateTemplate(template, {
+    index: String(index),
+    name: item.name,
+    price: priceStr,
+    productId: item.productId,
+    link,
+    catalogue: item.environmentName ? ` — ${item.environmentName}` : "",
+    environmentName: item.environmentName ?? "",
+  })
+    .split("\n")
+    .filter((line) => !/^\s*(?:link|catalogue):\s*$/i.test(line))
+    .join("\n")
+    .trim();
 }
 
 export function buildWhatsAppMessage(
@@ -80,23 +88,19 @@ export function buildWhatsAppMessage(
     currency: product.currency ?? "QAR",
   });
 
-  const priceStr = formatCurrency(price.displayPrice, price.currency);
-  const link = buildProductPageUrl(product, siteUrl);
-  const catalogue = product.environmentName ? `\nCatalogue: ${product.environmentName}` : "";
-
-  const body = [
-    `Product: ${product.name}${catalogue}`,
-    `Price: ${priceStr}`,
-    `Ref: ${product.productId}`,
-  ];
-  if (link) body.push(`Link: ${link}`);
+  const body = formatOrderItemLine(
+    settings,
+    1,
+    { ...product, displayPrice: price.displayPrice },
+    siteUrl
+  );
 
   return [
     cleanGreeting(settings.defaultGreeting),
     "",
     "I would like to order this item from your website:",
     "",
-    ...body,
+    body,
     "",
     "Please confirm availability, price, and delivery in Qatar.",
     "",
@@ -111,7 +115,9 @@ export function buildCartWhatsAppMessage(
 ): string {
   if (items.length === 0) return cleanGreeting(settings.defaultGreeting);
 
-  const lines = items.map((item, index) => formatOrderItemLine(index + 1, item, siteUrl));
+  const lines = items.map((item, index) =>
+    formatOrderItemLine(settings, index + 1, item, siteUrl)
+  );
   const total = items.reduce((sum, i) => sum + i.displayPrice, 0);
   const currency = items[0]?.currency ?? "QAR";
 

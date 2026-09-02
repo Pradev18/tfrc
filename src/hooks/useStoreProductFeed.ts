@@ -116,6 +116,15 @@ export function useStoreProductFeed(
     return () => abortRef.current?.abort();
   }, [enabled, filtersKey, fetchPage]);
 
+  useEffect(() => {
+    if (!enabled) return;
+    const refreshFeed = () => {
+      void fetchPage(1, false);
+    };
+    window.addEventListener("site-data-refresh", refreshFeed);
+    return () => window.removeEventListener("site-data-refresh", refreshFeed);
+  }, [enabled, fetchPage]);
+
   const loadMore = useCallback(() => {
     if (state.loading || state.loadingMore || state.page >= state.totalPages) return;
     fetchPage(state.page + 1, true);

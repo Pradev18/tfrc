@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
+import { announceSiteDataUpdate } from "@/components/LiveDataRefresh";
+import { CatalogueImportForm } from "@/components/admin/CatalogueImportForm";
 
 interface ProductRow {
   id: string;
@@ -28,7 +30,6 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
   const [categories, setCategories] = useState<
     { id: string; name: string; slug: string; keywords: string[]; sortOrder: number }[]
   >([]);
-  const [importFile, setImportFile] = useState<File | null>(null);
   const [message, setMessage] = useState("");
 
   const loadProducts = useCallback(async () => {
@@ -61,14 +62,18 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
     });
     if (res.ok) {
       setMessage("Product updated");
+      announceSiteDataUpdate();
       loadProducts();
     }
   }
 
   async function deleteProduct(id: string) {
     if (!confirm("Archive this product?")) return;
-    await fetch(`/api/admin/products/${id}`, { method: "DELETE" });
-    loadProducts();
+    const response = await fetch(`/api/admin/products/${id}`, { method: "DELETE" });
+    if (response.ok) {
+      announceSiteDataUpdate();
+      loadProducts();
+    }
   }
 
   async function regenerateCategories() {
@@ -80,24 +85,9 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
     });
     const data = await res.json();
     setMessage(`Regenerated ${data.regenerated ?? 0} categories`);
+    if (res.ok) announceSiteDataUpdate();
     loadCategories();
     setLoading(false);
-  }
-
-  async function runImport() {
-    if (!importFile) return;
-    setLoading(true);
-    const fd = new FormData();
-    fd.append("file", importFile);
-    const res = await fetch(`/api/admin/catalogues/${catalogueId}/import`, {
-      method: "POST",
-      body: fd,
-    });
-    const data = await res.json();
-    setMessage(`Import: ${data.created} created, ${data.updated} updated`);
-    setLoading(false);
-    loadProducts();
-    loadCategories();
   }
 
   const tabs = [
@@ -245,23 +235,16 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
       )}
 
       {tab === "import" && (
-        <div className="max-w-lg space-y-4 rounded-xl border border-border bg-surface p-6">
-          <p className="text-sm text-text-muted">
-            Upload Meta/Google catalogue Excel. Existing products (same ID) will be updated.
-          </p>
-          <input
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+        <div className="max-w-2xl">
+          <CatalogueImportForm
+            catalogueId={catalogueId}
+            catalogueName={catalogueName}
+            onImported={() => {
+              setMessage("Catalogue replaced successfully");
+              loadProducts();
+              loadCategories();
+            }}
           />
-          <button
-            type="button"
-            disabled={!importFile || loading}
-            onClick={runImport}
-            className="btn-primary w-full py-2.5"
-          >
-            Import to {catalogueName}
-          </button>
         </div>
       )}
     </div>

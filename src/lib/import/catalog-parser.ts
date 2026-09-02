@@ -5,6 +5,7 @@ import { validatePrices } from "@/lib/pricing";
 import { extractPhoneFromWaLink } from "@/lib/whatsapp";
 
 export interface CatalogRow {
+  rowNumber: number;
   id: string;
   title: string;
   description: string;
@@ -40,6 +41,21 @@ function cellStr(value: unknown): string {
   return s;
 }
 
+function normalizeHeader(header: string): string {
+  return header
+    .replace(/^\uFEFF/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/-/g, "_");
+}
+
+function normalizeRow(row: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [normalizeHeader(key), value])
+  );
+}
+
 function parseAdditionalImages(value: unknown): string[] {
   const str = cellStr(value);
   if (!str) return [];
@@ -69,25 +85,40 @@ export function parseExcelBuffer(
     workbook.SheetNames.find((s) => s.toLowerCase().includes("meta")) ??
     workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
+  if (!sheet) {
+    return {
+      rows: [],
+      errors: [{ row: 1, message: "The workbook does not contain a readable worksheet" }],
+      whatsappNumber: null,
+    };
+  }
   const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: "",
-  });
+  }).map(normalizeRow);
 
   const rows: CatalogRow[] = [];
   const errors: Array<{ row: number; message: string }> = [];
   let whatsappNumber: string | null = null;
+  const seenIds = new Set<string>();
+
+  if (raw.length === 0) {
+    errors.push({ row: 1, message: "The selected worksheet is empty" });
+  }
 
   raw.forEach((row, index) => {
     const rowNum = index + 2;
-    const id = cellStr(row.id);
-    const title = cellStr(row.title);
+    const id = cellStr(row.id || row.product_id || row.item_id);
+    const title = cellStr(row.title || row.name || row.product_name);
 
     if (!id || !title) {
-      if (id || title) {
-        errors.push({ row: rowNum, message: "Missing required id or title" });
-      }
+      errors.push({ row: rowNum, message: "Missing required id or title column/value" });
       return;
     }
+    if (seenIds.has(id)) {
+      errors.push({ row: rowNum, message: `Duplicate product id ${id}` });
+      return;
+    }
+    seenIds.add(id);
 
     const price = parsePriceString(row.price);
     if (price == null || price <= 0) {
@@ -101,7 +132,8 @@ export function parseExcelBuffer(
     try {
       validatePrices(price, salePrice);
     } catch {
-      salePrice = null;
+      errors.push({ row: rowNum, message: `Sale price must be lower than price for ${id}` });
+      return;
     }
 
     const link = cellStr(row.link);
@@ -109,13 +141,24 @@ export function parseExcelBuffer(
       whatsappNumber = extractPhoneFromWaLink(link);
     }
 
-    const imageLink = cellStr(row.image_link);
+    const imageLink = cellStr(row.image_link || row.image_url);
     if (!imageLink || !imageLink.startsWith("http")) {
       errors.push({ row: rowNum, message: `Missing valid image_link for ${id}` });
       return;
     }
 
+    const quantityRaw = cellStr(row.quantity_to_sell_on_facebook);
+    const parsedQuantity = quantityRaw === "" ? null : Number.parseInt(quantityRaw, 10);
+    if (
+      quantityRaw !== "" &&
+      (parsedQuantity === null || !Number.isInteger(parsedQuantity) || parsedQuantity < 0)
+    ) {
+      errors.push({ row: rowNum, message: `Invalid quantity for ${id}` });
+      return;
+    }
+
     rows.push({
+      rowNumber: rowNum,
       id,
       title,
       description: cellStr(row.description),
@@ -130,7 +173,9 @@ export function parseExcelBuffer(
       google_product_category: cellStr(row.google_product_category),
       fb_product_category: cellStr(row.fb_product_category),
       quantity_to_sell_on_facebook:
-        parseInt(cellStr(row.quantity_to_sell_on_facebook), 10) || null,
+        parsedQuantity !== null && Number.isInteger(parsedQuantity) && parsedQuantity >= 0
+          ? parsedQuantity
+          : null,
       sale_price_effective_date: cellStr(row.sale_price_effective_date) || null,
       video_url: cellStr(row["video[0].url"]) || null,
       video_tag: cellStr(row["video[0].tag[0]"]) || null,

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireAdminSession } from "@/lib/admin-auth";
+import { touchSiteRevision } from "@/lib/site-revision.server";
 import {
   createCatalogue,
   listCatalogues,
@@ -38,6 +40,10 @@ export async function POST(req: NextRequest) {
       await generateShopCategories(env.id, env.slug);
     }
 
+    await touchSiteRevision();
+    revalidatePath("/", "layout");
+    revalidatePath("/admin/catalogues");
+    revalidatePath("/sitemap.xml");
     return NextResponse.json({ catalogue: env }, { status: 201 });
   } catch (e) {
     return NextResponse.json(

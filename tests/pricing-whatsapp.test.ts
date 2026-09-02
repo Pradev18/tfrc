@@ -5,6 +5,7 @@ import {
   buildWhatsAppMessage,
   buildCartWhatsAppMessage,
   buildCartWhatsAppCheckoutUrl,
+  DEFAULT_WHATSAPP_SETTINGS,
 } from "@/lib/whatsapp";
 import {
   buildWhatsAppCatalogProductUrl,
@@ -41,7 +42,7 @@ describe("whatsapp", () => {
       {
         phoneNumber: "97455049229",
         defaultGreeting: "Hi PawMart Qatar",
-        productTemplate: "ignored",
+        productTemplate: DEFAULT_WHATSAPP_SETTINGS.productTemplate,
       },
       {
         name: "Pet Comb",
@@ -61,12 +62,30 @@ describe("whatsapp", () => {
     expect(msg).not.toContain("wa.me/p/");
   });
 
+  it("applies the saved greeting and product format", () => {
+    const msg = buildWhatsAppMessage(
+      {
+        phoneNumber: "97455049229",
+        defaultGreeting: "Custom greeting",
+        productTemplate: "{{name}} | {{price}} | SKU {{productId}}",
+      },
+      {
+        name: "Pet Comb",
+        productId: "110005860",
+        regularPrice: 10,
+        slug: "pet-comb",
+      }
+    );
+    expect(msg).toContain("Custom greeting");
+    expect(msg).toContain("Pet Comb | QAR 10.00 | SKU 110005860");
+  });
+
   it("builds cart message with all products", () => {
     const msg = buildCartWhatsAppMessage(
       {
         phoneNumber: "97455049229",
         defaultGreeting: "Hi TFRC",
-        productTemplate: "ignored",
+        productTemplate: DEFAULT_WHATSAPP_SETTINGS.productTemplate,
       },
       [
         {
@@ -151,7 +170,7 @@ describe("whatsapp", () => {
       {
         phoneNumber: "97455049229",
         defaultGreeting: "Hi",
-        productTemplate: "{{name}}",
+        productTemplate: DEFAULT_WHATSAPP_SETTINGS.productTemplate,
       },
       [
         {
@@ -176,7 +195,7 @@ describe("whatsapp", () => {
       {
         phoneNumber: "97455049229",
         defaultGreeting: "Hi",
-        productTemplate: "{{name}}",
+        productTemplate: DEFAULT_WHATSAPP_SETTINGS.productTemplate,
       },
       [
         {

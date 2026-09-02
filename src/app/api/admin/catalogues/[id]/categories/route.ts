@@ -3,6 +3,7 @@ import { requireAdminSession } from "@/lib/admin-auth";
 import { generateShopCategories, getCatalogueById } from "@/services/catalogue-admin.service";
 import prisma from "@/lib/db";
 import { slugify } from "@/lib/slugify";
+import { touchSiteRevision } from "@/lib/site-revision.server";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -36,6 +37,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
   if (body.action === "regenerate") {
     const count = await generateShopCategories(id, catalogue.slug);
+    await touchSiteRevision();
     return NextResponse.json({ regenerated: count });
   }
 
@@ -49,6 +51,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         sortOrder: body.sortOrder ?? 99,
       },
     });
+    await touchSiteRevision();
     return NextResponse.json({ category: cat }, { status: 201 });
   }
 
@@ -79,6 +82,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   }
 
   const category = await prisma.shopCategory.findUnique({ where: { id: body.categoryId } });
+  await touchSiteRevision();
   return NextResponse.json({ category });
 }
 
@@ -98,5 +102,6 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
   if (result.count === 0) {
     return NextResponse.json({ error: "Category not found" }, { status: 404 });
   }
+  await touchSiteRevision();
   return NextResponse.json({ ok: true });
 }

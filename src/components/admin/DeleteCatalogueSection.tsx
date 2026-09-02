@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Trash2 } from "lucide-react";
+import { announceSiteDataUpdate } from "@/components/LiveDataRefresh";
 
 interface DeleteCatalogueSectionProps {
   catalogueId: string;
@@ -37,6 +38,7 @@ export function DeleteCatalogueSection({
         throw new Error(data.error || "Catalogue deletion failed");
       }
 
+      announceSiteDataUpdate();
       router.replace("/admin/catalogues");
       router.refresh();
     } catch (cause) {

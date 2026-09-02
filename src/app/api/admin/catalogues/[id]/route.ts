@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireAdminSession } from "@/lib/admin-auth";
+import { touchSiteRevision } from "@/lib/site-revision.server";
 import {
   getCatalogueById,
   updateCatalogue,
@@ -29,7 +30,14 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   try {
     const body = await req.json();
+    const previous = await getCatalogueById(id);
     const env = await updateCatalogue(id, body, session!.user?.id);
+    await touchSiteRevision();
+    revalidatePath("/", "layout");
+    if (previous?.slug) revalidatePath(`/${previous.slug}`);
+    revalidatePath(`/${env.slug}`);
+    revalidatePath("/admin/catalogues");
+    revalidatePath("/sitemap.xml");
     return NextResponse.json({ catalogue: env });
   } catch (e) {
     return NextResponse.json(
@@ -46,6 +54,7 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
   const { id } = await context.params;
   try {
     const deleted = await deleteCatalogue(id, session!.user?.id);
+    await touchSiteRevision();
     revalidatePath("/", "layout");
     revalidatePath(`/${deleted.slug}`);
     revalidatePath("/admin/catalogues");

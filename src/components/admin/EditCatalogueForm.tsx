@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { announceSiteDataUpdate } from "@/components/LiveDataRefresh";
 
 interface EditCatalogueFormProps {
   catalogue: {
@@ -60,12 +61,34 @@ export function EditCatalogueForm({ catalogue }: EditCatalogueFormProps) {
         sortOrder: form.sortOrder,
       }),
     });
+    const data = (await res.json()) as {
+      catalogue?: {
+        name: string;
+        slug: string;
+        tagline: string | null;
+        description: string | null;
+        logoUrl: string | null;
+        status: string;
+        sortOrder: number;
+      };
+      error?: string;
+    };
     setLoading(false);
-    if (res.ok) {
+    if (res.ok && data.catalogue) {
+      setForm((current) => ({
+        ...current,
+        name: data.catalogue!.name,
+        slug: data.catalogue!.slug,
+        tagline: data.catalogue!.tagline ?? "",
+        description: data.catalogue!.description ?? "",
+        logoUrl: data.catalogue!.logoUrl ?? "",
+        status: data.catalogue!.status,
+        sortOrder: data.catalogue!.sortOrder,
+      }));
       setMessage("Saved — home page card updated");
+      announceSiteDataUpdate();
       router.refresh();
     } else {
-      const data = await res.json();
       setMessage(data.error ?? "Save failed");
     }
   }

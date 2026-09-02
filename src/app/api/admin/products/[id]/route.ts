@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/admin-auth";
 import prisma from "@/lib/db";
 import { ProductStatus } from "@prisma/client";
+import { touchSiteRevision } from "@/lib/site-revision.server";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -80,6 +81,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     },
   });
 
+  await touchSiteRevision();
   return NextResponse.json({ product: updated });
 }
 
@@ -103,5 +105,6 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
     },
   });
 
+  await touchSiteRevision();
   return NextResponse.json({ ok: true });
 }

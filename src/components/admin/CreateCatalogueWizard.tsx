@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { slugify } from "@/lib/slugify";
+import { announceSiteDataUpdate } from "@/components/LiveDataRefresh";
+import { CatalogueImportForm } from "@/components/admin/CatalogueImportForm";
 
 type Step = "details" | "import" | "done";
 
@@ -13,7 +15,6 @@ export function CreateCatalogueWizard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [catalogueId, setCatalogueId] = useState("");
-  const [importResult, setImportResult] = useState<Record<string, unknown> | null>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -23,7 +24,6 @@ export function CreateCatalogueWizard() {
     logoUrl: "",
     heroHeadline: "",
   });
-  const [file, setFile] = useState<File | null>(null);
 
   async function uploadImage(imageFile: File) {
     const fd = new FormData();
@@ -51,32 +51,11 @@ export function CreateCatalogueWizard() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create");
       setCatalogueId(data.catalogue.id);
+      announceSiteDataUpdate();
+      router.refresh();
       setStep("import");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleImport(preview: boolean) {
-    if (!file || !catalogueId) return;
-    setLoading(true);
-    setError("");
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      if (preview) fd.append("preview", "true");
-      const res = await fetch(`/api/admin/catalogues/${catalogueId}/import`, {
-        method: "POST",
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Import failed");
-      setImportResult(data);
-      if (!preview) setStep("done");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
     } finally {
       setLoading(false);
     }
@@ -199,51 +178,15 @@ export function CreateCatalogueWizard() {
       )}
 
       {step === "import" && (
-        <div className="space-y-5 rounded-xl border border-border bg-surface p-6">
-          <div>
-            <h2 className="text-lg font-semibold text-primary">Upload products (Excel)</h2>
-            <p className="mt-1 text-sm text-text-muted">
-              Upload your Meta/Google catalogue Excel. Products are linked to this catalogue and
-              categories are auto-generated from product names.
-            </p>
-          </div>
-
-          <input
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="w-full text-sm"
+        <div className="space-y-4">
+          <CatalogueImportForm
+            catalogueId={catalogueId}
+            catalogueName={form.name}
+            onImported={() => {
+              router.refresh();
+              setStep("done");
+            }}
           />
-
-          {importResult && (
-            <div className="rounded-lg bg-surface-muted p-4 text-sm">
-              <p>Valid rows: {String(importResult.validRows)}</p>
-              <p>Invalid rows: {String(importResult.invalidRows)}</p>
-              {Array.isArray(importResult.preview) && (
-                <p className="mt-2 text-text-muted">Preview loaded — confirm import below.</p>
-              )}
-            </div>
-          )}
-
-          <div className="flex gap-3">
-            <button
-              type="button"
-              disabled={!file || loading}
-              onClick={() => handleImport(true)}
-              className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium"
-            >
-              Preview
-            </button>
-            <button
-              type="button"
-              disabled={!file || loading}
-              onClick={() => handleImport(false)}
-              className="btn-primary flex-1 py-2.5"
-            >
-              Import products
-            </button>
-          </div>
-
           <button
             type="button"
             onClick={() => setStep("done")}
@@ -258,11 +201,6 @@ export function CreateCatalogueWizard() {
         <div className="rounded-xl border border-border bg-surface p-8 text-center">
           <p className="text-2xl">✓</p>
           <h2 className="mt-2 text-xl font-semibold text-primary">Catalogue ready</h2>
-          {importResult && (
-            <p className="mt-2 text-sm text-text-muted">
-              {String(importResult.created)} created · {String(importResult.updated)} updated
-            </p>
-          )}
           <div className="mt-6 flex justify-center gap-3">
             <button
               type="button"

@@ -1,120 +1,83 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { CatalogueImportForm } from "@/components/admin/CatalogueImportForm";
 
 export default function AdminImportPage() {
-  const [file, setFile] = useState<File | null>(null);
-  const [department, setDepartment] = useState("Pet Products");
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  const [catalogues, setCatalogues] = useState<
+    Array<{ id: string; name: string; status: string; productCount: number }>
+  >([]);
+  const [catalogueId, setCatalogueId] = useState("");
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const router = useRouter();
 
-  async function handleImport(preview = false) {
-    if (!file) return;
-    setLoading(true);
-    setError("");
-    setResult(null);
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("department", department);
-    formData.append("preview", String(preview));
-
-    try {
-      const res = await fetch("/api/admin/import", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Import failed");
-      setResult(data);
-      if (!preview) router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Import failed");
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    async function loadCatalogues() {
+      try {
+        const response = await fetch("/api/admin/catalogues", { cache: "no-store" });
+        const data = (await response.json()) as {
+          catalogues?: Array<{
+            id: string;
+            name: string;
+            status: string;
+            productCount: number;
+          }>;
+          error?: string;
+        };
+        if (!response.ok) throw new Error(data.error || "Could not load catalogues");
+        const items = data.catalogues ?? [];
+        setCatalogues(items);
+        setCatalogueId((current) => current || items[0]?.id || "");
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Could not load catalogues");
+      } finally {
+        setLoading(false);
+      }
     }
-  }
+    void loadCatalogues();
+  }, []);
+
+  const selected = catalogues.find((catalogue) => catalogue.id === catalogueId);
 
   return (
     <div>
       <h1 className="text-display text-3xl text-primary">Import Products</h1>
       <p className="mt-2 text-text-muted">
-        Upload Excel (.xlsx) or CSV files. Existing products update by Product ID.
+        Select the exact catalogue, validate the spreadsheet, then replace its product data.
       </p>
 
-      <div className="mt-8 max-w-xl space-y-4 rounded-lg border border-border bg-surface p-6">
-        <div>
-          <label className="mb-1 block text-sm font-medium">Department source</label>
-          <select
-            value={department}
-            onChange={(e) => setDepartment(e.target.value)}
-            className="w-full rounded-md border border-border px-3 py-2 text-sm"
-          >
-            <option>Pet Products</option>
-            <option>Households</option>
-            <option>Multi Tools</option>
-            <option>Other</option>
-          </select>
+      {error && <p className="mt-6 rounded-md bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+
+      {loading ? (
+        <p className="mt-8 text-sm text-text-muted">Loading catalogues…</p>
+      ) : catalogues.length === 0 ? (
+        <p className="mt-8 text-sm text-text-muted">Create a catalogue before importing products.</p>
+      ) : (
+        <div className="mt-8 max-w-2xl space-y-5">
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium">Target catalogue</span>
+            <select
+              value={catalogueId}
+              onChange={(event) => setCatalogueId(event.target.value)}
+              className="w-full rounded-md border border-border bg-white px-3 py-2.5 text-sm"
+            >
+              {catalogues.map((catalogue) => (
+                <option key={catalogue.id} value={catalogue.id}>
+                  {catalogue.name} · {catalogue.productCount} products · {catalogue.status}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {selected && (
+            <CatalogueImportForm
+              key={selected.id}
+              catalogueId={selected.id}
+              catalogueName={selected.name}
+            />
+          )}
         </div>
-
-        <div>
-          <label className="mb-1 block text-sm font-medium">Catalogue file</label>
-          <input
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="w-full text-sm"
-          />
-        </div>
-
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => handleImport(true)}
-            disabled={!file || loading}
-            className="btn-secondary text-sm"
-          >
-            Preview & Validate
-          </button>
-          <button
-            type="button"
-            onClick={() => handleImport(false)}
-            disabled={!file || loading}
-            className="btn-primary text-sm"
-          >
-            {loading ? "Importing..." : "Import"}
-          </button>
-        </div>
-
-        {error && <p className="text-sm text-error">{error}</p>}
-
-        {result && (
-          <div className="rounded-md bg-surface-muted p-4 text-sm">
-            <p className="font-medium">Import Report</p>
-            <ul className="mt-2 space-y-1 text-text-muted">
-              <li>Total rows: {String(result.totalRows)}</li>
-              <li>Valid: {String(result.validRows)}</li>
-              <li>Invalid: {String(result.invalidRows)}</li>
-              <li>Created: {String(result.created)}</li>
-              <li>Updated: {String(result.updated)}</li>
-              <li>Failed: {String(result.failed)}</li>
-            </ul>
-            {Array.isArray(result.errors) && result.errors.length > 0 && (
-              <div className="mt-3">
-                <p className="font-medium text-error">Errors:</p>
-                <ul className="mt-1 max-h-40 overflow-y-auto">
-                  {(result.errors as Array<{ row: number; message: string }>).slice(0, 20).map((e, i) => (
-                    <li key={i}>Row {e.row}: {e.message}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
