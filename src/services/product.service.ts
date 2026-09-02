@@ -3,8 +3,16 @@ import { ProductStatus, Prisma } from "@prisma/client";
 import { mapProductPrices } from "@/lib/pricing";
 import { getEnvironmentIdBySlug } from "@/services/environment.service";
 import { getDepartmentForSlug } from "@/lib/environments";
-import { getShopCategoryDef, getShopCategoryDefs, OTHER_SHOP_CATEGORY } from "@/lib/shop-categories";
-import { shopCategoryOrFilter, otherShopCategoryFilter } from "@/services/shop-category.service";
+import {
+  getEffectiveShopCategoryDefs,
+  getShopCategoryDefs,
+  OTHER_SHOP_CATEGORY,
+} from "@/lib/shop-categories";
+import {
+  getShopCategoryDefsForEnvironment,
+  shopCategoryOrFilter,
+  otherShopCategoryFilter,
+} from "@/services/shop-category.service";
 import { getCachedEnvironment, getCachedProducts } from "@/lib/catalog-cache";
 
 export interface ProductFilters {
@@ -67,12 +75,36 @@ export async function getProducts(filters: ProductFilters = {}) {
     console.error("[products] prisma failed, using catalog cache:", error);
     if (!filters.environmentSlug) throw error;
 
+    const cachedEnvironment = getCachedEnvironment(filters.environmentSlug);
+    const categoryDefs = getEffectiveShopCategoryDefs(
+      filters.environmentSlug,
+      cachedEnvironment?.products.map((product) => product.name) ?? []
+    );
+    const selectedCategory = categoryDefs.find(
+      (category) => category.slug === filters.shopCategorySlug
+    );
+    if (
+      filters.shopCategorySlug &&
+      filters.shopCategorySlug !== OTHER_SHOP_CATEGORY.slug &&
+      !selectedCategory
+    ) {
+      return { items: [], total: 0, page, limit, totalPages: 0 };
+    }
     const cached = getCachedProducts(filters.environmentSlug, {
       page,
       limit,
       q: filters.search,
       brandSlug: filters.brandSlug,
       onSale: filters.onSale,
+      inStock: filters.inStock,
+      shopKeywords:
+        selectedCategory && selectedCategory.slug !== OTHER_SHOP_CATEGORY.slug
+          ? selectedCategory.keywords
+          : undefined,
+      excludeShopKeywords:
+        filters.shopCategorySlug === OTHER_SHOP_CATEGORY.slug
+          ? categoryDefs.flatMap((category) => category.keywords)
+          : undefined,
     });
     if (!cached) throw error;
     return {
@@ -137,14 +169,17 @@ async function getProductsFromPrisma(filters: ProductFilters = {}) {
   }
 
   if (filters.shopCategorySlug && filters.environmentSlug) {
+    const defs = environmentId
+      ? await getShopCategoryDefsForEnvironment(environmentId, filters.environmentSlug)
+      : getShopCategoryDefs(filters.environmentSlug);
+
     if (filters.shopCategorySlug === OTHER_SHOP_CATEGORY.slug) {
-      const defs = getShopCategoryDefs(filters.environmentSlug);
       where.AND = [
         ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
         { OR: otherShopCategoryFilter(defs) },
       ];
     } else {
-      const shopCat = getShopCategoryDef(filters.environmentSlug, filters.shopCategorySlug);
+      const shopCat = defs.find((category) => category.slug === filters.shopCategorySlug);
       if (shopCat) {
         const orFilter = shopCategoryOrFilter(shopCat);
         if (orFilter.length > 0) {
@@ -153,6 +188,8 @@ async function getProductsFromPrisma(filters: ProductFilters = {}) {
             { OR: orFilter },
           ];
         }
+      } else {
+        where.id = "__invalid_shop_category__";
       }
     }
   }

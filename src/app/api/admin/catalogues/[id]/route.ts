@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireAdminSession } from "@/lib/admin-auth";
 import {
   getCatalogueById,
@@ -44,8 +45,12 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
 
   const { id } = await context.params;
   try {
-    await deleteCatalogue(id, session!.user?.id);
-    return NextResponse.json({ ok: true });
+    const deleted = await deleteCatalogue(id, session!.user?.id);
+    revalidatePath("/", "layout");
+    revalidatePath(`/${deleted.slug}`);
+    revalidatePath("/admin/catalogues");
+    revalidatePath("/sitemap.xml");
+    return NextResponse.json({ ok: true, deleted });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Delete failed" },

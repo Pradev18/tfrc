@@ -86,9 +86,25 @@ export function getCachedEnvironment(slug: string): CachedEnvironment | null {
   return cache?.environments[slug] ?? null;
 }
 
+export function removeCachedEnvironment(slug: string): void {
+  const cache = loadCatalogCache();
+  if (cache?.environments[slug]) {
+    delete cache.environments[slug];
+  }
+}
+
 export function getCachedProducts(
   slug: string,
-  opts: { page?: number; limit?: number; q?: string; brandSlug?: string; onSale?: boolean } = {}
+  opts: {
+    page?: number;
+    limit?: number;
+    q?: string;
+    brandSlug?: string;
+    onSale?: boolean;
+    inStock?: boolean;
+    shopKeywords?: string[];
+    excludeShopKeywords?: string[];
+  } = {}
 ) {
   const env = getCachedEnvironment(slug);
   if (!env) return null;
@@ -108,6 +124,21 @@ export function getCachedProducts(
   }
   if (opts.onSale) {
     items = items.filter((p) => p.prices.some((price) => price.type === "SALE"));
+  }
+  if (opts.inStock) {
+    items = items.filter((p) => p.inventory?.isInStock === true);
+  }
+  if (opts.shopKeywords?.length) {
+    const keywords = opts.shopKeywords.map((keyword) => keyword.toLowerCase());
+    items = items.filter((product) =>
+      keywords.some((keyword) => product.name.toLowerCase().includes(keyword))
+    );
+  }
+  if (opts.excludeShopKeywords?.length) {
+    const keywords = opts.excludeShopKeywords.map((keyword) => keyword.toLowerCase());
+    items = items.filter(
+      (product) => !keywords.some((keyword) => product.name.toLowerCase().includes(keyword))
+    );
   }
 
   const page = opts.page ?? 1;

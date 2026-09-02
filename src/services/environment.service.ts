@@ -94,7 +94,7 @@ export async function getActiveEnvironments() {
       where: { status: "ACTIVE" },
       orderBy: { sortOrder: "asc" },
     });
-    if (envs.length > 0) return envs.map(enrichEnvironment);
+    return envs.map(enrichEnvironment);
   } catch (error) {
     console.error("[env] getActiveEnvironments prisma failed:", error);
   }
@@ -112,11 +112,12 @@ export async function getActiveEnvironments() {
 export async function getEnvironmentBySlug(slug: string) {
   try {
     const env = await prisma.environment.findUnique({ where: { slug } });
-    if (env && env.status === "ACTIVE") return enrichEnvironment(env);
+    if (!env || env.status !== "ACTIVE") return null;
+    return enrichEnvironment(env);
   } catch (error) {
     console.error("[env] getEnvironmentBySlug prisma failed:", error);
+    return environmentFromCacheOrConfig(slug);
   }
-  return environmentFromCacheOrConfig(slug);
 }
 
 export async function getEnvironmentIdBySlug(slug: string): Promise<string | null> {
@@ -125,11 +126,12 @@ export async function getEnvironmentIdBySlug(slug: string): Promise<string | nul
       where: { slug },
       select: { id: true, status: true },
     });
-    if (env && env.status === "ACTIVE") return env.id;
+    if (!env || env.status !== "ACTIVE") return null;
+    return env.id;
   } catch (error) {
     console.error("[env] getEnvironmentIdBySlug prisma failed:", error);
+    return getCachedEnvironment(slug)?.id ?? null;
   }
-  return getCachedEnvironment(slug)?.id ?? null;
 }
 
 export async function resolveEnvironment(slug: string) {
@@ -142,13 +144,12 @@ export async function isValidEnvironmentSlug(slug: string): Promise<boolean> {
       where: { slug },
       select: { status: true },
     });
-    if (env) return env.status === "ACTIVE";
+    return env?.status === "ACTIVE";
   } catch (error) {
     console.error("[env] isValidEnvironmentSlug prisma failed:", error);
+    if (getCachedEnvironment(slug)) return true;
+    return ENVIRONMENT_CONFIGS.some((e) => e.slug === slug);
   }
-
-  if (getCachedEnvironment(slug)) return true;
-  return ENVIRONMENT_CONFIGS.some((e) => e.slug === slug);
 }
 
 export async function seedEnvironmentDefinitions() {

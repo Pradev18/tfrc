@@ -64,8 +64,9 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "categoryId required" }, { status: 400 });
   }
 
-  const cat = await prisma.shopCategory.update({
-    where: { id: body.categoryId },
+  const { id } = await context.params;
+  const result = await prisma.shopCategory.updateMany({
+    where: { id: body.categoryId, environmentId: id },
     data: {
       ...(body.name !== undefined ? { name: body.name } : {}),
       ...(body.keywords !== undefined ? { keywords: JSON.stringify(body.keywords) } : {}),
@@ -73,8 +74,12 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
     },
   });
+  if (result.count === 0) {
+    return NextResponse.json({ error: "Category not found" }, { status: 404 });
+  }
 
-  return NextResponse.json({ category: cat });
+  const category = await prisma.shopCategory.findUnique({ where: { id: body.categoryId } });
+  return NextResponse.json({ category });
 }
 
 export async function DELETE(req: NextRequest, context: RouteContext) {
@@ -86,6 +91,12 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "categoryId required" }, { status: 400 });
   }
 
-  await prisma.shopCategory.delete({ where: { id: body.categoryId } });
+  const { id } = await context.params;
+  const result = await prisma.shopCategory.deleteMany({
+    where: { id: body.categoryId, environmentId: id },
+  });
+  if (result.count === 0) {
+    return NextResponse.json({ error: "Category not found" }, { status: 404 });
+  }
   return NextResponse.json({ ok: true });
 }

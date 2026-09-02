@@ -1,5 +1,4 @@
 import { PrismaClient, ProductStatus } from "@prisma/client";
-import bcrypt from "bcryptjs";
 import path from "path";
 import fs from "fs";
 import {
@@ -268,17 +267,20 @@ async function main() {
     update: {},
   });
 
-  const passwordHash = await bcrypt.hash("admin123", 12);
+  // One-way hash for the initial administrator credential. Never overwrite an
+  // existing password during seed, otherwise every re-seed resets security.
+  const initialAdminPasswordHash =
+    "$2b$12$CkjYPjLSdLgyQVGmHrz08eQFNTrAHVFBc3bTDHyOhCoof/Nfjgtjm";
   const adminUser = await prisma.user.upsert({
     where: { email: "admin@pawmart.qa" },
     create: {
       email: "admin@pawmart.qa",
       name: "PawMart Admin",
-      passwordHash,
+      passwordHash: initialAdminPasswordHash,
       isActive: true,
       roles: { create: [{ roleId: superRole.id }] },
     },
-    update: { passwordHash },
+    update: {},
   });
 
   let whatsappNumber = "97455049229";
@@ -382,7 +384,7 @@ async function main() {
   console.log("\n✅ Seed complete!");
   console.log(`   Products: ${productCount} (${created} created, ${updated} updated, ${errors} errors)`);
   console.log(`   Categories: ${categoryCount}`);
-  console.log(`   Admin: admin@pawmart.qa / admin123`);
+  console.log("   Admin: admin@pawmart.qa (password preserved if user already exists)");
   console.log(`   WhatsApp: ${whatsappNumber}`);
 }
 

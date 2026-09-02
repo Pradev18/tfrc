@@ -104,4 +104,6 @@ try {
   console.warn("[db] prisma db push warning:", err?.message ?? err);
 }
 
+run("node scripts/migrate-admin-password.mjs");
+
 console.log("[db] Ready. DATABASE_URL=", process.env.DATABASE_URL);

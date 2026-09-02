@@ -33,6 +33,14 @@ async function getDbShopCategoryDefs(environmentId: string): Promise<ShopCategor
   }));
 }
 
+export async function getShopCategoryDefsForEnvironment(
+  environmentId: string,
+  environmentSlug: string
+): Promise<ShopCategoryDef[]> {
+  const dbDefinitions = await getDbShopCategoryDefs(environmentId);
+  return dbDefinitions.length > 0 ? dbDefinitions : getShopCategoryDefs(environmentSlug);
+}
+
 function parseKeywords(raw: string): string[] {
   try {
     const parsed = JSON.parse(raw);

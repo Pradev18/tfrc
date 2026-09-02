@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { redirect, notFound } from "next/navigation";
 import { getCatalogueById } from "@/services/catalogue-admin.service";
 import { ManageCataloguePanel } from "@/components/admin/ManageCataloguePanel";
+import { DeleteCatalogueSection } from "@/components/admin/DeleteCatalogueSection";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -41,6 +42,12 @@ export default async function ManageCataloguePage({ params }: PageProps) {
       <div className="mt-8">
         <ManageCataloguePanel catalogueId={id} catalogueName={catalogue.name} />
       </div>
+
+      <DeleteCatalogueSection
+        catalogueId={id}
+        catalogueName={catalogue.name}
+        productCount={catalogue._count.products}
+      />
     </div>
   );
 }

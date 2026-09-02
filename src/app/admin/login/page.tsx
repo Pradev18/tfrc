@@ -4,13 +4,29 @@ import { signIn } from "next-auth/react";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+function safeAdminCallback(raw: string | null): string {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) {
+    return "/admin";
+  }
+
+  try {
+    const parsed = new URL(raw, "https://admin.local");
+    if (parsed.origin !== "https://admin.local" || !parsed.pathname.startsWith("/admin")) {
+      return "/admin";
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return "/admin";
+  }
+}
+
 function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/admin";
+  const callbackUrl = safeAdminCallback(searchParams.get("callbackUrl"));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,6 +62,7 @@ function LoginForm() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
               required
               className="w-full rounded-md border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none"
             />
@@ -57,6 +74,7 @@ function LoginForm() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
               required
               className="w-full rounded-md border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none"
             />

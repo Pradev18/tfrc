@@ -3,6 +3,7 @@ import { slugify } from "@/lib/slugify";
 import { buildConfigFromEnvironment, getEnvironmentCardImage } from "@/lib/environment-config";
 import { discoverShopCategoriesFromProducts, type ShopCategoryDef } from "@/lib/shop-categories";
 import { SHOP_CATEGORIES } from "@/lib/shop-categories";
+import { removeCachedEnvironment } from "@/lib/catalog-cache";
 import type { EnvironmentStatus } from "@prisma/client";
 
 export interface CreateCatalogueInput {
@@ -162,19 +163,57 @@ export async function deleteCatalogue(id: string, userId?: string) {
   const env = await prisma.environment.findUnique({ where: { id } });
   if (!env) throw new Error("Catalogue not found");
 
-  await prisma.environment.update({
-    where: { id },
-    data: { status: "INACTIVE" },
+  await prisma.$transaction(async (tx) => {
+    const categoryIds = (
+      await tx.category.findMany({
+        where: { environmentId: id },
+        select: { id: true },
+      })
+    ).map((category) => category.id);
+
+    // Products own prices, inventory, media, variants, tags and promotion
+    // links through cascade relations, so removing them clears the full
+    // catalogue inventory without leaving detached public products behind.
+    await tx.product.deleteMany({ where: { environmentId: id } });
+
+    // Category rows have a self-reference. Detach the hierarchy first so the
+    // complete catalogue category tree can be removed in one operation.
+    if (categoryIds.length > 0) {
+      await tx.product.updateMany({
+        where: { categoryId: { in: categoryIds } },
+        data: { categoryId: null },
+      });
+      await tx.product.updateMany({
+        where: { subcategoryId: { in: categoryIds } },
+        data: { subcategoryId: null },
+      });
+      await tx.category.updateMany({
+        where: { parentId: { in: categoryIds } },
+        data: { parentId: null },
+      });
+    }
+    await tx.category.deleteMany({ where: { environmentId: id } });
+
+    await tx.shopCategory.deleteMany({ where: { environmentId: id } });
+    await tx.banner.deleteMany({ where: { environmentId: id } });
+    await tx.homepageSection.deleteMany({ where: { environmentId: id } });
+    await tx.importJob.deleteMany({ where: { environmentId: id } });
+    await tx.customerInquiry.deleteMany({ where: { environmentSlug: env.slug } });
+    await tx.environment.delete({ where: { id } });
+
+    await tx.auditLog.create({
+      data: {
+        userId,
+        action: "DELETE",
+        resource: "Environment",
+        resourceId: id,
+        oldValue: JSON.stringify({ name: env.name, slug: env.slug }),
+      },
+    });
   });
 
-  await prisma.auditLog.create({
-    data: {
-      userId,
-      action: "DEACTIVATE",
-      resource: "Environment",
-      resourceId: id,
-    },
-  });
+  removeCachedEnvironment(env.slug);
+  return { id: env.id, name: env.name, slug: env.slug };
 }
 
 function defsToDbRows(environmentId: string, defs: ShopCategoryDef[]) {

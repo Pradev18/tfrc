@@ -76,7 +76,7 @@ Test: `/`, `/pawmart`, `/hardware`, `/household`
 ### 6. Admin login
 - URL: `/admin/login`
 - Email: `admin@pawmart.qa`
-- Password: `admin123`
+- Password: use the securely provisioned administrator password
 
 ### 7. Custom domain + HTTPS (optional)
 Install Caddy or Nginx reverse proxy + Let's Encrypt on port 443, pointing to `localhost:3000`. Update `AUTH_URL` and `NEXT_PUBLIC_SITE_URL` to your domain, then `docker compose up -d --build`.

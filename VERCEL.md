@@ -66,7 +66,7 @@ Or push any commit to GitHub — Vercel redeploys automatically.
 **Admin login** (from seeded database):
 
 - Email: `admin@pawmart.qa`
-- Password: `admin123`
+- Password: use the securely provisioned administrator password
 
 Change this password after going live.
 

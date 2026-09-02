@@ -104,7 +104,7 @@ export function UnifiedStoreCatalog({
   }, [basePath, router]);
 
   const isFilteredView = Boolean(
-    apiFilters.q || apiFilters.brand || apiFilters.inStock
+    apiFilters.q || apiFilters.brand || apiFilters.inStock || apiFilters.sale
   );
 
   const visibleCategories = useMemo(() => {

@@ -1,6 +1,13 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { auth, signOut } from "@/lib/auth";
+import { getVerifiedAdminSession } from "@/lib/admin-auth";
 import { AdminMobileNav } from "@/components/admin/AdminMobileNav";
+
+export const metadata: Metadata = {
+  title: "Administration",
+  robots: { index: false, follow: false, nocache: true },
+};
 
 const navItems = [
   { href: "/admin", label: "Dashboard" },
@@ -11,7 +18,30 @@ const navItems = [
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
+  const [rawSession, session] = await Promise.all([auth(), getVerifiedAdminSession()]);
+
+  if (rawSession && !session) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface-muted px-4">
+        <div className="w-full max-w-md rounded-lg border border-border bg-surface p-8 text-center">
+          <h1 className="text-display text-2xl text-primary">Access denied</h1>
+          <p className="mt-2 text-sm text-text-muted">
+            This account is inactive or does not have administrator permission.
+          </p>
+          <form
+            action={async () => {
+              "use server";
+              await signOut({ redirectTo: "/admin/login" });
+            }}
+          >
+            <button type="submit" className="btn-primary mt-6">
+              Return to sign in
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-surface-muted">

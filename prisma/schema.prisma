@@ -22,6 +22,16 @@ model User {
   importJobs   ImportJob[]
 }
 
+model LoginThrottle {
+  id              String   @id
+  failures        Int      @default(0)
+  windowStartedAt DateTime @default(now())
+  lockedUntil     DateTime?
+  updatedAt       DateTime @updatedAt
+
+  @@index([lockedUntil])
+}
+
 model Role {
   id          String           @id @default(cuid())
   name        String           @unique

@@ -21,7 +21,7 @@ npm run dev
 
 - **Public site:** http://localhost:3000
 - **Admin:** http://localhost:3000/admin
-- **Login:** admin@pawmart.qa / admin123 (change before production)
+- **Login:** admin@pawmart.qa with the securely provisioned administrator password
 
 ## Catalogues
 

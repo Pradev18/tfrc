@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { ProductCard } from "@/components/public/ProductCard";
 import { useStoreProductFeed } from "@/hooks/useStoreProductFeed";
 import { getEnvVisual } from "@/lib/env-visuals";
@@ -46,6 +47,22 @@ export function PaginatedProductGrid({
       onSaleOnly,
       enabled,
     });
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || page >= totalPages) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !loading && !loadingMore) loadMore();
+      },
+      { rootMargin: "500px 0px" }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [loadMore, loading, loadingMore, page, totalPages]);
 
   if (!enabled) return null;
 
@@ -85,7 +102,7 @@ export function PaginatedProductGrid({
       </div>
 
       {page < totalPages && (
-        <div className="mt-6 flex justify-center">
+        <div ref={loadMoreRef} className="mt-6 flex flex-col items-center gap-2">
           <button
             type="button"
             onClick={loadMore}
@@ -95,6 +112,9 @@ export function PaginatedProductGrid({
           >
             {loadingMore ? "Loading…" : `Load more (${items.length} of ${total})`}
           </button>
+          <p className="text-xs" style={{ color: v.muted }}>
+            More products load automatically as you scroll
+          </p>
         </div>
       )}
     </>

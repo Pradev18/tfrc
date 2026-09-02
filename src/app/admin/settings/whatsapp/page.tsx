@@ -1,11 +1,11 @@
-import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import prisma from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import { getVerifiedAdminSession } from "@/lib/admin-auth";
 
 async function updateWhatsApp(formData: FormData) {
   "use server";
-  const session = await auth();
+  const session = await getVerifiedAdminSession();
   if (!session) redirect("/admin/login");
 
   const phoneNumber = String(formData.get("phoneNumber") ?? "").replace(/\D/g, "");
@@ -33,7 +33,7 @@ export default async function WhatsAppSettingsPage({
 }: {
   searchParams: Promise<{ saved?: string }>;
 }) {
-  const session = await auth();
+  const session = await getVerifiedAdminSession();
   if (!session) redirect("/admin/login");
 
   const params = await searchParams;

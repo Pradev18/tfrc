@@ -1,5 +1,5 @@
-import { auth } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdminSession } from "@/lib/admin-auth";
 import prisma from "@/lib/db";
 import { parseExcelBuffer } from "@/lib/import/catalog-parser";
 import { createCategorySlug, rowToProductSlug, rowImages, rowCategorySegments } from "@/lib/import/catalog-parser";
@@ -35,8 +35,8 @@ async function upsertCategoryTree(segments: string[], cache: Map<string, string>
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { session, error } = await requireAdminSession();
+  if (error) return error;
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;

@@ -61,7 +61,7 @@ Then **Save and redeploy** or restart the app.
 
 - URL: `https://www.vitanovaservices.com/admin`
 - Email: `admin@pawmart.qa`
-- Password: `admin123`
+- Password: use the securely provisioned administrator password
 
 ---
 
@@ -217,7 +217,7 @@ server {
 ## 7. Before going live — checklist
 
 ### Security
-- [ ] Change admin password (`admin@pawmart.qa` / `admin123` is seed default only)
+- [ ] Store the administrator password securely and rotate it when access changes
 - [ ] Set strong `AUTH_SECRET`
 - [ ] Never commit `.env` to git
 
