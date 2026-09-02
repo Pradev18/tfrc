@@ -8,6 +8,21 @@ import {
 } from "@/lib/import/catalog-parser";
 import { Prisma, ProductStatus } from "@prisma/client";
 import { generateShopCategories } from "@/services/catalogue-admin.service";
+import { refreshCatalogCacheFromDatabase } from "@/lib/catalog-cache-refresh.server";
+
+function parseSaleWindow(value: string | null): {
+  saleStart: Date | null;
+  saleEnd: Date | null;
+} {
+  if (!value) return { saleStart: null, saleEnd: null };
+  const [startRaw, endRaw] = value.split("/");
+  const start = startRaw ? new Date(startRaw) : null;
+  const end = endRaw ? new Date(endRaw) : null;
+  return {
+    saleStart: start && !Number.isNaN(start.getTime()) ? start : null,
+    saleEnd: end && !Number.isNaN(end.getTime()) ? end : null,
+  };
+}
 
 async function upsertCategoryTree(
   tx: Prisma.TransactionClient,
@@ -160,6 +175,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
       const images = rowImages(row);
       const qty = row.quantity_to_sell_on_facebook ?? 10;
       const isInStock = qty > 0 && row.availability.toLowerCase().includes("in stock");
+          const saleWindow = parseSaleWindow(row.sale_price_effective_date);
 
           const existing = await tx.product.findUnique({ where: { productId: row.id } });
           if (existing?.environmentId && existing.environmentId !== environmentId) {
@@ -192,6 +208,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
             await tx.productImage.deleteMany({ where: { productId } });
             await tx.productVideo.deleteMany({ where: { productId } });
             await tx.price.deleteMany({ where: { productId } });
+            await tx.productTag.deleteMany({ where: { productId } });
         updated++;
       } else {
             const p = await tx.product.create({ data: productData });
@@ -222,10 +239,34 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
         data: [
           { productId, amount: row.price, currency: "QAR", type: "REGULAR" },
           ...(row.sale_price
-            ? [{ productId, amount: row.sale_price, currency: "QAR", type: "SALE" as const }]
+            ? [
+                {
+                  productId,
+                  amount: row.sale_price,
+                  currency: "QAR",
+                  type: "SALE" as const,
+                  saleStart: saleWindow.saleStart,
+                  saleEnd: saleWindow.saleEnd,
+                },
+              ]
             : []),
         ],
       });
+
+          const tagsBySlug = new Map(
+            row.product_tags
+              .map((tag) => tag.trim())
+              .filter(Boolean)
+              .map((tagName) => [createCategorySlug(tagName), tagName])
+          );
+          for (const [tagSlug, tagName] of tagsBySlug) {
+            const tag = await tx.tag.upsert({
+              where: { slug: tagSlug },
+              create: { name: tagName, slug: tagSlug },
+              update: { name: tagName },
+            });
+            await tx.productTag.create({ data: { productId, tagId: tag.id } });
+          }
 
           await tx.inventory.upsert({
         where: { productId },
@@ -249,6 +290,10 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
           if (wa) {
             await tx.whatsAppSetting.update({
               where: { id: wa.id },
+              data: { phoneNumber: parsed.whatsappNumber },
+            });
+          } else {
+            await tx.whatsAppSetting.create({
               data: { phoneNumber: parsed.whatsappNumber },
             });
           }
@@ -289,6 +334,11 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
   }
 
   await generateShopCategories(environmentId, environmentSlug);
+  try {
+    await refreshCatalogCacheFromDatabase();
+  } catch (error) {
+    console.error("[catalog-import] cache refresh failed:", error);
+  }
 
   await prisma.importJob.update({
     where: { id: job.id },

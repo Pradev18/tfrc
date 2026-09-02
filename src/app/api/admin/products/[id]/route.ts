@@ -3,6 +3,7 @@ import { requireAdminSession } from "@/lib/admin-auth";
 import prisma from "@/lib/db";
 import { ProductStatus } from "@prisma/client";
 import { touchSiteRevision } from "@/lib/site-revision.server";
+import { refreshCatalogCacheSafely } from "@/lib/catalog-cache-refresh.server";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -82,6 +83,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   });
 
   await touchSiteRevision();
+  await refreshCatalogCacheSafely();
   return NextResponse.json({ product: updated });
 }
 
@@ -106,5 +108,6 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
   });
 
   await touchSiteRevision();
+  await refreshCatalogCacheSafely();
   return NextResponse.json({ ok: true });
 }

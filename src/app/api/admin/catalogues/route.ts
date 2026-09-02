@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { touchSiteRevision } from "@/lib/site-revision.server";
+import { refreshCatalogCacheSafely } from "@/lib/catalog-cache-refresh.server";
 import {
   createCatalogue,
   listCatalogues,
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
     }
 
     await touchSiteRevision();
+    await refreshCatalogCacheSafely();
     revalidatePath("/", "layout");
     revalidatePath("/admin/catalogues");
     revalidatePath("/sitemap.xml");

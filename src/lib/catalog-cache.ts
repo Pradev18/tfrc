@@ -45,7 +45,7 @@ export interface CachedEnvironment {
   products: CachedProduct[];
 }
 
-interface CatalogCache {
+export interface CatalogCache {
   generatedAt: string;
   environments: Record<string, CachedEnvironment>;
 }
@@ -79,6 +79,24 @@ export function loadCatalogCache(): CatalogCache | null {
 
   cached = null;
   return null;
+}
+
+export function saveCatalogCache(nextCache: CatalogCache): void {
+  cached = nextCache;
+
+  for (const file of [...new Set(candidateCachePaths())]) {
+    try {
+      if (!fs.existsSync(file) && !file.endsWith(path.join("data", "catalog-cache.json"))) {
+        continue;
+      }
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      const temporary = `${file}.${process.pid}.tmp`;
+      fs.writeFileSync(temporary, JSON.stringify(nextCache));
+      fs.renameSync(temporary, file);
+    } catch (error) {
+      console.warn(`[catalog-cache] Could not refresh ${file}:`, error);
+    }
+  }
 }
 
 export function getCachedEnvironment(slug: string): CachedEnvironment | null {
