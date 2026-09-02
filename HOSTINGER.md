@@ -1,6 +1,68 @@
 # Deploying TFRC Vita Nova on Hostinger
 
-Step-by-step guide for Hostinger VPS or Node.js hosting with Docker.
+Guide for **Hostinger Node.js** (Deployments panel) and **Docker VPS**.
+
+Repository: https://github.com/Pradev18/vitanovaservice
+
+---
+
+## Hostinger Node.js panel (your setup)
+
+Use these **exact settings** in **Websites → vitanovaservices.com → Deployments → Settings and redeploy**:
+
+| Setting | Value |
+|---------|--------|
+| Framework | Next.js |
+| Branch | `main` |
+| **Node version** | **20.x** (not 22 — more stable for builds) |
+| Root directory | `./` |
+| **Build command** | `npm run hostinger:build` |
+| Package manager | `npm` |
+| Output directory | `.next` |
+| Start command | `npm start` (if asked) |
+
+### Environment variables (Hostinger panel)
+
+**Remove** all `SMTP_*` variables — they are from the old visa site and are **not used** by this catalogue app.
+
+**Use these only** (copy from `env.vitanovaservices.com.example`):
+
+```env
+DATABASE_URL=file:./prisma/prod.db
+AUTH_SECRET=<your-secret>
+AUTH_URL=https://www.vitanovaservices.com
+NEXT_PUBLIC_SITE_URL=https://www.vitanovaservices.com
+NEXT_PUBLIC_SITE_NAME=TFRC Vita Nova
+NEXT_PUBLIC_WHATSAPP_PHONE=97455049229
+MEDIA_STORAGE=local
+NODE_ENV=production
+PORT=3000
+```
+
+**Fix that caused build failure:** `DATABASE_URL` was `file:/app/prisma/prod.db` (Docker path). On Hostinger Node it must be `file:./prisma/prod.db`.
+
+### After first successful build
+
+Open **Hostinger Terminal / SSH** for the site and run once:
+
+```bash
+cd /path/to/your/app
+npm run hostinger:setup
+```
+
+This creates the database and loads products + admin user.
+
+Then **Save and redeploy** or restart the app.
+
+### Admin login (change password immediately)
+
+- URL: `https://www.vitanovaservices.com/admin`
+- Email: `admin@pawmart.qa`
+- Password: `admin123`
+
+---
+
+## Docker VPS (alternative)
 
 ## What you need
 

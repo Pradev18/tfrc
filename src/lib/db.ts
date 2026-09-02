@@ -3,10 +3,10 @@ import { PrismaClient } from "@prisma/client";
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
-/** On Vercel, resolve bundled SQLite to an absolute path under project root. */
+/** Resolve relative SQLite paths to absolute (Hostinger, Vercel, Docker). */
 function getDatasourceUrl(): string | undefined {
   const url = process.env.DATABASE_URL;
-  if (!url?.startsWith("file:") || !process.env.VERCEL) return url;
+  if (!url?.startsWith("file:")) return url;
 
   const filePath = url.replace(/^file:/, "");
   if (path.isAbsolute(filePath)) return url;

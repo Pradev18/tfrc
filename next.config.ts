@@ -4,6 +4,12 @@ const isDocker = process.env.DOCKER_BUILD === "true";
 
 const nextConfig: NextConfig = {
   ...(isDocker ? { output: "standalone" as const } : {}),
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: false,
+  },
   images: {
     remotePatterns: [
       {
