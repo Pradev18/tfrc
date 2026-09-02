@@ -30,8 +30,7 @@ export default function Error({
           We hit a snag
         </h1>
         <p className="mt-5 max-w-md text-base leading-relaxed text-[#6b6560]">
-          The page could not load. This is usually fixed by refreshing. If it keeps happening, try
-          restarting the dev server.
+          The page could not load. Try refreshing the page. If the problem continues, contact support.
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
           <button

@@ -1,18 +1,11 @@
-import { auth } from "@/lib/auth";
+import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { authConfig } from "@/lib/auth.config";
 
-export async function middleware(request: NextRequest) {
+const { auth } = NextAuth(authConfig);
+
+export default auth((request) => {
   const { pathname } = request.nextUrl;
-
-  if (pathname.startsWith("/admin") && !pathname.startsWith("/admin/login")) {
-    const session = await auth();
-    if (!session?.user) {
-      const loginUrl = new URL("/admin/login", request.url);
-      loginUrl.searchParams.set("callbackUrl", pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-  }
 
   if (pathname === "/catalogue" || pathname.startsWith("/catalogue/")) {
     return NextResponse.redirect(new URL("/", request.url));
@@ -27,7 +20,7 @@ export async function middleware(request: NextRequest) {
   }
 
   return NextResponse.next();
-}
+});
 
 export const config = {
   matcher: ["/admin/:path*", "/catalogue/:path*", "/product/:path*", "/offers"],
