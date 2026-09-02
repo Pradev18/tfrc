@@ -15,6 +15,29 @@ interface PriceInput {
   saleEnd?: Date | null;
 }
 
+export interface ProductWithPrices {
+  prices: Array<{
+    type: string;
+    amount: number;
+    currency: string;
+    saleStart?: Date | string | null;
+    saleEnd?: Date | string | null;
+  }>;
+}
+
+export function mapProductPrices(product: ProductWithPrices) {
+  const regular = product.prices.find((price) => price.type === "REGULAR");
+  const sale = product.prices.find((price) => price.type === "SALE");
+  const pricing = getEffectivePrice({
+    regular: regular?.amount ?? 0,
+    sale: sale?.amount,
+    currency: regular?.currency ?? "QAR",
+    saleStart: sale?.saleStart ? new Date(sale.saleStart) : null,
+    saleEnd: sale?.saleEnd ? new Date(sale.saleEnd) : null,
+  });
+  return { regular, sale, pricing };
+}
+
 export function validatePrices(regular: number, sale?: number | null): void {
   if (regular <= 0) throw new Error("Regular price must be greater than zero");
   if (sale != null && sale > 0 && sale >= regular) {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getSiteSettings, getSocialLinks } from "@/services/settings.service";
-import { getWhatsAppSettings } from "@/lib/whatsapp";
+import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { PLATFORM } from "@/lib/environments";
 import { getActiveEnvironments } from "@/services/environment.service";
 import { getEnvVisual } from "@/lib/env-visuals";

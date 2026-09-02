@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { VitaNovaLanding } from "@/components/landing/VitaNovaLanding";
-import { getWhatsAppSettings } from "@/lib/whatsapp";
+import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { PLATFORM } from "@/lib/environments";
 import { buildPageMetadata } from "@/lib/meta-seo";
 import { getLandingPortalsFromDb } from "@/services/catalogue-admin.service";

@@ -29,7 +29,7 @@ function candidateSqlitePaths(relativeOrAbsolute: string): string[] {
 
 /** Resolve relative SQLite paths; fall back to bundled prod.db; copy to /tmp if needed. */
 function getDatasourceUrl(): string | undefined {
-  const url = process.env.DATABASE_URL ?? "file:./prisma/prod.db";
+  const url = process.env.DATABASE_URL ?? "file:./prod.db";
   if (!url.startsWith("file:")) return url;
 
   const filePath = url.replace(/^file:/, "");

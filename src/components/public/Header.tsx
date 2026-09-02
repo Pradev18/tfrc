@@ -1,5 +1,5 @@
 import { getNavCategories } from "@/services/category.service";
-import { getWhatsAppSettings } from "@/lib/whatsapp";
+import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { SiteHeader } from "@/components/public/SiteHeader";
 
 export async function Header() {

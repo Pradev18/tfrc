@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = "file:./prisma/prod.db";
+  process.env.DATABASE_URL = "file:./prod.db";
 }
 
 function run(cmd) {
@@ -76,6 +76,10 @@ if (!canWriteDir(dbDir)) {
   process.env.DATABASE_URL = `file:${dbPath}`;
   dbDir = fallbackDir;
 }
+
+// Prisma resolves file: URLs relative to prisma/schema.prisma. Always pass an
+// absolute URL so CLI commands and the runtime use the exact same database.
+process.env.DATABASE_URL = `file:${dbPath}`;
 
 const needsCreate = !fs.existsSync(dbPath) || fs.statSync(dbPath).size < 1000;
 

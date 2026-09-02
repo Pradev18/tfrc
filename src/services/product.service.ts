@@ -1,6 +1,6 @@
 import prisma from "@/lib/db";
 import { ProductStatus, Prisma } from "@prisma/client";
-import { getEffectivePrice } from "@/lib/pricing";
+import { mapProductPrices } from "@/lib/pricing";
 import { getEnvironmentIdBySlug } from "@/services/environment.service";
 import { getDepartmentForSlug } from "@/lib/environments";
 import { getShopCategoryDef, getShopCategoryDefs, OTHER_SHOP_CATEGORY } from "@/lib/shop-categories";
@@ -55,28 +55,7 @@ export type ProductListItem = Prisma.ProductGetPayload<{
   include: typeof productListInclude;
 }>;
 
-type ProductWithPrices = {
-  prices: Array<{
-    type: string;
-    amount: number;
-    currency: string;
-    saleStart?: Date | null;
-    saleEnd?: Date | null;
-  }>;
-};
-
-export function mapProductPrices(product: ProductWithPrices) {
-  const regular = product.prices.find((p) => p.type === "REGULAR");
-  const sale = product.prices.find((p) => p.type === "SALE");
-  const pricing = getEffectivePrice({
-    regular: regular?.amount ?? 0,
-    sale: sale?.amount,
-    currency: regular?.currency ?? "QAR",
-    saleStart: sale?.saleStart,
-    saleEnd: sale?.saleEnd,
-  });
-  return { regular, sale, pricing };
-}
+export { mapProductPrices } from "@/lib/pricing";
 
 export async function getProducts(filters: ProductFilters = {}) {
   const page = filters.page ?? 1;
@@ -96,7 +75,10 @@ export async function getProducts(filters: ProductFilters = {}) {
       onSale: filters.onSale,
     });
     if (!cached) throw error;
-    return cached;
+    return {
+      ...cached,
+      items: cached.items as unknown as ProductListItem[],
+    };
   }
 }
 

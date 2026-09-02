@@ -31,7 +31,7 @@ Use these **exact settings** in **Websites → vitanovaservices.com → Deployme
 **Use these only** (copy from `env.vitanovaservices.com.example`):
 
 ```env
-DATABASE_URL=file:./prisma/prod.db
+DATABASE_URL=file:./prod.db
 AUTH_SECRET=<your-secret>
 AUTH_URL=https://www.vitanovaservices.com
 NEXT_PUBLIC_SITE_URL=https://www.vitanovaservices.com
@@ -42,7 +42,7 @@ NODE_ENV=production
 PORT=3000
 ```
 
-**Fix that caused build failure:** `DATABASE_URL` was `file:/app/prisma/prod.db` (Docker path). On Hostinger Node it must be `file:./prisma/prod.db`.
+**Hostinger SQLite URL:** use `file:./prod.db`. Prisma resolves relative file URLs from `prisma/schema.prisma`; the startup script converts this to an absolute path.
 
 ### After first successful build
 

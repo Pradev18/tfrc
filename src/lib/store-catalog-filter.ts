@@ -1,5 +1,5 @@
 import type { ProductWithRelations } from "@/services/product.service";
-import { mapProductPrices } from "@/services/product.service";
+import { mapProductPrices } from "@/lib/pricing";
 import {
   getEffectiveShopCategoryDefs,
   OTHER_SHOP_CATEGORY,

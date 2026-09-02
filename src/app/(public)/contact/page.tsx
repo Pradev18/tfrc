@@ -1,5 +1,5 @@
 import { WhatsAppButton } from "@/components/public/WhatsAppButton";
-import { getWhatsAppSettings } from "@/lib/whatsapp";
+import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { getSocialLinks } from "@/services/settings.service";
 
 export default async function ContactPage() {

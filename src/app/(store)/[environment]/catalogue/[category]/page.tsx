@@ -22,7 +22,7 @@ import { getProducts } from "@/services/product.service";
 
 import { resolveEnvironment } from "@/services/environment.service";
 
-import { getWhatsAppSettings } from "@/lib/whatsapp";
+import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { getSiteUrl } from "@/lib/site-config";
 
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";

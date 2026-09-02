@@ -29,7 +29,8 @@ import {
 
 import { resolveEnvironment } from "@/services/environment.service";
 
-import { getWhatsAppSettings, generateWhatsAppLinkSync, buildWhatsAppMessage } from "@/lib/whatsapp";
+import { generateWhatsAppLinkSync, buildWhatsAppMessage } from "@/lib/whatsapp";
+import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 
 import { buildProductMetadata } from "@/lib/meta-seo";
 

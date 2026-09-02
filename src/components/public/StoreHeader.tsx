@@ -2,7 +2,7 @@ import { EnvironmentHeader } from "@/components/public/EnvironmentHeader";
 import { getSiteUrl } from "@/lib/site-config";
 import { getShopCategories } from "@/services/shop-category.service";
 import { getCategoryHeroImage } from "@/lib/category-images";
-import { getWhatsAppSettings } from "@/lib/whatsapp";
+import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import type { ParsedEnvironment } from "@/services/environment.service";
 
 export async function StoreHeader({ environment }: { environment: ParsedEnvironment }) {

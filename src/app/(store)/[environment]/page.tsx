@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { resolveEnvironment } from "@/services/environment.service";
 import { getShopCategories } from "@/services/shop-category.service";
-import { getWhatsAppSettings } from "@/lib/whatsapp";
+import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { EnvironmentHome } from "@/components/store/EnvironmentHome";
 import { getSiteUrl } from "@/lib/site-config";
 import prisma from "@/lib/db";

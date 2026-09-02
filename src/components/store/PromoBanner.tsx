@@ -1,7 +1,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { ChevronRight } from "lucide-react";
-import { mapProductPrices, type ProductWithRelations } from "@/services/product.service";
+import type { ProductWithRelations } from "@/services/product.service";
+import { mapProductPrices } from "@/lib/pricing";
 import { getEnvVisual } from "@/lib/env-visuals";
 
 interface PromoBannerProps {

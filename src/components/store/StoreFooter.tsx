@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getWhatsAppSettings } from "@/lib/whatsapp";
+import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { getActiveEnvironments } from "@/services/environment.service";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { TfrcStaffLink } from "@/components/public/TfrcStaffLink";

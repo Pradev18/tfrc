@@ -1,7 +1,5 @@
-import prisma from "@/lib/db";
 import { formatCurrency } from "@/lib/utils";
 import { getEffectivePrice } from "@/lib/pricing";
-import { getSiteUrl } from "@/lib/site-config";
 import { buildWhatsAppCatalogProductUrl } from "@/lib/whatsapp-catalog";
 
 export interface WhatsAppProductInput {
@@ -26,31 +24,11 @@ export interface WhatsAppSettings {
   productTemplate: string;
 }
 
-const DEFAULT_SETTINGS: WhatsAppSettings = {
+export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   phoneNumber: "97455049229",
   defaultGreeting: "Hello, I would like to order from TFRC Vita Nova",
   productTemplate: "{{name}} — {{price}} (Ref: {{productId}})",
 };
-
-export async function getWhatsAppSettings(): Promise<WhatsAppSettings> {
-  try {
-    const setting = await prisma.whatsAppSetting.findFirst({
-      where: { isActive: true },
-      orderBy: { updatedAt: "desc" },
-    });
-
-    if (!setting) return DEFAULT_SETTINGS;
-
-    return {
-      phoneNumber: setting.phoneNumber.replace(/\D/g, ""),
-      defaultGreeting: setting.defaultGreeting,
-      productTemplate: setting.productTemplate,
-    };
-  } catch (error) {
-    console.error("[whatsapp] settings prisma failed:", error);
-    return DEFAULT_SETTINGS;
-  }
-}
 
 export function interpolateTemplate(
   template: string,
@@ -194,14 +172,6 @@ export function buildCartWhatsAppUrl(
 export function buildWhatsAppUrl(phoneNumber: string, message: string): string {
   const cleanPhone = phoneNumber.replace(/\D/g, "");
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-}
-
-export async function generateWhatsAppLink(
-  product: WhatsAppProductInput
-): Promise<string> {
-  const settings = await getWhatsAppSettings();
-  const message = buildWhatsAppMessage(settings, product, getSiteUrl());
-  return buildWhatsAppUrl(settings.phoneNumber, message);
 }
 
 export function buildProductWhatsAppCatalogUrl(

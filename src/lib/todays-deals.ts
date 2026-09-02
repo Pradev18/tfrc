@@ -1,4 +1,5 @@
-import { mapProductPrices, type ProductWithRelations } from "@/services/product.service";
+import type { ProductWithRelations } from "@/services/product.service";
+import { mapProductPrices } from "@/lib/pricing";
 
 /** Deterministic day index for rotating deals (changes daily, stable within a day) */
 export function getDayIndex(date = new Date()): number {
