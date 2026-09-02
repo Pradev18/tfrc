@@ -19,20 +19,20 @@ export async function GET(
 ) {
   const { environment } = await context.params;
 
-  if (!(await isValidEnvironmentSlug(environment))) {
-    return NextResponse.json({ error: "Invalid environment" }, { status: 404 });
-  }
-
-  const sp = request.nextUrl.searchParams;
-  const page = Math.max(1, parseInt(sp.get("page") ?? "1", 10) || 1);
-  const limit = Math.min(
-    STORE_MAX_PAGE_SIZE,
-    Math.max(1, parseInt(sp.get("limit") ?? String(STORE_PAGE_SIZE), 10) || STORE_PAGE_SIZE)
-  );
-  const sortParam = sp.get("sort") as StoreSort | null;
-  const sort = sortParam && SORT_VALUES.includes(sortParam) ? sortParam : "newest";
-
   try {
+    if (!(await isValidEnvironmentSlug(environment))) {
+      return NextResponse.json({ error: "Invalid environment" }, { status: 404 });
+    }
+
+    const sp = request.nextUrl.searchParams;
+    const page = Math.max(1, parseInt(sp.get("page") ?? "1", 10) || 1);
+    const limit = Math.min(
+      STORE_MAX_PAGE_SIZE,
+      Math.max(1, parseInt(sp.get("limit") ?? String(STORE_PAGE_SIZE), 10) || STORE_PAGE_SIZE)
+    );
+    const sortParam = sp.get("sort") as StoreSort | null;
+    const sort = sortParam && SORT_VALUES.includes(sortParam) ? sortParam : "newest";
+
     const result = await getProducts({
       environmentSlug: environment,
       search: sp.get("q") ?? undefined,
@@ -51,7 +51,14 @@ export async function GET(
         "Cache-Control": "private, max-age=15, stale-while-revalidate=30",
       },
     });
-  } catch {
-    return NextResponse.json({ error: "Failed to load products" }, { status: 500 });
+  } catch (error) {
+    console.error("[store-products]", error);
+    return NextResponse.json(
+      {
+        error: "Failed to load products",
+        detail: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
   }
 }

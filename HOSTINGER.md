@@ -16,10 +16,13 @@ Use these **exact settings** in **Websites → vitanovaservices.com → Deployme
 | Branch | `main` |
 | **Node version** | **20.x** (not 22 — more stable for builds) |
 | Root directory | `./` |
-| **Build command** | `npm run hostinger:build` |
+| **Build command** | `npm run build` |
 | Package manager | `npm` |
-| Output directory | `.next` |
-| Start command | `npm start` (if asked) |
+| **Output directory** | `.next` |
+| **Start command** | `npm start` ← must be this (creates/copies the database) |
+
+> Critical: Start command must be **`npm start`**, not `next start`.  
+> `npm start` copies the product database before the app boots. Without it, `/pawmart` returns 500 while `/` still looks fine.
 
 ### Environment variables (Hostinger panel)
 

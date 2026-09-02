@@ -7,35 +7,47 @@ import { buildPageMetadata } from "@/lib/meta-seo";
 import { getEnvironmentHeroImages } from "@/services/category.service";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 
+export const dynamic = "force-dynamic";
+
 interface LayoutProps {
   children: React.ReactNode;
   params: Promise<{ environment: string }>;
 }
 
 export async function generateMetadata({ params }: LayoutProps): Promise<Metadata> {
-  const { environment: slug } = await params;
-  if (!(await isValidEnvironmentSlug(slug))) return { title: "Not Found" };
-  const env = await resolveEnvironment(slug);
-  if (!env) return { title: "Not Found" };
+  try {
+    const { environment: slug } = await params;
+    if (!(await isValidEnvironmentSlug(slug))) return { title: "Not Found" };
+    const env = await resolveEnvironment(slug);
+    if (!env) return { title: "Not Found" };
 
-  const heroImages = await getEnvironmentHeroImages(slug);
+    const heroImages = await getEnvironmentHeroImages(slug);
 
-  return buildPageMetadata({
-    title: env.seoParsed.title,
-    description: env.seoParsed.description,
-    path: `/${slug}`,
-    keywords: env.seoParsed.keywords,
-    image: heroImages[0] ?? null,
-    imageAlt: env.config.displayName,
-  });
+    return buildPageMetadata({
+      title: env.seoParsed.title,
+      description: env.seoParsed.description,
+      path: `/${slug}`,
+      keywords: env.seoParsed.keywords,
+      image: heroImages[0] ?? null,
+      imageAlt: env.config.displayName,
+    });
+  } catch {
+    return { title: "Catalogue" };
+  }
 }
 
 export default async function EnvironmentLayout({ children, params }: LayoutProps) {
   const { environment: slug } = await params;
 
-  if (!(await isValidEnvironmentSlug(slug))) notFound();
+  let environment;
+  try {
+    if (!(await isValidEnvironmentSlug(slug))) notFound();
+    environment = await resolveEnvironment(slug);
+  } catch (error) {
+    console.error("[store-layout] DB error:", error);
+    throw error;
+  }
 
-  const environment = await resolveEnvironment(slug);
   if (!environment) notFound();
 
   const v = getEnvVisual(slug);

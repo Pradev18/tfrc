@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { EnvironmentConfig } from "@/lib/environments";
 
 /** Per-environment visual tokens for premium UI */
@@ -93,7 +94,7 @@ export function getEnvVisual(slug: string): EnvVisual {
   return ENV_VISUALS[slug] ?? ENV_VISUALS.pawmart;
 }
 
-export function envStyle(v: EnvVisual): React.CSSProperties {
+export function envStyle(v: EnvVisual): CSSProperties {
   return {
     "--env-heading": v.heading,
     "--env-body": v.body,
@@ -108,5 +109,5 @@ export function envStyle(v: EnvVisual): React.CSSProperties {
     "--env-badge-bg": v.badgeBg,
     "--env-badge-border": v.badgeBorder,
     "--env-badge-text": v.badgeText,
-  } as React.CSSProperties;
+  } as CSSProperties;
 }
