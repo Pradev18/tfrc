@@ -16,6 +16,7 @@ interface AddToCartButtonProps {
   environmentSlug: string;
   environmentName: string;
   dbId: string;
+  quantity?: number;
   fullWidth?: boolean;
   size?: "sm" | "md";
   accentColor?: string;
@@ -32,13 +33,15 @@ export function AddToCartButton({
   environmentSlug,
   environmentName,
   dbId,
+  quantity = 1,
   fullWidth,
   size = "sm",
   accentColor,
   variant = "solid",
 }: AddToCartButtonProps) {
-  const { isInCart, toggleItem } = useCart();
+  const { isInCart, addItem, removeItem } = useCart();
   const inCart = isInCart(productId);
+  const qty = Math.max(1, quantity);
 
   function handleClick() {
     const item = {
@@ -51,35 +54,10 @@ export function AddToCartButton({
       imageUrl,
       environmentSlug,
       environmentName,
+      quantity: qty,
     };
 
-    if (!inCart) {
-      trackMetaAddToCart({
-        contentId: productId,
-        contentName: name,
-        value: price,
-        currency,
-      });
-      trackCustomerInquiry({
-        eventType: "ADD_TO_CART",
-        environmentSlug,
-        environmentName,
-        itemCount: 1,
-        estimatedTotal: price,
-        currency,
-        items: [
-          {
-            productId,
-            productName: name,
-            slug,
-            price,
-            currency,
-            environmentSlug,
-            environmentName,
-          },
-        ],
-      });
-    } else {
+    if (inCart) {
       trackCustomerInquiry({
         eventType: "REMOVE_FROM_CART",
         environmentSlug,
@@ -99,9 +77,36 @@ export function AddToCartButton({
           },
         ],
       });
+      removeItem(dbId);
+      return;
     }
 
-    toggleItem(item);
+    trackMetaAddToCart({
+      contentId: productId,
+      contentName: name,
+      value: price * qty,
+      currency,
+    });
+    trackCustomerInquiry({
+      eventType: "ADD_TO_CART",
+      environmentSlug,
+      environmentName,
+      itemCount: qty,
+      estimatedTotal: price * qty,
+      currency,
+      items: [
+        {
+          productId,
+          productName: name,
+          slug,
+          price,
+          currency,
+          environmentSlug,
+          environmentName,
+        },
+      ],
+    });
+    addItem(item);
   }
 
   const accent = accentColor ?? "var(--color-primary)";

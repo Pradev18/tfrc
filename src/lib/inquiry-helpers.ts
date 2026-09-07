@@ -14,7 +14,10 @@ export function cartItemsToInquiryItems(items: CartItem[]): InquiryItemPayload[]
 }
 
 export function cartEstimatedTotal(items: CartItem[]): number {
-  return items.reduce((sum, item) => sum + item.price, 0);
+  return items.reduce(
+    (sum, item) => sum + item.price * Math.max(1, item.quantity ?? 1),
+    0
+  );
 }
 
 export function primaryEnvironmentFromCart(items: CartItem[]): {

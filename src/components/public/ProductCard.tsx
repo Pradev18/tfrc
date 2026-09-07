@@ -19,6 +19,16 @@ interface ProductCardProps {
   variant?: "default" | "premium" | "compact";
 }
 
+function productDisplayName(name: string, productId: string) {
+  const id = productId?.trim();
+  if (!id) return name;
+  const trimmed = name.trim();
+  if (trimmed.endsWith(id)) {
+    return trimmed.slice(0, -id.length).replace(/[\s\-_|]+$/u, "").trim() || trimmed;
+  }
+  return trimmed;
+}
+
 export function ProductCard({
   product,
   whatsappSettings,
@@ -35,23 +45,29 @@ export function ProductCard({
   const hasVideo = product.videos.length > 0;
   const productPath = `/${environmentSlug}/product/${product.slug}`;
   const compact = variant === "compact";
+  const itemCode = product.productId || product.sku || "";
+  const title = productDisplayName(product.name, product.productId);
 
   return (
     <article
       className={cn(
-        "store-product-card store-glass-product group flex h-full flex-col overflow-hidden rounded-2xl",
+        "store-product-card store-glass-product group relative flex h-full flex-col overflow-hidden rounded-2xl",
         className
       )}
     >
+      {/* Full-card hit target so image + title always open the product page */}
       <Link
         href={productPath}
-        className="relative block overflow-hidden bg-white"
-        style={{ aspectRatio: "1 / 1" }}
-      >
+        prefetch
+        className="absolute inset-0 z-[1]"
+        aria-label={`View ${title}`}
+      />
+
+      <div className="relative overflow-hidden bg-white" style={{ aspectRatio: "1 / 1" }}>
         {primaryImage ? (
           <Image
             src={primaryImage.url}
-            alt={primaryImage.altText || product.name}
+            alt={primaryImage.altText || title}
             fill
             className="bg-white object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
             sizes="(max-width: 640px) 50vw, 25vw"
@@ -62,7 +78,7 @@ export function ProductCard({
           </div>
         )}
 
-        <div className="absolute left-2.5 top-2.5 flex flex-col gap-1.5">
+        <div className="pointer-events-none absolute left-2.5 top-2.5 z-[2] flex flex-col gap-1.5">
           {pricing.isOnSale && pricing.discountPercent != null && pricing.discountPercent > 0 && (
             <DiscountBadge percent={pricing.discountPercent} accentColor={v.accent} />
           )}
@@ -82,34 +98,42 @@ export function ProductCard({
         </div>
 
         {!inStock && (
-          <div className="absolute inset-x-0 bottom-0 bg-black/60 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur-sm">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] bg-black/60 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur-sm">
             Check availability
           </div>
         )}
-      </Link>
+      </div>
 
-      <div className={cn("flex flex-1 flex-col border-t", compact ? "p-3" : "p-3.5 md:p-4")} style={{ borderColor: `${v.border}99` }}>
+      <div
+        className={cn("relative z-[2] flex flex-1 flex-col border-t", compact ? "p-3" : "p-3.5 md:p-4")}
+        style={{ borderColor: `${v.border}99` }}
+      >
         {product.brand && (
-          <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: v.muted }}>
+          <p className="pointer-events-none text-[10px] font-medium uppercase tracking-wider" style={{ color: v.muted }}>
             {product.brand.name}
           </p>
         )}
 
-        <Link href={productPath} className="mt-1 flex-1">
-          <h3
-            className="line-clamp-2 text-sm leading-snug md:text-[15px]"
+        <div className="pointer-events-none mt-1 flex-1">
+          <p
+            className="line-clamp-2 font-sans text-sm font-medium leading-snug md:text-[15px]"
             style={{ color: v.heading }}
           >
-            {product.name}
-          </h3>
-        </Link>
+            {title}
+          </p>
+          {itemCode ? (
+            <p className="mt-1 font-sans text-[11px] tabular-nums" style={{ color: v.muted }}>
+              Item code: {itemCode}
+            </p>
+          ) : null}
+        </div>
 
-        <div className="mt-2.5">
+        <div className="pointer-events-none mt-2.5">
           <PriceDisplay pricing={pricing} size={compact ? "sm" : "md"} compact accentColor={v.accent} />
         </div>
 
         {!compact && (
-          <div className="mt-3">
+          <div className="relative z-[3] mt-3">
             <ProductCardActions
               product={product}
               pricing={pricing}

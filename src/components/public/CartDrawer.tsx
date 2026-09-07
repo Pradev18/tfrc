@@ -125,9 +125,16 @@ export function CartDrawer({
                     <p className="text-[10px] uppercase tracking-wider text-text-subtle">
                       {item.environmentName}
                     </p>
-                    <p className="line-clamp-2 text-sm font-medium text-text">{item.name}</p>
+                    <p className="line-clamp-2 font-sans text-sm font-medium text-text">{item.name}</p>
+                    <p className="mt-0.5 text-[11px] text-text-muted">
+                      Qty: {Math.max(1, item.quantity ?? 1)}
+                      {item.productId ? ` · Code: ${item.productId}` : ""}
+                    </p>
                     <p className="mt-1 text-sm font-semibold text-primary">
-                      {formatCurrency(item.price, item.currency)}
+                      {formatCurrency(
+                        item.price * Math.max(1, item.quantity ?? 1),
+                        item.currency
+                      )}
                     </p>
                   </div>
                   <button

@@ -27,6 +27,7 @@ function cartItemsToWhatsApp(items: ReturnType<typeof useCart>["items"]) {
     environmentSlug: i.environmentSlug,
     environmentName: i.environmentName,
     displayPrice: i.price,
+    quantity: Math.max(1, i.quantity ?? 1),
   }));
 }
 

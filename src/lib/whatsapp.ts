@@ -12,6 +12,7 @@ export interface WhatsAppProductInput {
   imageUrl?: string;
   environmentSlug?: string;
   environmentName?: string;
+  quantity?: number;
 }
 
 export interface CartWhatsAppItem extends WhatsAppProductInput {
@@ -28,7 +29,7 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   phoneNumber: "97455049229",
   defaultGreeting: "Hello, I would like to order from TFRC Vita Nova",
   productTemplate:
-    "{{index}}. {{name}}{{catalogue}}\n   Price: {{price}}\n   Ref: {{productId}}\n   Link: {{link}}",
+    "{{index}}. {{name}}{{catalogue}}\n   Qty: {{quantity}}\n   Price: {{price}}\n   Ref: {{productId}}\n   Link: {{link}}",
 };
 
 export function interpolateTemplate(
@@ -59,15 +60,22 @@ function formatOrderItemLine(
   item: CartWhatsAppItem,
   siteUrl?: string
 ): string {
-  const priceStr = formatCurrency(item.displayPrice, item.currency ?? "QAR");
+  const qty = Math.max(1, item.quantity ?? 1);
+  const lineTotal = item.displayPrice * qty;
+  const priceStr = formatCurrency(lineTotal, item.currency ?? "QAR");
+  const unitStr =
+    qty > 1
+      ? `${formatCurrency(item.displayPrice, item.currency ?? "QAR")} × ${qty}`
+      : formatCurrency(item.displayPrice, item.currency ?? "QAR");
   const link = buildProductPageUrl(item, siteUrl);
   const template = settings.productTemplate.trim() || DEFAULT_WHATSAPP_SETTINGS.productTemplate;
   return interpolateTemplate(template, {
     index: String(index),
     name: item.name,
-    price: priceStr,
+    price: qty > 1 ? `${unitStr} = ${priceStr}` : priceStr,
     productId: item.productId,
     link,
+    quantity: String(qty),
     catalogue: item.environmentName ? ` — ${item.environmentName}` : "",
     environmentName: item.environmentName ?? "",
   })
@@ -91,7 +99,11 @@ export function buildWhatsAppMessage(
   const body = formatOrderItemLine(
     settings,
     1,
-    { ...product, displayPrice: price.displayPrice },
+    {
+      ...product,
+      displayPrice: price.displayPrice,
+      quantity: Math.max(1, product.quantity ?? 1),
+    },
     siteUrl
   );
 
@@ -118,13 +130,17 @@ export function buildCartWhatsAppMessage(
   const lines = items.map((item, index) =>
     formatOrderItemLine(settings, index + 1, item, siteUrl)
   );
-  const total = items.reduce((sum, i) => sum + i.displayPrice, 0);
+  const total = items.reduce(
+    (sum, i) => sum + i.displayPrice * Math.max(1, i.quantity ?? 1),
+    0
+  );
   const currency = items[0]?.currency ?? "QAR";
+  const totalUnits = items.reduce((sum, i) => sum + Math.max(1, i.quantity ?? 1), 0);
 
   const intro =
-    items.length === 1
+    totalUnits === 1
       ? "I would like to order the following item from your website:"
-      : `I would like to order ${items.length} items from your website:`;
+      : `I would like to order ${totalUnits} items from your website:`;
 
   const closing =
     items.length === 1

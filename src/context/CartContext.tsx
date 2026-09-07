@@ -19,6 +19,7 @@ export interface CartItem {
   imageUrl?: string;
   environmentSlug: string;
   environmentName: string;
+  quantity: number;
 }
 
 interface CartContextValue {
@@ -29,19 +30,27 @@ interface CartContextValue {
   clearCart: () => void;
   isInCart: (productId: string) => boolean;
   toggleItem: (item: CartItem) => void;
+  setItemQuantity: (productId: string, quantity: number) => void;
 }
 
 const STORAGE_KEY = "tfrc-vita-nova-cart";
 
 const CartContext = createContext<CartContextValue | null>(null);
 
+function normalizeItem(raw: Partial<CartItem> & CartItem): CartItem {
+  return {
+    ...raw,
+    quantity: Math.max(1, Number(raw.quantity) || 1),
+  };
+}
+
 function loadCart(): CartItem[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as CartItem[];
-    return Array.isArray(parsed) ? parsed : [];
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return [];
+    const parsed = JSON.parse(stored) as CartItem[];
+    return Array.isArray(parsed) ? parsed.map(normalizeItem) : [];
   } catch {
     return [];
   }
@@ -66,9 +75,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [items, hydrated]);
 
   const addItem = useCallback((item: CartItem) => {
+    const next = normalizeItem(item);
     setItems((prev) => {
-      if (prev.some((i) => i.productId === item.productId)) return prev;
-      return [...prev, item];
+      const existing = prev.find((i) => i.productId === next.productId);
+      if (existing) {
+        return prev.map((i) =>
+          i.productId === next.productId
+            ? { ...i, quantity: Math.min(99, i.quantity + next.quantity) }
+            : i
+        );
+      }
+      return [...prev, next];
     });
   }, []);
 
@@ -84,24 +101,33 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const toggleItem = useCallback((item: CartItem) => {
+    const next = normalizeItem(item);
     setItems((prev) => {
-      const exists = prev.some((i) => i.productId === item.productId);
-      if (exists) return prev.filter((i) => i.productId !== item.productId);
-      return [...prev, item];
+      const exists = prev.some((i) => i.productId === next.productId);
+      if (exists) return prev.filter((i) => i.productId !== next.productId);
+      return [...prev, next];
     });
+  }, []);
+
+  const setItemQuantity = useCallback((productId: string, quantity: number) => {
+    const qty = Math.max(1, Math.min(99, quantity));
+    setItems((prev) =>
+      prev.map((i) => (i.productId === productId ? { ...i, quantity: qty } : i))
+    );
   }, []);
 
   const value = useMemo(
     () => ({
       items,
-      count: items.length,
+      count: items.reduce((sum, i) => sum + i.quantity, 0),
       addItem,
       removeItem,
       clearCart,
       isInCart,
       toggleItem,
+      setItemQuantity,
     }),
-    [items, addItem, removeItem, clearCart, isInCart, toggleItem]
+    [items, addItem, removeItem, clearCart, isInCart, toggleItem, setItemQuantity]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
