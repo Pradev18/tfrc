@@ -7,6 +7,7 @@ import { ProductMobileOrderBar } from "@/components/store/ProductMobileOrderBar"
 import { Breadcrumbs, breadcrumbSchema } from "@/components/public/Breadcrumbs";
 import {
   getProductBySlug,
+  getProductVariantFamily,
   getRelatedProducts,
   mapProductPrices,
 } from "@/services/product.service";
@@ -20,6 +21,7 @@ import { ProductViewTracker } from "@/components/analytics/ProductViewTracker";
 
 interface PageProps {
   params: Promise<{ environment: string; slug: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }
 
 function looksLikeUrl(value: string) {
@@ -113,8 +115,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   });
 }
 
-export default async function EnvironmentProductPage({ params }: PageProps) {
+export default async function EnvironmentProductPage({ params, searchParams }: PageProps) {
   const { environment: envSlug, slug } = await params;
+  const query = await searchParams;
   const environment = await resolveEnvironment(envSlug);
   if (!environment) notFound();
 
@@ -122,8 +125,9 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
   if (!product) notFound();
 
   const v = getEnvVisual(envSlug);
-  const [related, waSettings] = await Promise.all([
+  const [related, variants, waSettings] = await Promise.all([
     getRelatedProducts(product, 8, environment.id),
+    getProductVariantFamily(product),
     getWhatsAppSettings(),
   ]);
 
@@ -151,6 +155,7 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
       environmentSlug: envSlug,
       environmentName: environment.config.displayName,
       quantity: 1,
+      size: product.variantLabel ?? undefined,
     },
     siteUrl
   );
@@ -168,6 +173,7 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
       environmentSlug: envSlug,
       environmentName: environment.config.displayName,
       quantity: 1,
+      size: product.variantLabel ?? undefined,
     },
     siteUrl
   );
@@ -278,6 +284,19 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
                   whatsappSettings={waSettings}
                   siteUrl={siteUrl}
                   accentColor={v.cta}
+                  sizeVariants={variants.map((variant) => ({
+                    id: variant.id,
+                    productId: variant.productId,
+                    slug: variant.slug,
+                    name: variant.name,
+                    label: variant.variantLabel ?? variant.name,
+                    inStock: variant.inventory?.isInStock ?? true,
+                    price: mapProductPrices(variant).pricing.displayPrice,
+                    currency: mapProductPrices(variant).pricing.currency,
+                    imageUrl:
+                      (variant.images.find((image) => image.isPrimary) ?? variant.images[0])?.url,
+                  }))}
+                  initialSizeSelected={query.sizeSelected === "1"}
                 />
               </div>
             </div>
@@ -309,7 +328,7 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
         </div>
       </div>
 
-      <ProductMobileOrderBar
+      {(variants.length === 0 || query.sizeSelected === "1") && <ProductMobileOrderBar
         whatsappSettings={waSettings}
         siteUrl={siteUrl}
         singleProductWaHref={whatsappHref}
@@ -331,6 +350,8 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
               currency: pricing.currency,
               environmentSlug: envSlug,
               environmentName: environment.config.displayName,
+              quantity: 1,
+              size: product.variantLabel ?? undefined,
             },
           ],
         }}
@@ -344,9 +365,10 @@ export default async function EnvironmentProductPage({ params }: PageProps) {
           imageUrl: primaryImage?.url,
           environmentSlug: envSlug,
           environmentName: environment.config.displayName,
+          variantLabel: product.variantLabel,
         }}
         accentColor={v.cta}
-      />
+      />}
     </>
   );
 }

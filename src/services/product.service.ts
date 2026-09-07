@@ -5,14 +5,11 @@ import { getEnvironmentIdBySlug } from "@/services/environment.service";
 import { getDepartmentForSlug } from "@/lib/environments";
 import {
   getEffectiveShopCategoryDefs,
-  getShopCategoryDefs,
   OTHER_SHOP_CATEGORY,
-  resolvePrimaryShopCategory,
 } from "@/lib/shop-categories";
-import {
-  getShopCategoryDefsForEnvironment,
-} from "@/services/shop-category.service";
 import { getCachedEnvironment, getCachedProducts } from "@/lib/catalog-cache";
+import { compareVariantLabels } from "@/lib/product-variants";
+import { cache } from "react";
 
 export interface ProductFilters {
   search?: string;
@@ -31,6 +28,128 @@ export interface ProductFilters {
   page?: number;
   limit?: number;
   listMode?: boolean;
+  /** Show every imported row instead of grouping size variants into one card. */
+  includeVariants?: boolean;
+}
+
+async function getDatabaseSortedProductIds(
+  filters: ProductFilters,
+  environmentId: string | undefined,
+  skip: number,
+  limit: number
+): Promise<string[] | null> {
+  if (
+    !filters.listMode ||
+    !["price_asc", "price_desc", "discount"].includes(filters.sort ?? "") ||
+    filters.categorySlug ||
+    filters.tag ||
+    filters.minPrice != null ||
+    filters.maxPrice != null
+  ) {
+    return null;
+  }
+
+  const clauses: Prisma.Sql[] = [
+    Prisma.sql`p.status = ${ProductStatus.ACTIVE}`,
+    Prisma.sql`p.deletedAt IS NULL`,
+  ];
+  if (!filters.includeVariants) {
+    clauses.push(Prisma.sql`p.isVariantPrimary = ${true}`);
+  }
+
+  if (environmentId) clauses.push(Prisma.sql`p.environmentId = ${environmentId}`);
+  if (filters.department) clauses.push(Prisma.sql`p.departmentSource = ${filters.department}`);
+  if (filters.shopCategorySlug === OTHER_SHOP_CATEGORY.slug) {
+    clauses.push(
+      Prisma.sql`(p.shopCategorySlug = ${OTHER_SHOP_CATEGORY.slug} OR p.shopCategorySlug IS NULL)`
+    );
+  } else if (filters.shopCategorySlug) {
+    clauses.push(Prisma.sql`p.shopCategorySlug = ${filters.shopCategorySlug}`);
+  }
+  if (filters.brandSlug) {
+    clauses.push(
+      Prisma.sql`EXISTS (
+        SELECT 1 FROM Brand b WHERE b.id = p.brandId AND b.slug = ${filters.brandSlug}
+      )`
+    );
+  }
+  if (filters.inStock) {
+    clauses.push(
+      Prisma.sql`EXISTS (
+        SELECT 1 FROM Inventory i WHERE i.productId = p.id AND i.isInStock = ${true}
+      )`
+    );
+  }
+  if (filters.onSale) {
+    clauses.push(
+      Prisma.sql`EXISTS (
+        SELECT 1 FROM Price sale_filter
+        WHERE sale_filter.productId = p.id AND sale_filter.type = 'SALE'
+      )`
+    );
+  }
+  if (filters.search) {
+    const query = `%${filters.search}%`;
+    clauses.push(
+      Prisma.sql`(
+        p.name LIKE ${query}
+        OR p.productId LIKE ${query}
+        OR p.sku LIKE ${query}
+        OR p.description LIKE ${query}
+        OR EXISTS (SELECT 1 FROM Brand sb WHERE sb.id = p.brandId AND sb.name LIKE ${query})
+        OR EXISTS (SELECT 1 FROM Category sc WHERE sc.id IN (p.categoryId, p.subcategoryId) AND sc.name LIKE ${query})
+      )`
+    );
+  }
+
+  const direction =
+    filters.sort === "price_asc" ? Prisma.sql`ASC` : Prisma.sql`DESC`;
+  const sortValue =
+    filters.sort === "discount"
+      ? Prisma.sql`CASE
+          WHEN priced.regularPrice > 0
+            AND priced.salePrice > 0
+            AND priced.salePrice < priced.regularPrice
+          THEN (priced.regularPrice - priced.salePrice) / priced.regularPrice
+          ELSE 0
+        END`
+      : Prisma.sql`COALESCE(
+          CASE
+            WHEN priced.salePrice > 0
+              AND priced.salePrice < priced.regularPrice
+            THEN priced.salePrice
+            ELSE priced.regularPrice
+          END,
+          0
+        )`;
+
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT priced.id
+    FROM (
+      SELECT
+        p.id,
+        (
+          SELECT regular.amount
+          FROM Price regular
+          WHERE regular.productId = p.id AND regular.type = 'REGULAR'
+          ORDER BY regular.createdAt DESC
+          LIMIT 1
+        ) AS regularPrice,
+        (
+          SELECT sale.amount
+          FROM Price sale
+          WHERE sale.productId = p.id AND sale.type = 'SALE'
+          ORDER BY sale.createdAt DESC
+          LIMIT 1
+        ) AS salePrice
+      FROM Product p
+      WHERE ${Prisma.join(clauses, " AND ")}
+    ) priced
+    ORDER BY ${sortValue} ${direction}, priced.id ASC
+    LIMIT ${limit} OFFSET ${skip}
+  `);
+
+  return rows.map((row) => row.id);
 }
 
 export type ProductWithRelations = Prisma.ProductGetPayload<{
@@ -98,6 +217,7 @@ export async function getProducts(filters: ProductFilters = {}) {
       inStock: filters.inStock,
       shopSlug: filters.shopCategorySlug,
       shopDefs: categoryDefs,
+      includeVariants: filters.includeVariants,
     });
     if (!cached) throw error;
     return {
@@ -115,6 +235,7 @@ async function getProductsFromPrisma(filters: ProductFilters = {}) {
   const where: Prisma.ProductWhereInput = {
     status: ProductStatus.ACTIVE,
     deletedAt: null,
+    ...(!filters.includeVariants ? { isVariantPrimary: true } : {}),
   };
 
   let environmentId = filters.environmentId;
@@ -161,43 +282,21 @@ async function getProductsFromPrisma(filters: ProductFilters = {}) {
     }
   }
 
-  if (filters.shopCategorySlug && filters.environmentSlug) {
-    const defs = environmentId
-      ? await getShopCategoryDefsForEnvironment(environmentId, filters.environmentSlug)
-      : getShopCategoryDefs(filters.environmentSlug);
-
-    const candidates = await prisma.product.findMany({
-      where: {
-        environmentId: environmentId ?? undefined,
-        status: ProductStatus.ACTIVE,
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        name: true,
-        googleCategory: true,
-        fbCategory: true,
-      },
-    });
-
-    const matchedIds = candidates
-      .filter((product) => {
-        const primary = resolvePrimaryShopCategory(
-          {
-            name: product.name,
-            googleCategory: product.googleCategory,
-            fbCategory: product.fbCategory,
-          },
-          defs
-        );
-        if (filters.shopCategorySlug === OTHER_SHOP_CATEGORY.slug) {
-          return primary == null;
-        }
-        return primary?.slug === filters.shopCategorySlug;
-      })
-      .map((product) => product.id);
-
-    where.id = matchedIds.length > 0 ? { in: matchedIds } : "__no_exclusive_shop_match__";
+  if (filters.shopCategorySlug) {
+    // Indexed exclusive bucket — set by syncEnvironmentShopCategories / import
+    if (filters.shopCategorySlug === OTHER_SHOP_CATEGORY.slug) {
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+        {
+          OR: [
+            { shopCategorySlug: OTHER_SHOP_CATEGORY.slug },
+            { shopCategorySlug: null },
+          ],
+        },
+      ];
+    } else {
+      where.shopCategorySlug = filters.shopCategorySlug;
+    }
   }
 
   if (filters.brandSlug) {
@@ -232,19 +331,33 @@ async function getProductsFromPrisma(filters: ProductFilters = {}) {
       orderBy = { createdAt: "desc" };
   }
 
-  const [items, total] = await Promise.all([
+  const databaseSortedIds = await getDatabaseSortedProductIds(
+    filters,
+    environmentId,
+    skip,
+    limit
+  );
+  const [queriedItems, total] = await Promise.all([
     prisma.product.findMany({
-      where,
+      where: databaseSortedIds ? { id: { in: databaseSortedIds } } : where,
       include: filters.listMode ? productListInclude : productInclude,
-      orderBy,
-      skip,
-      take: limit,
+      ...(databaseSortedIds ? {} : { orderBy, skip, take: limit }),
     }),
     prisma.product.count({ where }),
   ]);
+  const items = databaseSortedIds
+    ? databaseSortedIds
+        .map((id) => queriedItems.find((item) => item.id === id))
+        .filter((item): item is (typeof queriedItems)[number] => Boolean(item))
+    : queriedItems;
 
   let sorted = items;
-  if (filters.sort === "price_asc" || filters.sort === "price_desc" || filters.sort === "discount") {
+  if (
+    databaseSortedIds === null &&
+    (filters.sort === "price_asc" ||
+      filters.sort === "price_desc" ||
+      filters.sort === "discount")
+  ) {
     sorted = [...items].sort((a, b) => {
       const pa = mapProductPrices(a).pricing.displayPrice;
       const pb = mapProductPrices(b).pricing.displayPrice;
@@ -257,8 +370,39 @@ async function getProductsFromPrisma(filters: ProductFilters = {}) {
     });
   }
 
+  const groupKeys = sorted
+    .map((item) => item.variantGroupKey)
+    .filter((key): key is string => Boolean(key));
+  const siblingVariants =
+    groupKeys.length > 0
+      ? await prisma.product.findMany({
+          where: {
+            environmentId,
+            status: ProductStatus.ACTIVE,
+            deletedAt: null,
+            variantGroupKey: { in: [...new Set(groupKeys)] },
+          },
+          include: productListInclude,
+        })
+      : [];
+  const variantsByGroup = new Map<string, ProductListItem[]>();
+  for (const variant of siblingVariants) {
+    if (!variant.variantGroupKey) continue;
+    const variants = variantsByGroup.get(variant.variantGroupKey) ?? [];
+    variants.push(variant);
+    variantsByGroup.set(variant.variantGroupKey, variants);
+  }
+  for (const variants of variantsByGroup.values()) {
+    variants.sort((a, b) => compareVariantLabels(a.variantLabel, b.variantLabel));
+  }
+
   return {
-    items: sorted,
+    items: sorted.map((item) => ({
+      ...item,
+      sizeVariants: item.variantGroupKey
+        ? variantsByGroup.get(item.variantGroupKey) ?? []
+        : [],
+    })),
     total,
     page,
     limit,
@@ -280,7 +424,10 @@ function collectCategoryIds(cat: {
   return ids;
 }
 
-export async function getProductBySlug(slug: string, environmentSlug?: string) {
+export const getProductBySlug = cache(async function getProductBySlug(
+  slug: string,
+  environmentSlug?: string
+) {
   try {
     const environmentId = environmentSlug
       ? await getEnvironmentIdBySlug(environmentSlug)
@@ -323,6 +470,26 @@ export async function getProductBySlug(slug: string, environmentSlug?: string) {
       saleEnd: p.saleEnd ? new Date(p.saleEnd) : null,
     })),
   } as unknown as ProductWithRelations;
+});
+
+export async function getProductVariantFamily(
+  product: ProductWithRelations
+): Promise<ProductWithRelations[]> {
+  if (!product.variantGroupKey) return [];
+
+  const variants = await prisma.product.findMany({
+    where: {
+      environmentId: product.environmentId,
+      variantGroupKey: product.variantGroupKey,
+      status: ProductStatus.ACTIVE,
+      deletedAt: null,
+    },
+    include: productInclude,
+  });
+
+  return variants.sort((a, b) =>
+    compareVariantLabels(a.variantLabel, b.variantLabel)
+  );
 }
 
 export async function getProductEnvironmentSlug(productId: string): Promise<string | null> {
@@ -341,52 +508,61 @@ export async function getRelatedProducts(
   const envId = environmentId ?? product.environmentId ?? undefined;
   const excludeId = product.id;
 
-  const baseWhere = {
+  const baseWhere: Prisma.ProductWhereInput = {
     status: ProductStatus.ACTIVE,
     deletedAt: null,
+    isVariantPrimary: true,
     id: { not: excludeId },
+    ...(product.variantGroupKey
+      ? {
+          AND: [
+            {
+              OR: [
+                { variantGroupKey: null },
+                { variantGroupKey: { not: product.variantGroupKey } },
+              ],
+            },
+          ],
+        }
+      : {}),
     ...(envId ? { environmentId: envId } : {}),
-  } as const;
+  };
 
-  const affinityFilters = [
-    ...(product.categoryId ? [{ categoryId: product.categoryId }] : []),
+  const shopFilter: Prisma.ProductWhereInput | null = product.shopCategorySlug
+    ? { shopCategorySlug: product.shopCategorySlug }
+    : null;
+
+  const fallbackAffinity: Prisma.ProductWhereInput[] = [
     ...(product.subcategoryId ? [{ subcategoryId: product.subcategoryId }] : []),
+    ...(product.categoryId ? [{ categoryId: product.categoryId }] : []),
     ...(product.brandId ? [{ brandId: product.brandId }] : []),
   ];
+  if (!shopFilter && fallbackAffinity.length === 0) return [];
 
-  const related =
-    affinityFilters.length > 0
-      ? await prisma.product.findMany({
-          where: { ...baseWhere, OR: affinityFilters },
-          include: productListInclude,
-          orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
-          take: limit * 2,
-        })
-      : [];
+  // One indexed query, then rank exact taxonomy matches in memory. This keeps
+  // recommendations in the same exclusive shop category without sequential DB calls.
+  const matches = await prisma.product.findMany({
+    where: {
+      ...baseWhere,
+      ...(shopFilter ?? { OR: fallbackAffinity }),
+    },
+    include: productListInclude,
+    orderBy: [{ isFeatured: "desc" }, { isBestseller: "desc" }, { createdAt: "desc" }],
+    take: Math.max(limit * 4, 24),
+  });
 
-  const unique = new Map<string, (typeof related)[number]>();
-  for (const item of related) {
-    if (item.id === excludeId) continue;
-    if (!unique.has(item.id)) unique.set(item.id, item);
-    if (unique.size >= limit) break;
-  }
-
-  if (unique.size < limit) {
-    const fillers = await prisma.product.findMany({
-      where: {
-        ...baseWhere,
-        id: { notIn: [excludeId, ...Array.from(unique.keys())] },
-      },
-      include: productListInclude,
-      orderBy: [{ isBestseller: "desc" }, { createdAt: "desc" }],
-      take: limit - unique.size,
-    });
-    for (const item of fillers) {
-      if (!unique.has(item.id)) unique.set(item.id, item);
-    }
-  }
-
-  return Array.from(unique.values()).slice(0, limit);
+  return matches
+    .map((item, index) => ({
+      item,
+      index,
+      score:
+        (item.subcategoryId && item.subcategoryId === product.subcategoryId ? 4 : 0) +
+        (item.categoryId && item.categoryId === product.categoryId ? 2 : 0) +
+        (item.brandId && item.brandId === product.brandId ? 1 : 0),
+    }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, limit)
+    .map(({ item }) => item);
 }
 
 export async function getFeaturedProducts(limit = 8, environmentSlug?: string) {

@@ -208,6 +208,14 @@ model Product {
   googleCategory   String?
   fbCategory       String?
   departmentSource String?
+  /** Exclusive storefront shop-category bucket (slug). Null = More to explore / unassigned. */
+  shopCategorySlug String?
+  /** Shared key for separate catalogue rows that are size variants of one item. */
+  variantGroupKey  String?
+  /** Shopper-facing option such as S, M, L or XL. */
+  variantLabel     String?
+  /** Only the primary row appears as a catalogue card; siblings are selectable variants. */
+  isVariantPrimary Boolean                @default(true)
   seoTitle         String?
   seoDescription   String?
   deletedAt        DateTime?
@@ -230,6 +238,9 @@ model Product {
   @@index([isBestseller])
   @@index([isNew])
   @@index([createdAt])
+  @@index([environmentId, shopCategorySlug])
+  @@index([environmentId, variantGroupKey, isVariantPrimary])
+  @@index([environmentId, status, isVariantPrimary, deletedAt])
 }
 
 enum ProductStatus {
@@ -464,8 +475,10 @@ model SiteSetting {
 model WhatsAppSetting {
   id              String   @id @default(cuid())
   phoneNumber     String
-  defaultGreeting String   @default("Hello, I would like to order from TFRC Vita Nova")
-  productTemplate String   @default("{{name}} — {{price}} (Ref: {{productId}})")
+  defaultGreeting String   @default("Hello TFRC team,")
+  orderIntro      String   @default("I'd like to place the following order:")
+  productTemplate String   @default("{{index}}. {{name}}\n   Ref: {{productId}} | Qty: {{quantity}}\n   {{sizeLine}}{{lineTotal}}")
+  closingMessage  String   @default("Please confirm availability and delivery details. Thank you.")
   isActive        Boolean  @default(true)
   updatedAt       DateTime @updatedAt
 }
@@ -571,6 +584,8 @@ model CustomerInquiryItem {
   productName     String
   slug            String
   price           Float
+  quantity        Int             @default(1)
+  size            String?
   currency        String          @default("QAR")
   environmentSlug String?
   environmentName String?

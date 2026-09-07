@@ -22,6 +22,7 @@ interface ProductMobileOrderBarProps {
     imageUrl?: string;
     environmentSlug: string;
     environmentName: string;
+    variantLabel?: string | null;
   };
   accentColor: string;
 }
@@ -67,6 +68,7 @@ export function ProductMobileOrderBar({
               imageUrl={product.imageUrl}
               environmentSlug={product.environmentSlug}
               environmentName={product.environmentName}
+              variantLabel={product.variantLabel}
               fullWidth
               size="md"
               accentColor={accentColor}

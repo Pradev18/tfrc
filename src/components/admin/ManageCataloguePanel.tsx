@@ -1,9 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Download } from "lucide-react";
 import { announceSiteDataUpdate } from "@/components/LiveDataRefresh";
 import { CatalogueImportForm } from "@/components/admin/CatalogueImportForm";
 import { CatalogueImage } from "@/components/admin/CatalogueImage";
+import { UiSelect } from "@/components/ui/UiSelect";
+import {
+  CategoryScroll,
+  type ShopCategoryItem,
+} from "@/components/store/CategoryScroll";
+import { ALL_PRODUCTS_CATEGORY_SLUG } from "@/lib/store-category-navigation";
 
 const PAGE_SIZE_OPTIONS = [15, 30, 50] as const;
 
@@ -21,21 +28,34 @@ interface ProductRow {
 interface ManageCataloguePanelProps {
   catalogueId: string;
   catalogueName: string;
+  catalogueSlug: string;
 }
 
-export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCataloguePanelProps) {
+interface AdminShopCategory extends ShopCategoryItem {
+  id: string;
+  keywords: string[];
+  sortOrder: number;
+}
+
+export function ManageCataloguePanel({
+  catalogueId,
+  catalogueName,
+  catalogueSlug,
+}: ManageCataloguePanelProps) {
   const [tab, setTab] = useState<"products" | "categories" | "import">("products");
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [total, setTotal] = useState(0);
+  const [catalogueTotal, setCatalogueTotal] = useState(0);
   const [q, setQ] = useState("");
+  const [appliedQ, setAppliedQ] = useState("");
+  const [selectedCategorySlug, setSelectedCategorySlug] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(15);
   const [loading, setLoading] = useState(false);
-  const [categories, setCategories] = useState<
-    { id: string; name: string; slug: string; keywords: string[]; sortOrder: number }[]
-  >([]);
+  const [categories, setCategories] = useState<AdminShopCategory[]>([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const canPaginate = total > pageSize;
@@ -47,7 +67,7 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
     setError("");
     try {
       const res = await fetch(
-        `/api/admin/catalogues/${catalogueId}/products?q=${encodeURIComponent(q)}&page=${page}&limit=${pageSize}&_=${Date.now()}`,
+        `/api/admin/catalogues/${catalogueId}/products?q=${encodeURIComponent(appliedQ)}&shop=${encodeURIComponent(selectedCategorySlug)}&page=${page}&limit=${pageSize}&_=${Date.now()}`,
         { cache: "no-store", headers: { "Cache-Control": "no-store" } }
       );
       const data = await res.json();
@@ -56,6 +76,7 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
       const nextTotalPages = Math.max(1, Math.ceil(nextTotal / pageSize));
       setProducts(data.products ?? []);
       setTotal(nextTotal);
+      setCatalogueTotal(data.catalogueTotal ?? nextTotal);
       if (page > nextTotalPages) {
         setPage(nextTotalPages);
       }
@@ -64,7 +85,7 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
     } finally {
       setLoading(false);
     }
-  }, [catalogueId, q, page, pageSize]);
+  }, [appliedQ, catalogueId, selectedCategorySlug, page, pageSize]);
 
   const loadCategories = useCallback(async () => {
     const res = await fetch(`/api/admin/catalogues/${catalogueId}/categories?_=${Date.now()}`, {
@@ -75,13 +96,29 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
   }, [catalogueId]);
 
   useEffect(() => {
-    if (tab === "products") loadProducts();
+    if (tab === "products") {
+      loadProducts();
+      loadCategories();
+    }
     if (tab === "categories") loadCategories();
   }, [tab, loadProducts, loadCategories]);
 
   function searchProducts() {
+    const nextQuery = q.trim();
+    if (nextQuery === appliedQ && page === 1) {
+      void loadProducts();
+      return;
+    }
+    setAppliedQ(nextQuery);
     setPage(1);
-    if (page === 1) loadProducts();
+  }
+
+  function selectCategory(slug: string | null) {
+    setSelectedCategorySlug(
+      !slug || slug === ALL_PRODUCTS_CATEGORY_SLUG ? "" : slug
+    );
+    setPage(1);
+    setTab("products");
   }
 
   async function saveProduct(product: ProductRow, patch: Record<string, unknown>) {
@@ -142,8 +179,43 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
     setLoading(false);
   }
 
+  async function downloadCataloguePdf(autoPrint = true) {
+    setPdfLoading(true);
+    setError("");
+    try {
+      const url = `/api/admin/catalogues/${catalogueId}/pdf${autoPrint ? "?print=1" : ""}`;
+      const response = await fetch(url, {
+        cache: "no-store",
+        headers: { Accept: "text/html" },
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || "Could not generate catalogue PDF");
+      }
+      const html = await response.text();
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const objectUrl = URL.createObjectURL(blob);
+      const popup = window.open(objectUrl, "_blank", "noopener,noreferrer");
+      if (!popup) {
+        // Popup blocked — fall back to same-tab navigation.
+        window.location.href = objectUrl;
+      } else {
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      }
+      setMessage(
+        autoPrint
+          ? "Catalogue PDF opened — choose Save as PDF in the print dialog. Every product in each category is included."
+          : "Catalogue PDF preview opened."
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not generate catalogue PDF");
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
   const tabs = [
-    { id: "products" as const, label: `Products (${total})` },
+    { id: "products" as const, label: `Products (${catalogueTotal || total})` },
     { id: "categories" as const, label: "Shop categories" },
     { id: "import" as const, label: "Import Excel" },
   ];
@@ -176,7 +248,48 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
 
       {tab === "products" && (
         <div>
-          <div className="mb-4 flex gap-2">
+          {categories.length > 0 && (
+            <div className="mb-4 rounded-2xl border border-border bg-surface p-3 sm:p-4">
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-primary">
+                    Browse products by category
+                  </h3>
+                  <p className="text-xs text-text-muted">
+                    Click a category or use the dropdown. Every imported product remains available
+                    under All products.
+                  </p>
+                </div>
+                <UiSelect
+                  value={selectedCategorySlug || ALL_PRODUCTS_CATEGORY_SLUG}
+                  onValueChange={(value) => selectCategory(value)}
+                  ariaLabel="Select product category"
+                  options={[
+                    {
+                      value: ALL_PRODUCTS_CATEGORY_SLUG,
+                      label: `All products (${catalogueTotal || total})`,
+                    },
+                    ...categories.map((category) => ({
+                      value: category.slug,
+                      label: `${category.name} (${category.productCount})`,
+                    })),
+                  ]}
+                  className="min-h-[44px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm sm:w-64"
+                />
+              </div>
+              <CategoryScroll
+                categories={categories}
+                environmentSlug={catalogueSlug}
+                embedded
+                showAllProducts
+                allProductsCount={catalogueTotal || total}
+                activeSlug={selectedCategorySlug || ALL_PRODUCTS_CATEGORY_SLUG}
+                onSelect={selectCategory}
+              />
+            </div>
+          )}
+
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -184,17 +297,44 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
                 if (e.key === "Enter") searchProducts();
               }}
               placeholder="Search products…"
-              className="flex-1 rounded-lg border border-border px-3 py-2 text-sm"
+              className="min-w-0 flex-1 rounded-lg border border-border px-3 py-2 text-sm"
             />
-            <button type="button" onClick={searchProducts} className="btn-primary px-4 py-2 text-sm">
-              Search
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={searchProducts} className="btn-primary px-4 py-2 text-sm">
+                Search
+              </button>
+              <button
+                type="button"
+                onClick={() => void downloadCataloguePdf(true)}
+                disabled={pdfLoading || total === 0}
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Download className="h-4 w-4" />
+                {pdfLoading ? "Preparing PDF…" : "Download PDF"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void downloadCataloguePdf(false)}
+                disabled={pdfLoading || total === 0}
+                className="rounded-lg px-3 py-2 text-sm text-text-muted hover:text-primary disabled:opacity-50"
+              >
+                Preview
+              </button>
+            </div>
           </div>
+          <p className="mb-4 text-xs text-text-muted">
+            PDF includes every product by category (12 cards per page). Use Jump to category on each
+            page, or the cover index, to open any category.
+          </p>
 
           {loading ? (
             <p className="text-sm text-text-muted">Loading…</p>
           ) : products.length === 0 ? (
-            <p className="text-sm text-text-muted">No products yet. Import an Excel file.</p>
+            <p className="text-sm text-text-muted">
+              {catalogueTotal === 0
+                ? "No products yet. Import an Excel file."
+                : "No products match this category or search."}
+            </p>
           ) : (
             <>
               <div className="space-y-3">
@@ -247,15 +387,17 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
                             })
                           }
                         />
-                        <select
-                          defaultValue={p.status}
+                        <UiSelect
+                          value={p.status}
+                          options={[
+                            { value: "ACTIVE", label: "Active" },
+                            { value: "INACTIVE", label: "Inactive" },
+                            { value: "DRAFT", label: "Draft" },
+                          ]}
+                          ariaLabel={`Status for ${p.name}`}
                           className="rounded border border-border px-2 py-1 text-xs"
-                          onChange={(e) => saveProduct(p, { status: e.target.value })}
-                        >
-                          <option value="ACTIVE">Active</option>
-                          <option value="INACTIVE">Inactive</option>
-                          <option value="DRAFT">Draft</option>
-                        </select>
+                          onValueChange={(value) => saveProduct(p, { status: value })}
+                        />
                         <button
                           type="button"
                           onClick={() => deleteProduct(p.id)}
@@ -276,24 +418,22 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
                 </p>
 
                 <div className="flex items-center gap-2">
-                  <label className="sr-only" htmlFor="admin-product-page-size">
+                  <span className="sr-only">
                     Products per page
-                  </label>
-                  <select
-                    id="admin-product-page-size"
+                  </span>
+                  <UiSelect
                     value={pageSize}
-                    onChange={(e) => {
-                      setPageSize(Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number]);
+                    onValueChange={(value) => {
+                      setPageSize(Number(value) as (typeof PAGE_SIZE_OPTIONS)[number]);
                       setPage(1);
                     }}
+                    ariaLabel="Products per page"
+                    options={PAGE_SIZE_OPTIONS.map((size) => ({
+                      value: String(size),
+                      label: String(size),
+                    }))}
                     className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
-                  >
-                    {PAGE_SIZE_OPTIONS.map((size) => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ))}
-                  </select>
+                  />
 
                   {canPaginate && (
                     <div className="flex items-center gap-1">
@@ -341,10 +481,18 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             {categories.map((cat) => (
-              <div key={cat.id} className="rounded-xl border border-border bg-surface p-4">
+              <button
+                type="button"
+                key={cat.id}
+                onClick={() => selectCategory(cat.slug)}
+                className="rounded-xl border border-border bg-surface p-4 text-left transition hover:border-primary/30 hover:shadow-sm"
+              >
                 <p className="font-medium">{cat.name}</p>
+                <p className="mt-1 text-xs font-semibold text-primary">
+                  {cat.productCount} products · Open products →
+                </p>
                 <p className="mt-1 text-xs text-text-muted">{cat.keywords.join(", ")}</p>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -361,6 +509,7 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
               );
               setPage(1);
               setQ("");
+              setAppliedQ("");
               setTab("products");
               // Force reload even if page was already 1
               window.setTimeout(() => {

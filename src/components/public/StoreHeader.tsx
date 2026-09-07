@@ -5,11 +5,13 @@ import { getCategoryHeroImage } from "@/lib/category-images";
 import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { normalizeCatalogueImageSrc } from "@/lib/media-url";
 import type { ParsedEnvironment } from "@/services/environment.service";
+import { getActiveEnvironments } from "@/services/environment.service";
 
 export async function StoreHeader({ environment }: { environment: ParsedEnvironment }) {
-  const [shopCategories, waSettings] = await Promise.all([
+  const [shopCategories, waSettings, activeEnvironments] = await Promise.all([
     getShopCategories(environment.slug),
     getWhatsAppSettings(),
+    getActiveEnvironments(),
   ]);
 
   const waHref = `https://wa.me/${waSettings.phoneNumber}?text=${encodeURIComponent(waSettings.defaultGreeting)}`;
@@ -27,6 +29,10 @@ export async function StoreHeader({ environment }: { environment: ParsedEnvironm
       waHref={waHref}
       whatsappSettings={waSettings}
       siteUrl={siteUrl}
+      activeEnvironments={activeEnvironments.map((item) => ({
+        slug: item.slug,
+        displayName: item.config.displayName,
+      }))}
     />
   );
 }

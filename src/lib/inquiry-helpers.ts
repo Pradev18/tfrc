@@ -1,5 +1,6 @@
 import type { CartItem } from "@/context/CartContext";
 import type { InquiryItemPayload } from "@/lib/inquiry-types";
+import { calculateOrderTotal } from "@/lib/money";
 
 export function cartItemsToInquiryItems(items: CartItem[]): InquiryItemPayload[] {
   return items.map((item) => ({
@@ -10,14 +11,13 @@ export function cartItemsToInquiryItems(items: CartItem[]): InquiryItemPayload[]
     currency: item.currency,
     environmentSlug: item.environmentSlug,
     environmentName: item.environmentName,
+    quantity: Math.max(1, item.quantity),
+    size: item.size,
   }));
 }
 
 export function cartEstimatedTotal(items: CartItem[]): number {
-  return items.reduce(
-    (sum, item) => sum + item.price * Math.max(1, item.quantity ?? 1),
-    0
-  );
+  return calculateOrderTotal(items);
 }
 
 export function primaryEnvironmentFromCart(items: CartItem[]): {

@@ -7,11 +7,11 @@ import { Menu, X, Search, ChevronDown, ArrowRight } from "lucide-react";
 import { WhatsAppButton } from "@/components/public/WhatsAppButton";
 import { CartButton } from "@/components/public/CartButton";
 import { CartDrawer } from "@/components/public/CartDrawer";
-import { ENVIRONMENT_CONFIGS } from "@/lib/environments";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { EnvIcon } from "@/components/public/EnvIcon";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
 import type { ParsedEnvironment } from "@/services/environment.service";
+import { focusStoreCategory, showAllStoreCategories } from "@/lib/store-category-navigation";
 
 interface ShopNavCategory {
   slug: string;
@@ -26,6 +26,7 @@ interface EnvironmentHeaderProps {
   waHref: string;
   whatsappSettings: WhatsAppSettings;
   siteUrl?: string;
+  activeEnvironments: Array<{ slug: string; displayName: string }>;
 }
 
 export function EnvironmentHeader({
@@ -35,6 +36,7 @@ export function EnvironmentHeader({
   waHref,
   whatsappSettings,
   siteUrl,
+  activeEnvironments,
 }: EnvironmentHeaderProps) {
   const router = useRouter();
   const envSlug = environment.slug;
@@ -140,7 +142,8 @@ export function EnvironmentHeader({
 
             <nav className="hidden items-center lg:flex" aria-label="Main navigation">
               <Link
-                href={`/${envSlug}`}
+                href="/"
+                prefetch
                 className="nav-link px-3 py-5 text-[13px] font-medium"
                 style={navLinkStyle}
               >
@@ -150,6 +153,10 @@ export function EnvironmentHeader({
                 href={`/${envSlug}#catalog`}
                 className="nav-link px-3 py-5 text-[13px] font-medium"
                 style={navLinkStyle}
+                onClick={(event) => {
+                  event.preventDefault();
+                  showAllStoreCategories("#catalog");
+                }}
               >
                 Shop all
               </Link>
@@ -175,10 +182,14 @@ export function EnvironmentHeader({
                       {shopCategories.map((cat) => (
                         <Link
                           key={cat.slug}
-                          href={`/${envSlug}?shop=${cat.slug}#category-${cat.slug}`}
+                          href={`/${envSlug}#category-${cat.slug}`}
                           className="flex items-center justify-between rounded-xl px-4 py-2.5 text-sm transition-colors hover:bg-black/[0.03]"
                           style={{ color: v.body }}
-                          onClick={() => setCategoriesOpen(false)}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            setCategoriesOpen(false);
+                            focusStoreCategory(cat.slug);
+                          }}
                         >
                           <span>{cat.name}</span>
                           {cat.productCount != null && (
@@ -195,6 +206,10 @@ export function EnvironmentHeader({
                 href={`/${envSlug}#deals`}
                 className="nav-link px-3 py-5 text-[13px] font-medium"
                 style={{ color: v.accent }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  showAllStoreCategories("#deals");
+                }}
               >
                 Deals
               </Link>
@@ -222,7 +237,7 @@ export function EnvironmentHeader({
                     >
                       ← TFRC Vita Nova Home
                     </Link>
-                    {ENVIRONMENT_CONFIGS.map((env) => {
+                    {activeEnvironments.map((env) => {
                       const ev = getEnvVisual(env.slug);
                       return (
                         <Link
@@ -335,7 +350,8 @@ export function EnvironmentHeader({
             </div>
             <nav className="flex-1 overflow-y-auto p-4">
               <Link
-                href={`/${envSlug}`}
+                href="/"
+                prefetch
                 className="block py-3 font-medium"
                 style={{ color: v.heading }}
                 onClick={() => setMobileOpen(false)}
@@ -344,17 +360,25 @@ export function EnvironmentHeader({
               </Link>
               <Link
                 href={`/${envSlug}#catalog`}
-                className="block py-3 font-medium"
+                className="block min-h-[44px] py-3 font-medium"
                 style={{ color: v.heading }}
-                onClick={() => setMobileOpen(false)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setMobileOpen(false);
+                  showAllStoreCategories("#catalog");
+                }}
               >
                 Shop All
               </Link>
               <Link
                 href={`/${envSlug}#deals`}
-                className="block py-3 font-medium"
+                className="block min-h-[44px] py-3 font-medium"
                 style={{ color: v.accent }}
-                onClick={() => setMobileOpen(false)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setMobileOpen(false);
+                  showAllStoreCategories("#deals");
+                }}
               >
                 Today&apos;s Deals
               </Link>
@@ -369,10 +393,14 @@ export function EnvironmentHeader({
                   {shopCategories.map((cat) => (
                     <Link
                       key={cat.slug}
-                      href={`/${envSlug}?shop=${cat.slug}#category-${cat.slug}`}
-                      className="flex items-center justify-between py-2 pl-2 text-sm"
+                      href={`/${envSlug}#category-${cat.slug}`}
+                      className="flex min-h-[44px] items-center justify-between py-2 pl-2 text-sm"
                       style={{ color: v.body }}
-                      onClick={() => setMobileOpen(false)}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        setMobileOpen(false);
+                        window.setTimeout(() => focusStoreCategory(cat.slug), 0);
+                      }}
                     >
                       <span>{cat.name}</span>
                       {cat.productCount != null && (

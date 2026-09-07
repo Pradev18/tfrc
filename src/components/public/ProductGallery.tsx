@@ -9,6 +9,7 @@ import Image from "next/image";
 import { Play, ZoomIn } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { MEDIA_BLUR_DATA_URL, MediaFallback } from "@/components/public/MediaFallback";
 
 
 
@@ -102,7 +103,15 @@ export function ProductGallery({ images, videos = [], productName }: ProductGall
 
             >
 
-              <Image src={img.url} alt="" fill className="object-contain p-1" sizes="64px" />
+              <Image
+                src={img.url}
+                alt=""
+                fill
+                className="object-contain p-1"
+                sizes="64px"
+                placeholder="blur"
+                blurDataURL={MEDIA_BLUR_DATA_URL}
+              />
 
             </button>
 
@@ -183,16 +192,13 @@ export function ProductGallery({ images, videos = [], productName }: ProductGall
               sizes="(max-width: 768px) 100vw, 45vw"
 
               priority
+              placeholder="blur"
+              blurDataURL={MEDIA_BLUR_DATA_URL}
 
             />
 
           ) : (
-
-            <div className="flex h-full items-center justify-center text-[#9c9690]">
-
-              No image available
-
-            </div>
+            <MediaFallback />
 
           )}
 

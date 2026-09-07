@@ -11,6 +11,8 @@ const inquiryItemSchema = z.object({
   currency: z.string().optional(),
   environmentSlug: z.string().optional(),
   environmentName: z.string().optional(),
+  quantity: z.number().int().min(1).optional(),
+  size: z.string().optional(),
 });
 
 const inquirySchema = z.object({

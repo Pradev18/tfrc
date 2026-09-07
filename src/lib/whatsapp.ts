@@ -1,6 +1,7 @@
 import { formatCurrency } from "@/lib/utils";
 import { getEffectivePrice } from "@/lib/pricing";
 import { buildWhatsAppCatalogProductUrl } from "@/lib/whatsapp-catalog";
+import { calculateLineTotal, calculateOrderTotal } from "@/lib/money";
 
 export interface WhatsAppProductInput {
   name: string;
@@ -13,6 +14,7 @@ export interface WhatsAppProductInput {
   environmentSlug?: string;
   environmentName?: string;
   quantity?: number;
+  size?: string;
 }
 
 export interface CartWhatsAppItem extends WhatsAppProductInput {
@@ -22,14 +24,18 @@ export interface CartWhatsAppItem extends WhatsAppProductInput {
 export interface WhatsAppSettings {
   phoneNumber: string;
   defaultGreeting: string;
+  orderIntro?: string;
   productTemplate: string;
+  closingMessage?: string;
 }
 
 export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   phoneNumber: "97455049229",
-  defaultGreeting: "Hello, I would like to order from TFRC Vita Nova",
+  defaultGreeting: "Hello TFRC team,",
+  orderIntro: "I'd like to place the following order:",
   productTemplate:
-    "{{index}}. {{name}}{{catalogue}}\n   Qty: {{quantity}}\n   Price: {{price}}\n   Ref: {{productId}}\n   Link: {{link}}",
+    "{{index}}. {{name}}\n   Ref: {{productId}} | Qty: {{quantity}}\n   {{sizeLine}}{{lineTotal}}",
+  closingMessage: "Please confirm availability and delivery details. Thank you.",
 };
 
 export function interpolateTemplate(
@@ -42,6 +48,11 @@ export function interpolateTemplate(
 /** Strip broken replacement chars from greetings copied across encodings */
 function cleanGreeting(greeting: string): string {
   return greeting.replace(/\uFFFD/g, "").trim();
+}
+
+function cleanProductName(name: string, productId: string): string {
+  const escapedId = productId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return name.replace(new RegExp(`(?:\\s+${escapedId})+$`, "i"), "").trim();
 }
 
 function buildProductPageUrl(
@@ -61,7 +72,7 @@ function formatOrderItemLine(
   siteUrl?: string
 ): string {
   const qty = Math.max(1, item.quantity ?? 1);
-  const lineTotal = item.displayPrice * qty;
+  const lineTotal = calculateLineTotal(item.displayPrice, qty);
   const priceStr = formatCurrency(lineTotal, item.currency ?? "QAR");
   const unitStr =
     qty > 1
@@ -69,18 +80,28 @@ function formatOrderItemLine(
       : formatCurrency(item.displayPrice, item.currency ?? "QAR");
   const link = buildProductPageUrl(item, siteUrl);
   const template = settings.productTemplate.trim() || DEFAULT_WHATSAPP_SETTINGS.productTemplate;
-  return interpolateTemplate(template, {
+  let formatted = interpolateTemplate(template, {
     index: String(index),
-    name: item.name,
+    name: cleanProductName(item.name, item.productId),
     price: qty > 1 ? `${unitStr} = ${priceStr}` : priceStr,
+    unitPrice: formatCurrency(item.displayPrice, item.currency ?? "QAR"),
+    lineTotal: priceStr,
     productId: item.productId,
     link,
     quantity: String(qty),
     catalogue: item.environmentName ? ` — ${item.environmentName}` : "",
     environmentName: item.environmentName ?? "",
-  })
+    size: item.size ?? "",
+    sizeLine: item.size ? `Size: ${item.size}\n   ` : "",
+  });
+  if (item.size && !template.includes("{{size}}")) {
+    const lines = formatted.split("\n");
+    lines.splice(1, 0, `   Size: ${item.size}`);
+    formatted = lines.join("\n");
+  }
+  return formatted
     .split("\n")
-    .filter((line) => !/^\s*(?:link|catalogue):\s*$/i.test(line))
+    .filter((line) => !/^\s*(?:link|catalogue|size):\s*$/i.test(line))
     .join("\n")
     .trim();
 }
@@ -106,17 +127,29 @@ export function buildWhatsAppMessage(
     },
     siteUrl
   );
+  const quantity = Math.max(1, product.quantity ?? 1);
+  const templateVars = {
+    itemCount: String(quantity),
+    total: formatCurrency(
+      calculateLineTotal(price.displayPrice, quantity),
+      product.currency ?? "QAR"
+    ),
+  };
 
   return [
     cleanGreeting(settings.defaultGreeting),
     "",
-    "I would like to order this item from your website:",
+    interpolateTemplate(
+      settings.orderIntro?.trim() || DEFAULT_WHATSAPP_SETTINGS.orderIntro!,
+      templateVars
+    ),
     "",
     body,
     "",
-    "Please confirm availability, price, and delivery in Qatar.",
-    "",
-    "Thank you!",
+    interpolateTemplate(
+      settings.closingMessage?.trim() || DEFAULT_WHATSAPP_SETTINGS.closingMessage!,
+      templateVars
+    ),
   ].join("\n");
 }
 
@@ -130,35 +163,38 @@ export function buildCartWhatsAppMessage(
   const lines = items.map((item, index) =>
     formatOrderItemLine(settings, index + 1, item, siteUrl)
   );
-  const total = items.reduce(
-    (sum, i) => sum + i.displayPrice * Math.max(1, i.quantity ?? 1),
-    0
+  const total = calculateOrderTotal(
+    items.map((item) => ({
+      price: item.displayPrice,
+      quantity: item.quantity,
+    }))
   );
   const currency = items[0]?.currency ?? "QAR";
   const totalUnits = items.reduce((sum, i) => sum + Math.max(1, i.quantity ?? 1), 0);
 
-  const intro =
-    totalUnits === 1
-      ? "I would like to order the following item from your website:"
-      : `I would like to order ${totalUnits} items from your website:`;
-
-  const closing =
-    items.length === 1
-      ? "Please confirm availability, price, and delivery in Qatar."
-      : "Please confirm all items are available, the total price, and delivery in Qatar.";
+  const templateVars = {
+    itemCount: String(totalUnits),
+    total: formatCurrency(total, currency),
+  };
+  const intro = interpolateTemplate(
+    settings.orderIntro?.trim() || DEFAULT_WHATSAPP_SETTINGS.orderIntro!,
+    templateVars
+  );
+  const closing = interpolateTemplate(
+    settings.closingMessage?.trim() || DEFAULT_WHATSAPP_SETTINGS.closingMessage!,
+    templateVars
+  );
 
   return [
     cleanGreeting(settings.defaultGreeting),
     "",
     intro,
     "",
-    ...lines,
+    lines.join("\n\n"),
     "",
-    `Order total: ${formatCurrency(total, currency)}`,
+    `Total: ${formatCurrency(total, currency)}`,
     "",
     closing,
-    "",
-    "Thank you!",
   ].join("\n");
 }
 

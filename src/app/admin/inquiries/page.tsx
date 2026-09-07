@@ -47,6 +47,8 @@ export default async function AdminInquiriesPage() {
       productName: item.productName,
       price: item.price,
       currency: item.currency,
+      quantity: item.quantity,
+      size: item.size,
     })),
   }));
 

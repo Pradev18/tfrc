@@ -11,11 +11,15 @@ export async function PATCH(request: NextRequest) {
   const body = (await request.json()) as {
     phoneNumber?: unknown;
     defaultGreeting?: unknown;
+    orderIntro?: unknown;
     productTemplate?: unknown;
+    closingMessage?: unknown;
   };
   const phoneNumber = String(body.phoneNumber ?? "").replace(/\D/g, "");
   const defaultGreeting = String(body.defaultGreeting ?? "").trim();
+  const orderIntro = String(body.orderIntro ?? "").trim();
   const productTemplate = String(body.productTemplate ?? "").trim();
+  const closingMessage = String(body.closingMessage ?? "").trim();
 
   if (phoneNumber.length < 8 || phoneNumber.length > 15) {
     return NextResponse.json(
@@ -35,6 +39,18 @@ export async function PATCH(request: NextRequest) {
       { status: 400 }
     );
   }
+  if (!orderIntro || orderIntro.length > 500) {
+    return NextResponse.json(
+      { error: "Order introduction is required and must be under 500 characters" },
+      { status: 400 }
+    );
+  }
+  if (!closingMessage || closingMessage.length > 500) {
+    return NextResponse.json(
+      { error: "Closing message is required and must be under 500 characters" },
+      { status: 400 }
+    );
+  }
 
   const existing = await prisma.whatsAppSetting.findFirst({
     orderBy: { updatedAt: "desc" },
@@ -42,10 +58,24 @@ export async function PATCH(request: NextRequest) {
   const settings = existing
     ? await prisma.whatsAppSetting.update({
         where: { id: existing.id },
-        data: { phoneNumber, defaultGreeting, productTemplate, isActive: true },
+        data: {
+          phoneNumber,
+          defaultGreeting,
+          orderIntro,
+          productTemplate,
+          closingMessage,
+          isActive: true,
+        },
       })
     : await prisma.whatsAppSetting.create({
-        data: { phoneNumber, defaultGreeting, productTemplate, isActive: true },
+        data: {
+          phoneNumber,
+          defaultGreeting,
+          orderIntro,
+          productTemplate,
+          closingMessage,
+          isActive: true,
+        },
       });
 
   await touchSiteRevision();
@@ -56,7 +86,9 @@ export async function PATCH(request: NextRequest) {
       settings: {
         phoneNumber: settings.phoneNumber,
         defaultGreeting: settings.defaultGreeting,
+        orderIntro: settings.orderIntro,
         productTemplate: settings.productTemplate,
+        closingMessage: settings.closingMessage,
       },
     },
     { headers: { "Cache-Control": "no-store" } }

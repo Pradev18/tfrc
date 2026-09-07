@@ -24,6 +24,8 @@ export interface CatalogRow {
   video_url: string | null;
   video_tag: string | null;
   gtin: string | null;
+  size: string | null;
+  item_group_id: string | null;
   product_tags: string[];
   departmentSource: string;
 }
@@ -103,6 +105,30 @@ export function parseExcelBuffer(
 
   if (raw.length === 0) {
     errors.push({ row: 1, message: "The selected worksheet is empty" });
+  } else {
+    const headers = new Set(Object.keys(raw[0]));
+    const requiredColumns = [
+      { label: "id", aliases: ["id", "product_id", "item_id"] },
+      { label: "title", aliases: ["title", "name", "product_name"] },
+      { label: "price", aliases: ["price"] },
+      { label: "image_link", aliases: ["image_link", "image_url"] },
+    ];
+    const missing = requiredColumns
+      .filter((column) => !column.aliases.some((alias) => headers.has(alias)))
+      .map((column) => column.label);
+    if (missing.length > 0) {
+      return {
+        rows: [],
+        errors: [
+          {
+            row: 1,
+            message:
+              `This is not a supported Meta catalogue Excel sheet. Missing required Meta columns: ${missing.join(", ")}.`,
+          },
+        ],
+        whatsappNumber: null,
+      };
+    }
   }
 
   raw.forEach((row, index) => {
@@ -180,6 +206,8 @@ export function parseExcelBuffer(
       video_url: cellStr(row["video[0].url"]) || null,
       video_tag: cellStr(row["video[0].tag[0]"]) || null,
       gtin: cellStr(row.gtin) || null,
+      size: cellStr(row.size) || null,
+      item_group_id: cellStr(row.item_group_id || row.item_group) || null,
       product_tags: parseTags(row),
       departmentSource,
     });

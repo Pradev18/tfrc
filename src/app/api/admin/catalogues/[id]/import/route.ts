@@ -10,7 +10,7 @@ interface RouteContext {
 }
 
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = new Set(["xlsx", "xls", "csv"]);
+const ALLOWED_EXTENSIONS = new Set(["xlsx", "xls"]);
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (!ALLOWED_EXTENSIONS.has(extension)) {
     return NextResponse.json(
-      { error: "Choose an Excel (.xlsx, .xls) or CSV file" },
+      { error: "Choose a Meta catalogue Excel file (.xlsx or .xls)" },
       { status: 400 }
     );
   }

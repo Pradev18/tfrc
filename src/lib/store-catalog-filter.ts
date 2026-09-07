@@ -7,6 +7,14 @@ import {
 } from "@/lib/shop-categories";
 
 export type StoreSort = "featured" | "newest" | "price_asc" | "price_desc" | "discount" | "name";
+const STORE_SORTS = new Set<StoreSort>([
+  "featured",
+  "newest",
+  "price_asc",
+  "price_desc",
+  "discount",
+  "name",
+]);
 
 export interface StoreFilters {
   q: string;
@@ -33,13 +41,14 @@ export const DEFAULT_STORE_FILTERS: StoreFilters = {
 };
 
 export function parseStoreFilters(params: Record<string, string | undefined>): StoreFilters {
+  const requestedSort = params.sort as StoreSort | undefined;
   return {
     q: params.q?.trim() ?? "",
     shop: params.shop ?? null,
     brand: params.brand ?? null,
     sale: params.sale === "true",
     inStock: params.inStock === "true",
-    sort: (params.sort as StoreSort) ?? "newest",
+    sort: requestedSort && STORE_SORTS.has(requestedSort) ? requestedSort : "newest",
   };
 }
 

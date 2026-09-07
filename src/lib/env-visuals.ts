@@ -90,8 +90,31 @@ export const ENV_VISUALS: Record<string, EnvVisual> = {
   },
 };
 
+/** Neutral tokens for any newly created catalogue (not PawMart-branded). */
+export const DEFAULT_ENV_VISUAL: EnvVisual = {
+  heroFrom: "#ffffff",
+  heroTo: "#f5f7f6",
+  glow: "rgba(20, 20, 20, 0.06)",
+  badgeBg: "#f3f4f3",
+  badgeBorder: "#e2e5e3",
+  badgeText: "#1f2933",
+  heading: "#141414",
+  body: "#3d4440",
+  muted: "#6b746e",
+  border: "#e5e9e6",
+  surface: "#ffffff",
+  sectionAlt: "#f7f8f7",
+  cta: "#141414",
+  ctaHover: "#000000",
+  ctaText: "#ffffff",
+  accent: "#2f6f4e",
+  cardShadow: "0 8px 40px rgba(20, 20, 20, 0.08)",
+  gradientAccent: "linear-gradient(135deg, #eef2f0 0%, #f8faf9 100%)",
+  heroGradient: "linear-gradient(165deg, #ffffff 0%, #f5f7f6 45%, #eef2f0 100%)",
+};
+
 export function getEnvVisual(slug: string): EnvVisual {
-  return ENV_VISUALS[slug] ?? ENV_VISUALS.pawmart;
+  return ENV_VISUALS[slug] ?? DEFAULT_ENV_VISUAL;
 }
 
 export function envStyle(v: EnvVisual): CSSProperties {

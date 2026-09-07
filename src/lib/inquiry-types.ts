@@ -15,6 +15,8 @@ export interface InquiryItemPayload {
   currency: string;
   environmentSlug?: string;
   environmentName?: string;
+  quantity?: number;
+  size?: string;
 }
 
 export interface TrackInquiryPayload {

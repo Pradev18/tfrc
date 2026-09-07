@@ -9,8 +9,8 @@ export default async function WhatsAppSettingsPage() {
     <div>
       <h1 className="text-display text-3xl text-primary">WhatsApp Settings</h1>
       <p className="mt-2 text-text-muted">
-        Configure your WhatsApp number and the greeting customers see at the start of each order
-        message.
+        Manage the complete customer order message: greeting, introduction, product details,
+        totals, links and closing text.
       </p>
 
       <WhatsAppSettingsForm initialSettings={settings} siteUrl={getSiteUrl()} />

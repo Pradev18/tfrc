@@ -21,6 +21,9 @@ export interface CachedProduct {
   description: string | null;
   shortDescription: string | null;
   isFeatured: boolean;
+  variantGroupKey?: string | null;
+  variantLabel?: string | null;
+  isVariantPrimary?: boolean;
   createdAt: string;
   images: Array<{ url: string; sortOrder?: number; isPrimary?: boolean }>;
   prices: Array<{
@@ -162,12 +165,15 @@ export function getCachedProducts(
     inStock?: boolean;
     shopSlug?: string | null;
     shopDefs?: ShopCategoryDef[];
+    includeVariants?: boolean;
   } = {}
 ) {
   const env = getCachedEnvironment(slug);
   if (!env) return null;
 
-  let items = [...env.products];
+  let items = opts.includeVariants
+    ? [...env.products]
+    : env.products.filter((product) => product.isVariantPrimary !== false);
   const q = opts.q?.trim().toLowerCase();
   if (q) {
     items = items.filter(

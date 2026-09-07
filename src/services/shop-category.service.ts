@@ -8,6 +8,7 @@ import {
   type ShopCategoryDef,
 } from "@/lib/shop-categories";
 import { getCachedEnvironment } from "@/lib/catalog-cache";
+import { cache } from "react";
 
 export interface ShopCategoryItem {
   slug: string;
@@ -51,14 +52,16 @@ function parseKeywords(raw: string): string[] {
 }
 
 /** Count-based category index — exclusive primary category only */
-export async function getShopCategories(environmentSlug: string): Promise<ShopCategoryItem[]> {
+export const getShopCategories = cache(async function getShopCategories(
+  environmentSlug: string
+): Promise<ShopCategoryItem[]> {
   try {
     return await getShopCategoriesFromPrisma(environmentSlug);
   } catch (error) {
     console.error("[shop-categories] prisma failed, using cache:", error);
     return getShopCategoriesFromCache(environmentSlug);
   }
-}
+});
 
 function getShopCategoriesFromCache(environmentSlug: string): ShopCategoryItem[] {
   const cached = getCachedEnvironment(environmentSlug);
@@ -113,6 +116,7 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
     environmentId,
     status: "ACTIVE" as const,
     deletedAt: null,
+    isVariantPrimary: true,
   };
 
   let defs = await getDbShopCategoryDefs(environmentId);
@@ -135,16 +139,27 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
 
   if (defs.length === 0) return [];
 
-  const products = await prisma.product.findMany({
+  const counts = await prisma.product.groupBy({
+    by: ["shopCategorySlug"],
     where: baseWhere,
-    select: {
-      id: true,
-      name: true,
-      googleCategory: true,
-      fbCategory: true,
-      images: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
-    },
+    _count: { _all: true },
   });
+
+  const countBySlug = new Map<string, number>();
+  let nullCount = 0;
+  for (const row of counts) {
+    if (row.shopCategorySlug == null) {
+      nullCount += row._count._all;
+      continue;
+    }
+    countBySlug.set(row.shopCategorySlug, row._count._all);
+  }
+  if (nullCount > 0) {
+    countBySlug.set(
+      OTHER_SHOP_CATEGORY.slug,
+      (countBySlug.get(OTHER_SHOP_CATEGORY.slug) ?? 0) + nullCount
+    );
+  }
 
   const dbRows = await prisma.shopCategory.findMany({
     where: { environmentId, isActive: true },
@@ -152,43 +167,55 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
   });
   const imageBySlug = new Map(dbRows.map((r) => [r.slug, r.imageUrl]));
 
-  const buckets = new Map<string, typeof products>();
-  for (const def of defs) buckets.set(def.slug, []);
-  buckets.set(OTHER_SHOP_CATEGORY.slug, []);
+  const slugsNeedingThumb = defs
+    .map((d) => d.slug)
+    .concat(OTHER_SHOP_CATEGORY.slug)
+    .filter((slug) => (countBySlug.get(slug) ?? 0) > 0 && !imageBySlug.get(slug));
 
-  for (const product of products) {
-    const primary = resolvePrimaryShopCategory(
-      {
-        name: product.name,
-        googleCategory: product.googleCategory,
-        fbCategory: product.fbCategory,
-      },
-      defs
-    );
-    const slug = primary?.slug ?? OTHER_SHOP_CATEGORY.slug;
-    buckets.get(slug)!.push(product);
-  }
+  const thumbBySlug = new Map<string, string | null>();
+  await Promise.all(
+    slugsNeedingThumb.map(async (slug) => {
+      const product = await prisma.product.findFirst({
+        where: {
+          ...baseWhere,
+          ...(slug === OTHER_SHOP_CATEGORY.slug
+            ? {
+                OR: [
+                  { shopCategorySlug: OTHER_SHOP_CATEGORY.slug },
+                  { shopCategorySlug: null },
+                ],
+              }
+            : { shopCategorySlug: slug }),
+        },
+        select: {
+          images: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      thumbBySlug.set(slug, product?.images[0]?.url ?? null);
+    })
+  );
 
   const items: ShopCategoryItem[] = [];
 
   for (const def of defs) {
-    const matched = buckets.get(def.slug) ?? [];
-    if (matched.length === 0) continue;
+    const productCount = countBySlug.get(def.slug) ?? 0;
+    if (productCount === 0) continue;
     items.push({
       slug: def.slug,
       name: def.name,
-      productCount: matched.length,
-      imageUrl: imageBySlug.get(def.slug) ?? matched[0]?.images[0]?.url ?? null,
+      productCount,
+      imageUrl: imageBySlug.get(def.slug) ?? thumbBySlug.get(def.slug) ?? null,
     });
   }
 
-  const other = buckets.get(OTHER_SHOP_CATEGORY.slug) ?? [];
-  if (other.length > 0) {
+  const otherCount = countBySlug.get(OTHER_SHOP_CATEGORY.slug) ?? 0;
+  if (otherCount > 0) {
     items.push({
       slug: OTHER_SHOP_CATEGORY.slug,
       name: OTHER_SHOP_CATEGORY.name,
-      productCount: other.length,
-      imageUrl: other[0]?.images[0]?.url ?? null,
+      productCount: otherCount,
+      imageUrl: thumbBySlug.get(OTHER_SHOP_CATEGORY.slug) ?? null,
     });
   }
 

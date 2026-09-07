@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { UiSelect } from "@/components/ui/UiSelect";
 import { announceSiteDataUpdate } from "@/components/LiveDataRefresh";
 import { CatalogueImage } from "@/components/admin/CatalogueImage";
+import { slugify } from "@/lib/slugify";
 
 interface EditCatalogueFormProps {
   catalogue: {
@@ -146,10 +148,13 @@ export function EditCatalogueForm({ catalogue }: EditCatalogueFormProps) {
       </label>
 
       <label className="block">
-        <span className="text-sm font-medium">URL slug</span>
+        <span className="text-sm font-medium">URL page name</span>
+        <span className="mt-1 block text-xs text-text-muted">
+          Public page address: /{form.slug || "your-catalogue"}
+        </span>
         <input
           value={form.slug}
-          onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
+          onChange={(e) => setForm((f) => ({ ...f, slug: slugify(e.target.value) }))}
           className="mt-1 w-full rounded-lg border border-border px-3 py-2 font-mono text-sm"
         />
       </label>
@@ -206,18 +211,20 @@ export function EditCatalogueForm({ catalogue }: EditCatalogueFormProps) {
       </label>
 
       <div className="grid grid-cols-2 gap-4">
-        <label className="block">
+        <div className="block">
           <span className="text-sm font-medium">Status</span>
-          <select
+          <UiSelect
             value={form.status}
-            onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+            onValueChange={(value) => setForm((form) => ({ ...form, status: value }))}
+            ariaLabel="Catalogue status"
+            options={[
+              { value: "ACTIVE", label: "Active (visible)" },
+              { value: "INACTIVE", label: "Hidden" },
+              { value: "COMING_SOON", label: "Coming soon" },
+            ]}
             className="mt-1 w-full rounded-lg border border-border px-3 py-2"
-          >
-            <option value="ACTIVE">Active (visible)</option>
-            <option value="INACTIVE">Hidden</option>
-            <option value="COMING_SOON">Coming soon</option>
-          </select>
-        </label>
+          />
+        </div>
         <label className="block">
           <span className="text-sm font-medium">Sort order</span>
           <input

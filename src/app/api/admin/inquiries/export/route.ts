@@ -56,6 +56,8 @@ export async function GET(req: NextRequest) {
       "Product name": item.productName,
       "Product slug": item.slug,
       "Product price": item.price,
+      "Product size": item.size ?? "",
+      "Product quantity": item.quantity,
       "Product currency": item.currency,
       "Product catalogue": item.environmentName ?? item.environmentSlug ?? "",
     }));

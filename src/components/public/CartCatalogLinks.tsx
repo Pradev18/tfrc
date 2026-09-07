@@ -4,6 +4,7 @@ import { ExternalLink } from "lucide-react";
 import { buildWhatsAppCatalogProductUrl } from "@/lib/whatsapp-catalog";
 import { trackCustomerInquiry } from "@/lib/track-inquiry";
 import type { CartItem } from "@/context/CartContext";
+import { calculateLineTotal } from "@/lib/money";
 interface CartCatalogLinksProps {
   items: CartItem[];
   phoneNumber: string;
@@ -34,8 +35,8 @@ export function CartCatalogLinks({ items, phoneNumber }: CartCatalogLinksProps) 
                   eventType: "CATALOG_PRODUCT",
                   environmentSlug: item.environmentSlug,
                   environmentName: item.environmentName,
-                  itemCount: 1,
-                  estimatedTotal: item.price,
+                  itemCount: item.quantity,
+                  estimatedTotal: calculateLineTotal(item.price, item.quantity),
                   currency: item.currency,
                   whatsappUrl: href,
                   items: [
@@ -47,13 +48,18 @@ export function CartCatalogLinks({ items, phoneNumber }: CartCatalogLinksProps) 
                       currency: item.currency,
                       environmentSlug: item.environmentSlug,
                       environmentName: item.environmentName,
+                      quantity: item.quantity,
+                      size: item.size,
                     },
                   ],
                 });
               }}
               className="flex min-h-[44px] items-center justify-between gap-2 rounded-lg border border-[#128c47]/25 bg-white px-3 py-2.5 text-xs font-medium text-[#0f7340] transition-colors hover:bg-[#128c47]/10"
             >
-              <span className="line-clamp-2 text-left">{item.name}</span>
+              <span className="line-clamp-2 text-left">
+                {item.name}
+                {item.size ? ` · Size ${item.size} · Qty ${item.quantity}` : ` · Qty ${item.quantity}`}
+              </span>
               <ExternalLink className="h-3.5 w-3.5 shrink-0" />
             </a>
           </li>

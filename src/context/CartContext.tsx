@@ -20,6 +20,7 @@ export interface CartItem {
   environmentSlug: string;
   environmentName: string;
   quantity: number;
+  size?: string;
 }
 
 interface CartContextValue {
@@ -41,6 +42,7 @@ function normalizeItem(raw: Partial<CartItem> & CartItem): CartItem {
   return {
     ...raw,
     quantity: Math.max(1, Number(raw.quantity) || 1),
+    size: raw.size?.trim() || undefined,
   };
 }
 

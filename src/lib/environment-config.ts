@@ -7,7 +7,7 @@ import {
   type EnvironmentTheme,
 } from "@/lib/environments";
 import { CATEGORY_HERO_IMAGES } from "@/lib/category-images";
-import { ENV_VISUALS, type EnvVisual } from "@/lib/env-visuals";
+import { ENV_VISUALS, DEFAULT_ENV_VISUAL, type EnvVisual } from "@/lib/env-visuals";
 import { normalizeCatalogueImageSrc } from "@/lib/media-url";
 
 export interface EnvironmentSettings {
@@ -67,7 +67,7 @@ export function buildConfigFromEnvironment(env: Environment): EnvironmentConfig 
 
 export function getEnvironmentVisuals(env: Environment): EnvVisual {
   const settings = parseJson<EnvironmentSettings>(env.settings, {});
-  const base = ENV_VISUALS[env.slug] ?? ENV_VISUALS.pawmart;
+  const base = ENV_VISUALS[env.slug] ?? DEFAULT_ENV_VISUAL;
   return { ...base, ...settings.visuals };
 }
 

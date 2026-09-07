@@ -6,6 +6,9 @@ import prisma from "@/lib/db";
 import { slugify } from "@/lib/slugify";
 import { touchSiteRevision } from "@/lib/site-revision.server";
 import { persistRuntimeCatalogueDataSafely } from "@/lib/persist-runtime-data.server";
+import { syncEnvironmentShopCategories } from "@/lib/shop-category-sync";
+import { getShopCategoryDefsForEnvironment } from "@/services/shop-category.service";
+import { OTHER_SHOP_CATEGORY } from "@/lib/shop-categories";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -18,6 +21,12 @@ async function revalidateCatalogueStore(slug: string, catalogueId: string) {
   revalidatePath(`/admin/catalogues/${catalogueId}`);
 }
 
+async function resyncShopBuckets(environmentId: string, slug: string) {
+  const defs = await getShopCategoryDefsForEnvironment(environmentId, slug);
+  if (defs.length === 0) return;
+  await syncEnvironmentShopCategories(environmentId, defs);
+}
+
 export async function GET(_req: NextRequest, context: RouteContext) {
   const { error } = await requireAdminSession();
   if (error) return error;
@@ -26,13 +35,45 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   const catalogue = await getCatalogueById(id);
   if (!catalogue) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  const groupedCounts = await prisma.product.groupBy({
+    by: ["shopCategorySlug"],
+    where: { environmentId: id, deletedAt: null },
+    _count: { _all: true },
+  });
+  const countBySlug = new Map(
+    groupedCounts.map((group) => [group.shopCategorySlug, group._count._all])
+  );
+  const unassignedCount =
+    (countBySlug.get(null) ?? 0) +
+    (countBySlug.get(OTHER_SHOP_CATEGORY.slug) ?? 0);
+  const categories = catalogue.shopCategories
+    .filter((category) => category.isActive)
+    .map((category) => ({
+      ...category,
+      keywords: JSON.parse(category.keywords || "[]"),
+      productCount: countBySlug.get(category.slug) ?? 0,
+    }));
+  if (
+    unassignedCount > 0 &&
+    !categories.some((category) => category.slug === OTHER_SHOP_CATEGORY.slug)
+  ) {
+    categories.push({
+      id: OTHER_SHOP_CATEGORY.slug,
+      environmentId: id,
+      slug: OTHER_SHOP_CATEGORY.slug,
+      name: OTHER_SHOP_CATEGORY.name,
+      keywords: [],
+      imageUrl: null,
+      sortOrder: Number.MAX_SAFE_INTEGER,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      productCount: unassignedCount,
+    });
+  }
+
   return NextResponse.json(
-    {
-      categories: catalogue.shopCategories.map((c) => ({
-        ...c,
-        keywords: JSON.parse(c.keywords || "[]"),
-      })),
-    },
+    { categories },
     { headers: { "Cache-Control": "no-store, max-age=0" } }
   );
 }
@@ -68,6 +109,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         sortOrder: body.sortOrder ?? 99,
       },
     });
+    await resyncShopBuckets(id, catalogue.slug);
     await touchSiteRevision();
     await persistRuntimeCatalogueDataSafely();
     await revalidateCatalogueStore(catalogue.slug, id);
@@ -107,6 +149,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   }
 
   const category = await prisma.shopCategory.findUnique({ where: { id: body.categoryId } });
+  await resyncShopBuckets(id, catalogue.slug);
   await touchSiteRevision();
   await persistRuntimeCatalogueDataSafely();
   await revalidateCatalogueStore(catalogue.slug, id);
@@ -135,6 +178,7 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
   if (result.count === 0) {
     return NextResponse.json({ error: "Category not found" }, { status: 404 });
   }
+  await resyncShopBuckets(id, catalogue.slug);
   await touchSiteRevision();
   await persistRuntimeCatalogueDataSafely();
   await revalidateCatalogueStore(catalogue.slug, id);

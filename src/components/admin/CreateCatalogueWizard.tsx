@@ -110,7 +110,10 @@ export function CreateCatalogueWizard() {
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium">URL slug</span>
+            <span className="text-sm font-medium">URL page name</span>
+            <span className="mt-1 block text-xs text-text-muted">
+              Public page address: /{form.slug || "your-catalogue"}
+            </span>
             <input
               value={form.slug}
               onChange={(e) => setForm((f) => ({ ...f, slug: slugify(e.target.value) }))}

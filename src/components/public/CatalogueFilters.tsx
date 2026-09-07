@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
+import { UiSelect } from "@/components/ui/UiSelect";
 
 interface ShopCategory {
   slug: string;
@@ -86,16 +87,16 @@ export function CatalogueFilters({ shopCategories, brands, environmentSlug }: Ca
 
       <div>
         <p className={labelClass}>Brand</p>
-        <select
+        <UiSelect
           value={searchParams.get("brand") ?? ""}
-          onChange={(e) => update("brand", e.target.value || null)}
-          className="w-full rounded-xl border border-[#ebe8e3] bg-[#faf9f7] px-3 py-2.5 text-sm focus:border-[#141414] focus:outline-none"
-        >
-          <option value="">All brands</option>
-          {brands.map((b) => (
-            <option key={b.id} value={b.slug}>{b.name}</option>
-          ))}
-        </select>
+          onValueChange={(value) => update("brand", value || null)}
+          ariaLabel="Filter by brand"
+          options={[
+            { value: "", label: "All brands" },
+            ...brands.map((brand) => ({ value: brand.slug, label: brand.name })),
+          ]}
+          className="rounded-xl border-[#ebe8e3] bg-[#faf9f7]"
+        />
       </div>
 
       <div className="space-y-2.5 border-t border-[#ebe8e3] pt-5">
@@ -121,18 +122,20 @@ export function CatalogueFilters({ shopCategories, brands, environmentSlug }: Ca
 
       <div>
         <p className={labelClass}>Sort</p>
-        <select
+        <UiSelect
           value={searchParams.get("sort") ?? "newest"}
-          onChange={(e) => update("sort", e.target.value)}
-          className="w-full rounded-xl border border-[#ebe8e3] bg-[#faf9f7] px-3 py-2.5 text-sm focus:border-[#141414] focus:outline-none"
-        >
-          <option value="newest">Newest</option>
-          <option value="featured">Featured</option>
-          <option value="price_asc">Price: Low to High</option>
-          <option value="price_desc">Price: High to Low</option>
-          <option value="discount">Biggest Discount</option>
-          <option value="name">Name A–Z</option>
-        </select>
+          onValueChange={(value) => update("sort", value)}
+          ariaLabel="Sort products"
+          options={[
+            { value: "newest", label: "Newest" },
+            { value: "featured", label: "Featured" },
+            { value: "price_asc", label: "Price: Low to High" },
+            { value: "price_desc", label: "Price: High to Low" },
+            { value: "discount", label: "Biggest Discount" },
+            { value: "name", label: "Name A–Z" },
+          ]}
+          className="rounded-xl border-[#ebe8e3] bg-[#faf9f7]"
+        />
       </div>
 
       {searchParams.toString() && (

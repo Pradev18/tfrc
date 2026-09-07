@@ -21,14 +21,7 @@ interface EnvironmentHomeProps {
   waHref: string;
   whatsappSettings: WhatsAppSettings;
   siteUrl: string;
-}
-
-function CatalogFallback() {
-  return (
-    <div className="container-pawmart py-16">
-      <div className="glass-panel h-48 animate-pulse rounded-2xl" />
-    </div>
-  );
+  totalProducts: number;
 }
 
 export function EnvironmentHome({
@@ -37,13 +30,14 @@ export function EnvironmentHome({
   brands,
   whatsappSettings,
   siteUrl,
+  totalProducts,
 }: EnvironmentHomeProps) {
   const slug = environment.slug;
   const config = environment.config;
   const v = getEnvVisual(slug);
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden" style={{ ...envStyle(v), backgroundColor: "transparent" }}>
+    <div className="relative min-h-screen overflow-x-clip" style={{ ...envStyle(v), backgroundColor: "transparent" }}>
       <StorePageBackdrop slug={slug} />
 
       <DealsAnnouncementBar
@@ -52,7 +46,7 @@ export function EnvironmentHome({
         environmentSlug={slug}
       />
 
-      <Suspense fallback={<CatalogFallback />}>
+      <Suspense fallback={null}>
         <UnifiedStoreCatalog
           environmentSlug={slug}
           environmentName={config.displayName}
@@ -60,6 +54,7 @@ export function EnvironmentHome({
           brands={brands}
           whatsappSettings={whatsappSettings}
           siteUrl={siteUrl}
+          totalProducts={totalProducts}
         />
       </Suspense>
 

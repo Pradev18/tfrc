@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { announceSiteDataUpdate } from "@/components/LiveDataRefresh";
 import {
   buildCartWhatsAppMessage,
+  DEFAULT_WHATSAPP_SETTINGS,
   type CartWhatsAppItem,
   type WhatsAppSettings,
 } from "@/lib/whatsapp";
@@ -19,6 +20,8 @@ const SAMPLE_ITEMS: CartWhatsAppItem[] = [
     currency: "QAR",
     environmentSlug: "pawmart",
     environmentName: "PawMart Qatar",
+    quantity: 2,
+    size: "M",
   },
   {
     name: "Pet Bath Brush",
@@ -32,6 +35,9 @@ const SAMPLE_ITEMS: CartWhatsAppItem[] = [
   },
 ];
 
+const DETAILED_PRODUCT_TEMPLATE =
+  "{{index}}. {{name}}{{catalogue}}\n   Ref: {{productId}} | Qty: {{quantity}}\n   {{sizeLine}}{{lineTotal}}\n   {{link}}";
+
 export function WhatsAppSettingsForm({
   initialSettings,
   siteUrl,
@@ -40,7 +46,12 @@ export function WhatsAppSettingsForm({
   siteUrl: string;
 }) {
   const router = useRouter();
-  const [settings, setSettings] = useState(initialSettings);
+  const [settings, setSettings] = useState<WhatsAppSettings>({
+    ...initialSettings,
+    orderIntro: initialSettings.orderIntro || DEFAULT_WHATSAPP_SETTINGS.orderIntro,
+    closingMessage:
+      initialSettings.closingMessage || DEFAULT_WHATSAPP_SETTINGS.closingMessage,
+  });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
@@ -83,7 +94,7 @@ export function WhatsAppSettingsForm({
   }
 
   return (
-    <form onSubmit={saveSettings} className="mt-8 max-w-2xl space-y-5">
+    <form onSubmit={saveSettings} className="mt-8 max-w-5xl space-y-5">
       {message && (
         <p
           role={isError ? "alert" : "status"}
@@ -95,6 +106,47 @@ export function WhatsAppSettingsForm({
         </p>
       )}
 
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <p className="text-sm font-semibold text-primary">Message style</p>
+        <p className="mt-1 text-xs text-text-muted">
+          Start with a clean preset, then edit every section below. The preview updates instantly.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              setSettings((current) => ({
+                ...current,
+                defaultGreeting: DEFAULT_WHATSAPP_SETTINGS.defaultGreeting,
+                orderIntro: DEFAULT_WHATSAPP_SETTINGS.orderIntro,
+                productTemplate: DEFAULT_WHATSAPP_SETTINGS.productTemplate,
+                closingMessage: DEFAULT_WHATSAPP_SETTINGS.closingMessage,
+              }))
+            }
+            className="btn-primary min-h-10 px-4 text-xs"
+          >
+            Professional concise
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setSettings((current) => ({
+                ...current,
+                defaultGreeting: DEFAULT_WHATSAPP_SETTINGS.defaultGreeting,
+                orderIntro: DEFAULT_WHATSAPP_SETTINGS.orderIntro,
+                productTemplate: DETAILED_PRODUCT_TEMPLATE,
+                closingMessage: DEFAULT_WHATSAPP_SETTINGS.closingMessage,
+              }))
+            }
+            className="btn-secondary min-h-10 px-4 text-xs"
+          >
+            Detailed with links
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.9fr)] lg:items-start">
+        <div className="space-y-5">
       <label className="block">
         <span className="mb-1 block text-sm font-medium">WhatsApp Number</span>
         <input
@@ -113,7 +165,7 @@ export function WhatsAppSettingsForm({
       </label>
 
       <label className="block">
-        <span className="mb-1 block text-sm font-medium">Default Greeting</span>
+        <span className="mb-1 block text-sm font-medium">1. Greeting</span>
         <input
           value={settings.defaultGreeting}
           onChange={(event) =>
@@ -126,35 +178,71 @@ export function WhatsAppSettingsForm({
       </label>
 
       <label className="block">
-        <span className="mb-1 block text-sm font-medium">Product Format</span>
+        <span className="mb-1 block text-sm font-medium">2. Order introduction</span>
+        <input
+          value={settings.orderIntro}
+          onChange={(event) =>
+            setSettings((current) => ({ ...current, orderIntro: event.target.value }))
+          }
+          maxLength={500}
+          className="w-full rounded-md border border-border px-3 py-2 text-sm"
+          required
+        />
+        <span className="mt-1 block text-xs text-text-muted">
+          Available fields: {"{{itemCount}}"}, {"{{total}}"}
+        </span>
+      </label>
+
+      <label className="block">
+        <span className="mb-1 block text-sm font-medium">3. Each product line</span>
         <textarea
           value={settings.productTemplate}
           onChange={(event) =>
             setSettings((current) => ({ ...current, productTemplate: event.target.value }))
           }
-          rows={5}
+          rows={6}
           maxLength={2000}
           className="w-full rounded-md border border-border px-3 py-2 font-mono text-sm"
           required
         />
         <span className="mt-1 block text-xs text-text-muted">
           Available fields: {"{{index}}"}, {"{{name}}"}, {"{{price}}"}, {"{{productId}}"},{" "}
-          {"{{link}}"}, {"{{catalogue}}"}
+          {"{{link}}"}, {"{{catalogue}}"}, {"{{size}}"}, {"{{sizeLine}}"},{" "}
+          {"{{quantity}}"}, {"{{unitPrice}}"}, {"{{lineTotal}}"}
         </span>
       </label>
 
-      <div className="rounded-lg border border-border bg-surface-muted p-4 text-sm text-text-muted">
+      <label className="block">
+        <span className="mb-1 block text-sm font-medium">4. Closing message</span>
+        <textarea
+          value={settings.closingMessage}
+          onChange={(event) =>
+            setSettings((current) => ({ ...current, closingMessage: event.target.value }))
+          }
+          rows={3}
+          maxLength={500}
+          className="w-full rounded-md border border-border px-3 py-2 text-sm"
+          required
+        />
+        <span className="mt-1 block text-xs text-text-muted">
+          Available fields: {"{{itemCount}}"}, {"{{total}}"}
+        </span>
+      </label>
+        </div>
+
+      <div className="rounded-xl border border-[#d8e4d9] bg-[#eef6ef] p-4 text-sm text-text-muted lg:sticky lg:top-6">
         <p className="font-medium text-text">Live order-message preview</p>
         <p className="mt-1 text-xs">
-          This preview changes immediately while you type and matches customer cart orders.
+          Updates instantly while you type and matches the customer&apos;s WhatsApp message.
         </p>
-        <pre className="mt-3 max-h-[28rem] overflow-auto whitespace-pre-wrap rounded-md bg-white p-3 text-xs leading-relaxed text-text">
+        <pre className="mt-3 max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-xl bg-white p-4 text-sm leading-6 text-text shadow-sm">
           {preview}
         </pre>
       </div>
+      </div>
 
       <button type="submit" disabled={saving} className="btn-primary min-h-11 px-6 text-sm">
-        {saving ? "Saving…" : "Save settings"}
+        {saving ? "Applying…" : "Apply WhatsApp changes"}
       </button>
     </form>
   );

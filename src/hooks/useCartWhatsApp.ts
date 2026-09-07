@@ -28,6 +28,7 @@ function cartItemsToWhatsApp(items: ReturnType<typeof useCart>["items"]) {
     environmentName: i.environmentName,
     displayPrice: i.price,
     quantity: Math.max(1, i.quantity ?? 1),
+    size: i.size,
   }));
 }
 
@@ -55,7 +56,7 @@ export function useCartWhatsApp(settings: WhatsAppSettings, siteUrl = "") {
     return {
       eventType: "CART_CHECKOUT",
       ...primaryEnvironmentFromCart(items),
-      itemCount: items.length,
+      itemCount: items.reduce((sum, item) => sum + Math.max(1, item.quantity), 0),
       estimatedTotal: cartEstimatedTotal(items),
       currency: items[0]?.currency ?? "QAR",
       whatsappMessage: buildCartWhatsAppMessage(settings, waItems, resolvedSiteUrl),
@@ -65,7 +66,7 @@ export function useCartWhatsApp(settings: WhatsAppSettings, siteUrl = "") {
 
   return {
     items,
-    itemCount: items.length,
+    itemCount: items.reduce((sum, item) => sum + Math.max(1, item.quantity), 0),
     hasItems: items.length > 0,
     waHref,
     checkoutInquiry,

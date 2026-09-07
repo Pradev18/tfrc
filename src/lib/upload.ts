@@ -131,7 +131,7 @@ export async function saveUploadedImage(file: File): Promise<string> {
     throw new Error("Image must be under 5 MB");
   }
 
-  let buffer = Buffer.from(await file.arrayBuffer());
+  let buffer: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer());
   const detected = detectImageType(buffer);
   if (!detected) {
     throw new Error("Only JPEG, PNG, WebP, or GIF images are allowed");

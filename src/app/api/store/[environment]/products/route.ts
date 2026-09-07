@@ -44,11 +44,15 @@ export async function GET(
       page,
       limit,
       listMode: true,
+      includeVariants: sp.get("allVariants") === "true",
     });
 
+    const isSearch = Boolean(sp.get("q"));
     return NextResponse.json(result, {
       headers: {
-        "Cache-Control": "no-store, max-age=0",
+        "Cache-Control": isSearch
+          ? "private, max-age=15"
+          : "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
       },
     });
   } catch (error) {

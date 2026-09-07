@@ -16,11 +16,14 @@ export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps)
   return (
     <Link
       href={`/${portal.slug}`}
-      className="landing-portal-card group landing-fade-up flex w-full max-w-[9.5rem] flex-col items-center sm:max-w-[10.5rem]"
+      className="landing-portal-card group landing-fade-up flex w-32 flex-col items-center sm:w-36"
       style={{ animationDelay: `${index * 0.07}s` }}
       aria-label={portal.displayName}
     >
-      <div className="catalogue-logo catalogue-logo--landing relative aspect-square w-full">
+      <div
+        className="catalogue-logo catalogue-logo--landing relative h-28 w-28 sm:h-32 sm:w-32"
+        data-catalogue={portal.slug}
+      >
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -34,6 +37,9 @@ export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps)
           </div>
         )}
       </div>
+      <span className="mt-3 w-full truncate text-center text-sm font-semibold text-[#292522] sm:text-[15px]">
+        {portal.displayName}
+      </span>
     </Link>
   );
 }

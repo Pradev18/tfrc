@@ -16,17 +16,8 @@ interface PaginatedProductGridProps {
   shopSlug?: string;
   onSaleOnly?: boolean;
   enabled?: boolean;
+  includeVariants?: boolean;
   emptyMessage?: string;
-}
-
-function ProductGridSkeleton() {
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 xl:grid-cols-5">
-      {Array.from({ length: 10 }).map((_, i) => (
-        <div key={i} className="store-glass-product aspect-[3/4] animate-pulse rounded-2xl bg-white/50" />
-      ))}
-    </div>
-  );
 }
 
 export function PaginatedProductGrid({
@@ -38,6 +29,7 @@ export function PaginatedProductGrid({
   shopSlug,
   onSaleOnly,
   enabled = true,
+  includeVariants = false,
   emptyMessage = "No products found",
 }: PaginatedProductGridProps) {
   const v = getEnvVisual(environmentSlug);
@@ -46,6 +38,7 @@ export function PaginatedProductGrid({
       shopSlug,
       onSaleOnly,
       enabled,
+      includeVariants,
     });
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
@@ -57,7 +50,7 @@ export function PaginatedProductGrid({
       ([entry]) => {
         if (entry.isIntersecting && !loading && !loadingMore) loadMore();
       },
-      { rootMargin: "500px 0px" }
+      { rootMargin: "240px 0px" }
     );
 
     observer.observe(target);
@@ -66,8 +59,32 @@ export function PaginatedProductGrid({
 
   if (!enabled) return null;
 
-  if (loading && items.length === 0) {
-    return <ProductGridSkeleton />;
+  // page === 0 means the first request has not settled yet.
+  const waitingForFirstPage = items.length === 0 && (loading || page === 0);
+
+  if (waitingForFirstPage) {
+    return (
+      <div aria-busy="true" aria-live="polite">
+        <p className="mb-4 text-sm font-medium" style={{ color: v.muted }}>
+          Loading products…
+        </p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 xl:grid-cols-5">
+          {Array.from({ length: 10 }).map((_, index) => (
+            <div
+              key={index}
+              className="overflow-hidden rounded-2xl border border-black/[0.04] bg-white/70"
+            >
+              <div className="aspect-square bg-[#f3f5f4]" />
+              <div className="space-y-2 p-3">
+                <div className="h-3 w-20 rounded-full bg-[#e8ecea]" />
+                <div className="h-3 w-28 rounded-full bg-[#eef1ef]" />
+                <div className="h-3 w-16 rounded-full bg-[#e8ecea]" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (error && items.length === 0) {
@@ -89,7 +106,7 @@ export function PaginatedProductGrid({
   return (
     <>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 xl:grid-cols-5">
-        {items.map((product) => (
+        {items.map((product, index) => (
           <ProductCard
             key={product.id}
             product={product}
@@ -97,6 +114,8 @@ export function PaginatedProductGrid({
             environmentSlug={environmentSlug}
             environmentName={environmentName}
             siteUrl={siteUrl}
+            variantPreselected={includeVariants}
+            eagerPrefetch={index < 2}
           />
         ))}
       </div>
@@ -110,7 +129,7 @@ export function PaginatedProductGrid({
             className="min-h-[48px] rounded-full px-6 py-3 text-sm font-semibold text-white transition-opacity disabled:opacity-60"
             style={{ backgroundColor: v.cta }}
           >
-            {loadingMore ? "Loading…" : `Load more (${items.length} of ${total})`}
+            {`Load more (${items.length} of ${total})`}
           </button>
           <p className="text-xs" style={{ color: v.muted }}>
             More products load automatically as you scroll

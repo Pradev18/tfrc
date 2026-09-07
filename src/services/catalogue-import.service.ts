@@ -9,6 +9,7 @@ import {
 import { Prisma, ProductStatus } from "@prisma/client";
 import { generateShopCategories } from "@/services/catalogue-admin.service";
 import { persistRuntimeCatalogueData } from "@/lib/persist-runtime-data.server";
+import { deriveProductVariantIdentity } from "@/lib/product-variants";
 
 function parseSaleWindow(value: string | null): {
   saleStart: Date | null;
@@ -76,21 +77,59 @@ export interface ImportCatalogueOptions {
   preview?: boolean;
 }
 
+async function validateProductOwnership(
+  rows: Array<{ id: string; rowNumber: number }>,
+  environmentId: string
+) {
+  const conflicts = new Map<string, string>();
+  for (let offset = 0; offset < rows.length; offset += 500) {
+    const batchIds = rows.slice(offset, offset + 500).map((row) => row.id);
+    const existing = await prisma.product.findMany({
+      where: {
+        productId: { in: batchIds },
+        environmentId: { not: environmentId },
+      },
+      select: {
+        productId: true,
+        environment: { select: { name: true } },
+      },
+    });
+    for (const product of existing) {
+      conflicts.set(product.productId, product.environment?.name ?? "another catalogue");
+    }
+  }
+
+  return rows
+    .filter((row) => conflicts.has(row.id))
+    .map((row) => ({
+      row: row.rowNumber,
+      message:
+        `Product ID ${row.id} already exists in “${conflicts.get(row.id)}”. ` +
+        "Product IDs must be unique across catalogues; remove this row or use a different ID.",
+    }));
+}
+
 export async function importCatalogueExcel(options: ImportCatalogueOptions) {
   const { buffer, fileName, department, environmentId, environmentSlug, userId, preview } = options;
   const parsed = parseExcelBuffer(buffer, department);
+  const ownershipErrors = await validateProductOwnership(parsed.rows, environmentId);
+  const validationErrors = [...parsed.errors, ...ownershipErrors].sort((a, b) => a.row - b.row);
+  const totalRows = parsed.rows.length + parsed.errors.length;
+  const validRows = Math.max(0, parsed.rows.length - ownershipErrors.length);
+  const invalidRows = validationErrors.length;
+  const conflictingRows = new Set(ownershipErrors.map((error) => error.row));
 
   const job = await prisma.importJob.create({
     data: {
       fileName,
       status: preview ? "PREVIEW" : "IMPORTING",
-      totalRows: parsed.rows.length + parsed.errors.length,
-      validRows: parsed.rows.length,
-      invalidRows: parsed.errors.length,
+      totalRows,
+      validRows,
+      invalidRows,
       userId,
       environmentId,
       errors: {
-        create: parsed.errors.map((e) => ({
+        create: validationErrors.map((e) => ({
           row: e.row,
           message: e.message,
           severity: "error",
@@ -102,48 +141,68 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
   if (preview) {
     return {
       jobId: job.id,
-      totalRows: parsed.rows.length + parsed.errors.length,
-      validRows: parsed.rows.length,
-      invalidRows: parsed.errors.length,
+      totalRows,
+      validRows,
+      invalidRows,
       created: 0,
       updated: 0,
-      failed: parsed.errors.length,
+      failed: invalidRows,
       archived: 0,
       applied: false,
-      canImport: parsed.rows.length > 0 && parsed.errors.length === 0,
-      errors: parsed.errors,
-      preview: parsed.rows.slice(0, 10),
+      canImport: validRows > 0 && invalidRows === 0,
+      errors: validationErrors,
+      preview: parsed.rows
+        .filter((row) => !conflictingRows.has(row.rowNumber))
+        .slice(0, 10),
     };
   }
 
-  if (parsed.rows.length === 0 || parsed.errors.length > 0) {
+  if (validRows === 0 || invalidRows > 0) {
     await prisma.importJob.update({
       where: { id: job.id },
       data: {
         status: "FAILED",
-        failed: parsed.errors.length || 1,
+        failed: invalidRows || 1,
         completedAt: new Date(),
       },
     });
     return {
       jobId: job.id,
-      totalRows: parsed.rows.length + parsed.errors.length,
-      validRows: parsed.rows.length,
-      invalidRows: parsed.errors.length,
+      totalRows,
+      validRows,
+      invalidRows,
       created: 0,
       updated: 0,
       archived: 0,
-      failed: parsed.errors.length || 1,
+      failed: invalidRows || 1,
       applied: false,
       canImport: false,
       errors:
-        parsed.errors.length > 0
-          ? parsed.errors
+        validationErrors.length > 0
+          ? validationErrors
           : [{ row: 1, message: "No valid product rows were found" }],
     };
   }
 
   const cache = new Map<string, string>();
+  const variantIdentityById = new Map(
+    parsed.rows.map((row) => [
+      row.id,
+      deriveProductVariantIdentity({
+        title: row.title,
+        productId: row.id,
+        size: row.size,
+        itemGroupId: row.item_group_id,
+      }),
+    ])
+  );
+  const primaryIdByVariantGroup = new Map<string, string>();
+  for (const row of parsed.rows) {
+    const groupKey = variantIdentityById.get(row.id)?.groupKey;
+    if (groupKey && !primaryIdByVariantGroup.has(groupKey)) {
+      primaryIdByVariantGroup.set(groupKey, row.id);
+    }
+  }
   let created = 0;
   let updated = 0;
   let archived = 0;
@@ -198,6 +257,11 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
         googleCategory: row.google_product_category,
         fbCategory: row.fb_product_category,
         departmentSource: department,
+        variantGroupKey: variantIdentityById.get(row.id)?.groupKey ?? null,
+        variantLabel: variantIdentityById.get(row.id)?.label ?? null,
+        isVariantPrimary:
+          !variantIdentityById.get(row.id)?.groupKey ||
+          primaryIdByVariantGroup.get(variantIdentityById.get(row.id)!.groupKey!) === row.id,
         gtin: row.gtin,
       };
 
@@ -285,6 +349,21 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
         });
         archived = archivedResult.count;
 
+        // Atomic completeness guard: never commit a partial catalogue.
+        const importedLiveCount = await tx.product.count({
+          where: {
+            environmentId,
+            status: ProductStatus.ACTIVE,
+            deletedAt: null,
+          },
+        });
+        if (importedLiveCount !== parsed.rows.length) {
+          throw new Error(
+            `Import completeness check failed: Excel has ${parsed.rows.length} valid products, ` +
+              `but ${importedLiveCount} would be live. Nothing was changed.`
+          );
+        }
+
         if (parsed.whatsappNumber) {
           const wa = await tx.whatsAppSetting.findFirst();
           if (wa) {
@@ -364,9 +443,9 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
 
   return {
     jobId: job.id,
-    totalRows: parsed.rows.length + parsed.errors.length,
-    validRows: parsed.rows.length,
-    invalidRows: parsed.errors.length,
+    totalRows,
+    validRows,
+    invalidRows,
     created,
     updated,
     archived,

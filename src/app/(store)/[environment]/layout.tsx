@@ -7,7 +7,7 @@ import { buildPageMetadata } from "@/lib/meta-seo";
 import { getEnvironmentHeroImages } from "@/services/category.service";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -53,7 +53,7 @@ export default async function EnvironmentLayout({ children, params }: LayoutProp
   const v = getEnvVisual(slug);
 
   return (
-    <div style={{ ...envStyle(v), backgroundColor: v.sectionAlt }} className="overflow-x-hidden">
+    <div style={{ ...envStyle(v), backgroundColor: v.sectionAlt }} className="overflow-x-clip">
       <StoreHeader environment={environment} />
       <main>{children}</main>
       <StoreFooter environment={environment} />

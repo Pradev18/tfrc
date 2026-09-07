@@ -1,5 +1,7 @@
 "use client";
 
+import { UiSelect } from "@/components/ui/UiSelect";
+
 interface CatalogueToolbarProps {
   totalItems: number;
   currentSort: string;
@@ -31,28 +33,21 @@ export function CatalogueToolbar({
       </p>
 
       <div className="flex items-center gap-2">
-        <label htmlFor="sort-toolbar" className="text-sm text-[#6b6560]">
-          Sort:
-        </label>
-        <select
-          id="sort-toolbar"
+        <span className="text-sm text-[#6b6560]">Sort:</span>
+        <UiSelect
           value={currentSort}
-          onChange={(e) => {
+          onValueChange={(value) => {
             const params = new URLSearchParams(
               Object.entries(queryParams).filter(([, v]) => v != null) as [string, string][]
             );
-            params.set("sort", e.target.value);
+            params.set("sort", value);
             params.delete("page");
             window.location.href = `${base}?${params.toString()}`;
           }}
-          className="rounded-lg border border-[#ebe8e3] bg-white px-3 py-2 text-sm text-[#141414] focus:border-[#141414] focus:outline-none"
-        >
-          {Object.entries(SORT_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+          ariaLabel="Sort products"
+          options={Object.entries(SORT_LABELS).map(([value, label]) => ({ value, label }))}
+          className="min-w-44 rounded-lg border-[#ebe8e3] bg-white"
+        />
       </div>
     </div>
   );

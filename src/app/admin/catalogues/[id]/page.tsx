@@ -40,7 +40,11 @@ export default async function ManageCataloguePage({ params }: PageProps) {
       </div>
 
       <div className="mt-8">
-        <ManageCataloguePanel catalogueId={id} catalogueName={catalogue.name} />
+        <ManageCataloguePanel
+          catalogueId={id}
+          catalogueName={catalogue.name}
+          catalogueSlug={catalogue.slug}
+        />
       </div>
 
       <DeleteCatalogueSection

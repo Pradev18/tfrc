@@ -3,12 +3,15 @@
 import { useMemo, useState } from "react";
 import { Download, Search } from "lucide-react";
 import { formatInquiryEventLabel } from "@/lib/inquiry-types";
+import { UiSelect } from "@/components/ui/UiSelect";
 
 interface InquiryItem {
   productId: string;
   productName: string;
   price: number;
   currency: string;
+  quantity: number;
+  size: string | null;
 }
 
 interface InquiryRow {
@@ -97,33 +100,35 @@ export function InquiriesClient({
         </div>
         <div>
           <label className="text-xs font-medium text-text-muted">Event</label>
-          <select
+          <UiSelect
             value={eventType}
-            onChange={(e) => setEventType(e.target.value)}
+            onValueChange={setEventType}
+            ariaLabel="Filter by event"
+            options={[
+              { value: "", label: "All events" },
+              ...eventTypes.map((type) => ({
+                value: type,
+                label: formatInquiryEventLabel(type),
+              })),
+            ]}
             className="mt-1 w-full rounded-lg border border-border px-3 py-2.5 text-sm sm:w-44"
-          >
-            <option value="">All events</option>
-            {eventTypes.map((type) => (
-              <option key={type} value={type}>
-                {formatInquiryEventLabel(type)}
-              </option>
-            ))}
-          </select>
+          />
         </div>
         <div>
           <label className="text-xs font-medium text-text-muted">Catalogue</label>
-          <select
+          <UiSelect
             value={environmentSlug}
-            onChange={(e) => setEnvironmentSlug(e.target.value)}
+            onValueChange={setEnvironmentSlug}
+            ariaLabel="Filter by catalogue"
+            options={[
+              { value: "", label: "All catalogues" },
+              ...catalogues.map((catalogue) => ({
+                value: catalogue.slug,
+                label: catalogue.name,
+              })),
+            ]}
             className="mt-1 w-full rounded-lg border border-border px-3 py-2.5 text-sm sm:w-44"
-          >
-            <option value="">All catalogues</option>
-            {catalogues.map((c) => (
-              <option key={c.slug} value={c.slug}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          />
         </div>
         <button
           type="button"
@@ -192,7 +197,8 @@ export function InquiriesClient({
                           <li key={`${row.id}-${item.productId}`}>
                             {item.productName}{" "}
                             <span className="text-text-muted">
-                              ({item.currency} {item.price.toFixed(2)})
+                              ({item.size ? `Size ${item.size} · ` : ""}
+                              Qty {item.quantity ?? 1} · {item.currency} {item.price.toFixed(2)})
                             </span>
                           </li>
                         ))}

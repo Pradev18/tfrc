@@ -21,6 +21,15 @@ import {
 import { resolveSiteUrl } from "@/lib/site-config";
 import { trackMetaInitiateCheckout } from "@/components/analytics/MetaPixel";
 import { formatCurrency } from "@/lib/utils";
+import { UiSelect } from "@/components/ui/UiSelect";
+import { MEDIA_BLUR_DATA_URL, MediaFallback } from "@/components/public/MediaFallback";
+import { flushSync } from "react-dom";
+import { calculateLineTotal } from "@/lib/money";
+
+const CART_QTY_OPTIONS = Array.from({ length: 20 }, (_, index) => ({
+  value: String(index + 1),
+  label: String(index + 1),
+}));
 
 interface CartDrawerProps {
   open: boolean;
@@ -35,7 +44,7 @@ export function CartDrawer({
   whatsappSettings,
   siteUrl = "",
 }: CartDrawerProps) {
-  const { items, removeItem, clearCart } = useCart();
+  const { items, removeItem, clearCart, setItemQuantity } = useCart();
 
   const settings: WhatsAppSettings = whatsappSettings ?? {
     phoneNumber: "97455049229",
@@ -55,6 +64,24 @@ export function CartDrawer({
       ? buildCartWhatsAppMessage(settings, waItems, resolvedSiteUrl)
       : undefined;
   const env = primaryEnvironmentFromCart(items);
+  const totalUnits = items.reduce(
+    (sum, item) => sum + Math.max(1, item.quantity ?? 1),
+    0
+  );
+  const estimatedTotal = cartEstimatedTotal(items);
+
+  function handleRemoveItem(id: string) {
+    const removingLastItem = items.length === 1;
+    // Commit the cart update before the click finishes so no stale row or
+    // portalled quantity menu can remain painted on screen.
+    flushSync(() => removeItem(id));
+    if (removingLastItem) onClose();
+  }
+
+  function handleClearCart() {
+    flushSync(clearCart);
+    onClose();
+  }
 
   if (!open) return null;
 
@@ -76,7 +103,7 @@ export function CartDrawer({
             <p className="text-xs text-text-muted">
               {items.length === 0
                 ? "No products selected yet"
-                : `${items.length} product${items.length > 1 ? "s" : ""} selected`}
+                : `${totalUnits} item${totalUnits === 1 ? "" : "s"} selected · ${items.length} size variant${items.length === 1 ? "" : "s"}`}
             </p>
           </div>
           <button
@@ -114,11 +141,11 @@ export function CartDrawer({
                         fill
                         className="bg-white object-cover"
                         sizes="64px"
+                        placeholder="blur"
+                        blurDataURL={MEDIA_BLUR_DATA_URL}
                       />
                     ) : (
-                      <div className="flex h-full items-center justify-center bg-white text-[10px] text-text-subtle">
-                        No img
-                      </div>
+                      <MediaFallback />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -127,19 +154,36 @@ export function CartDrawer({
                     </p>
                     <p className="line-clamp-2 font-sans text-sm font-medium text-text">{item.name}</p>
                     <p className="mt-0.5 text-[11px] text-text-muted">
-                      Qty: {Math.max(1, item.quantity ?? 1)}
-                      {item.productId ? ` · Code: ${item.productId}` : ""}
+                      {item.size ? `Size: ${item.size}` : ""}
+                      {item.size && item.productId ? " · " : ""}
+                      {item.productId ? `Code: ${item.productId}` : ""}
                     </p>
-                    <p className="mt-1 text-sm font-semibold text-primary">
+                    <div className="mt-2 flex max-w-28 items-center gap-2">
+                      <span className="text-[11px] text-text-muted">Qty</span>
+                      <UiSelect
+                        value={item.quantity}
+                        options={CART_QTY_OPTIONS}
+                        onValueChange={(value) =>
+                          setItemQuantity(item.productId, Number(value))
+                        }
+                        ariaLabel={`Quantity for ${item.name}${item.size ? ` size ${item.size}` : ""}`}
+                        className="min-h-[34px] px-3 text-xs"
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-text-muted">
+                      {formatCurrency(item.price, item.currency)} × {Math.max(1, item.quantity ?? 1)}
+                    </p>
+                    <p className="text-sm font-semibold text-primary">
+                      Line total:{" "}
                       {formatCurrency(
-                        item.price * Math.max(1, item.quantity ?? 1),
+                        calculateLineTotal(item.price, item.quantity),
                         item.currency
                       )}
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => removeItem(item.id)}
+                    onClick={() => handleRemoveItem(item.id)}
                     className="shrink-0 self-start p-1 text-text-subtle hover:text-error"
                     aria-label={`Remove ${item.name}`}
                   >
@@ -154,29 +198,26 @@ export function CartDrawer({
           )}
         </div>
 
-        <div className="border-t border-border p-5 space-y-3">
+        <div className="border-t border-border p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] space-y-3">
           {items.length > 0 && (
             <>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-text-muted">Estimated total</span>
                 <span className="text-lg font-semibold text-primary">
-                  {formatCurrency(
-                    items.reduce((s, i) => s + i.price, 0),
-                    items[0]?.currency ?? "QAR"
-                  )}
+                  {formatCurrency(estimatedTotal, items[0]?.currency ?? "QAR")}
                 </span>
               </div>
               <button
                 type="button"
-                onClick={clearCart}
+                onClick={handleClearCart}
                 className="w-full py-2 text-xs font-medium text-text-subtle hover:text-error"
               >
                 Clear all
               </button>
               <p className="text-center text-[11px] text-text-muted">
-                {items.length === 1
+                {totalUnits === 1
                   ? "Sends your order on WhatsApp with product details and a link your team can open."
-                  : `Sends a clear order summary on WhatsApp with all ${items.length} products and links for your team to confirm.`}
+                  : `Sends a clear order summary on WhatsApp with all ${totalUnits} items across ${items.length} size variants.`}
               </p>
               <CartContactFields />
             </>
@@ -188,17 +229,17 @@ export function CartDrawer({
               inquiry={{
                 eventType: "CART_CHECKOUT",
                 ...env,
-                itemCount: items.length,
-                estimatedTotal: cartEstimatedTotal(items),
+                itemCount: totalUnits,
+                estimatedTotal,
                 currency: items[0]?.currency ?? "QAR",
                 whatsappMessage: waMessage,
                 items: cartItemsToInquiryItems(items),
               }}
               onAfterNavigate={() => {
                 trackMetaInitiateCheckout(
-                  cartEstimatedTotal(items),
+                  estimatedTotal,
                   items[0]?.currency ?? "QAR",
-                  items.length
+                  totalUnits
                 );
                 clearCart();
                 onClose();
@@ -206,9 +247,9 @@ export function CartDrawer({
               className="flex w-full min-h-[48px] items-center justify-center gap-2 rounded-md bg-whatsapp py-3.5 text-sm font-semibold text-white transition-colors hover:bg-whatsapp-hover"
             >
               <WhatsAppIcon className="h-5 w-5" />
-              {items.length === 1
+              {totalUnits === 1
                 ? "Send order on WhatsApp"
-                : `Send order for ${items.length} products`}
+                : `Send order for ${totalUnits} items`}
             </WhatsAppOrderGate>
           ) : (
             <span className="flex w-full min-h-[48px] cursor-not-allowed items-center justify-center gap-2 rounded-md bg-text-subtle py-3.5 text-sm font-semibold text-white opacity-60">

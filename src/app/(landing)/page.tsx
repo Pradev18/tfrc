@@ -8,7 +8,7 @@ import { getLandingPortalsFromDb } from "@/services/catalogue-admin.service";
 import { LANDING_PORTALS } from "@/lib/platform-images";
 import { getSiteUrl } from "@/lib/site-config";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 
 

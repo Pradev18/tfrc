@@ -29,7 +29,7 @@ interface ImportResult {
 }
 
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = new Set(["xlsx", "xls", "csv"]);
+const ALLOWED_EXTENSIONS = new Set(["xlsx", "xls"]);
 
 function fileSignature(file: File): string {
   return `${file.name}:${file.size}:${file.lastModified}`;
@@ -45,8 +45,10 @@ export function CatalogueImportForm({
   onImported?: (result: ImportResult) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const requestInFlightRef = useRef(false);
   const [file, setFile] = useState<File | null>(null);
   const [validatedSignature, setValidatedSignature] = useState("");
+  const [previewedSignature, setPreviewedSignature] = useState("");
   const [loading, setLoading] = useState<"preview" | "import" | null>(null);
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -58,11 +60,12 @@ export function CatalogueImportForm({
     setError("");
     setProgress("");
     setValidatedSignature("");
+    setPreviewedSignature("");
     if (!nextFile) return;
 
     const extension = nextFile.name.split(".").pop()?.toLowerCase() ?? "";
     if (!ALLOWED_EXTENSIONS.has(extension)) {
-      setError("Choose an Excel (.xlsx, .xls) or CSV file.");
+      setError("Choose a Meta catalogue Excel file (.xlsx or .xls).");
       if (inputRef.current) inputRef.current.value = "";
       return;
     }
@@ -75,7 +78,7 @@ export function CatalogueImportForm({
   }
 
   async function submit(preview: boolean) {
-    if (!file || loading) return;
+    if (!file || loading || requestInFlightRef.current) return;
     if (!preview && validatedSignature !== fileSignature(file)) {
       setError("Preview and validate this file before replacing the catalogue.");
       return;
@@ -89,6 +92,7 @@ export function CatalogueImportForm({
       return;
     }
 
+    requestInFlightRef.current = true;
     setLoading(preview ? "preview" : "import");
     setError("");
     setProgress(preview ? "Validating spreadsheet…" : "Uploading and replacing catalogue…");
@@ -110,9 +114,12 @@ export function CatalogueImportForm({
       setResult(data);
       if (preview) {
         if (data.canImport) {
+          setPreviewedSignature(fileSignature(file));
           setValidatedSignature(fileSignature(file));
           setProgress("Validation passed — ready to replace");
         } else {
+          setPreviewedSignature("");
+          setValidatedSignature("");
           setError("Validation failed. Correct the listed spreadsheet rows and choose the file again.");
           setProgress("");
         }
@@ -121,22 +128,33 @@ export function CatalogueImportForm({
         announceSiteDataUpdate();
         onImported?.(data);
         setValidatedSignature("");
+        setPreviewedSignature("");
         setFile(null);
         if (inputRef.current) inputRef.current.value = "";
       } else {
-        setError("Nothing was changed because the import failed validation.");
+        setValidatedSignature("");
+        setPreviewedSignature("");
+        const firstIssue = data.errors?.[0];
+        setError(
+          firstIssue
+            ? `Nothing was changed. Row ${firstIssue.row}: ${firstIssue.message}`
+            : "Nothing was changed because the import failed validation."
+        );
         setProgress("");
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Import failed");
       setProgress("");
     } finally {
+      requestInFlightRef.current = false;
       setLoading(null);
     }
   }
 
   const canReplace =
     Boolean(file) && !loading && validatedSignature === (file ? fileSignature(file) : "");
+  const canPreview =
+    Boolean(file) && !loading && previewedSignature !== (file ? fileSignature(file) : "");
 
   return (
     <div className="relative space-y-4 rounded-xl border border-border bg-surface p-5 sm:p-6">
@@ -156,17 +174,22 @@ export function CatalogueImportForm({
       <div>
         <h3 className="font-semibold text-primary">Replace {catalogueName} from Excel</h3>
         <p className="mt-1 text-sm leading-6 text-text-muted">
-          Step 1: Preview & validate. Step 2: Replace catalogue. A successful replace becomes the
-          live catalogue for admin and customers immediately.
+          Upload an Excel sheet exported in <strong>Meta catalogue format</strong>. Step 1 checks
+          every row and catalogue ownership. Step 2 replaces the live catalogue for admin and
+          customers immediately.
         </p>
       </div>
 
       <label className="block">
-        <span className="mb-1 block text-sm font-medium">Catalogue file</span>
+        <span className="mb-1 block text-sm font-medium">Meta catalogue Excel file</span>
+        <span className="mb-2 block text-xs text-text-muted">
+          Required format: Meta product catalogue with id, title, price and image_link columns.
+          Accepted files: .xlsx or .xls, up to 25 MB.
+        </span>
         <input
           ref={inputRef}
           type="file"
-          accept=".xlsx,.xls,.csv"
+          accept=".xlsx,.xls"
           onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
           disabled={Boolean(loading)}
           className="block w-full rounded-lg border border-border bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-surface-muted file:px-3 file:py-2 file:text-sm file:font-medium disabled:opacity-60"
@@ -183,10 +206,14 @@ export function CatalogueImportForm({
         <button
           type="button"
           onClick={() => submit(true)}
-          disabled={!file || Boolean(loading)}
+          disabled={!canPreview}
           className="btn-secondary min-h-11 text-sm disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading === "preview" ? "Validating…" : "1. Preview & validate"}
+          {loading === "preview"
+            ? "Validating…"
+            : file && previewedSignature === fileSignature(file)
+              ? "1. Preview complete ✓"
+              : "1. Preview & validate"}
         </button>
         <button
           type="button"

@@ -68,7 +68,7 @@ export async function getCatalogueBySlug(slug: string) {
 export async function createCatalogue(input: CreateCatalogueInput, userId?: string) {
   const slug = input.slug ? slugify(input.slug) : slugify(input.name);
   const existing = await prisma.environment.findUnique({ where: { slug } });
-  if (existing) throw new Error("A catalogue with this URL slug already exists");
+  if (existing) throw new Error("A catalogue with this URL page name already exists");
 
   const maxOrder = await prisma.environment.aggregate({ _max: { sortOrder: true } });
   const settings = JSON.stringify({
@@ -229,17 +229,19 @@ function defsToDbRows(environmentId: string, defs: ShopCategoryDef[]) {
 
 /** Seed shop categories from hardcoded defs or auto-discover from product names */
 export async function generateShopCategories(environmentId: string, slug: string) {
+  const { syncEnvironmentShopCategories } = await import("@/lib/shop-category-sync");
+
   const hardcoded = SHOP_CATEGORIES[slug];
   if (hardcoded?.length) {
     await prisma.shopCategory.deleteMany({ where: { environmentId } });
     await prisma.shopCategory.createMany({ data: defsToDbRows(environmentId, hardcoded) });
+    await syncEnvironmentShopCategories(environmentId, hardcoded);
     return hardcoded.length;
   }
 
   const products = await prisma.product.findMany({
     where: { environmentId, status: "ACTIVE", deletedAt: null },
     select: { name: true },
-    take: 5000,
   });
 
   const discovered = discoverShopCategoriesFromProducts(products.map((p) => p.name));
@@ -247,6 +249,7 @@ export async function generateShopCategories(environmentId: string, slug: string
 
   await prisma.shopCategory.deleteMany({ where: { environmentId } });
   await prisma.shopCategory.createMany({ data: defsToDbRows(environmentId, discovered) });
+  await syncEnvironmentShopCategories(environmentId, discovered);
   return discovered.length;
 }
 
@@ -257,11 +260,24 @@ export async function getLandingPortalsFromDb() {
   });
 
   return envs
-    .map((env) => ({
-      slug: env.slug,
-      displayName: env.name,
-      tagline: env.tagline ?? "",
-      image: getEnvironmentCardImage(env),
-    }))
-    .filter((p) => Boolean(p.image) || Boolean(p.displayName));
+    .filter((env) => !env.slug.startsWith("replace-persist-"))
+    .map((env) => {
+      const image =
+        getEnvironmentCardImage(env) ||
+        `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+          `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f8f5f0"/><stop offset="1" stop-color="#e9e1d7"/></linearGradient></defs><circle cx="128" cy="128" r="116" fill="url(#g)" stroke="#8b3a8f" stroke-width="6"/><text x="128" y="145" text-anchor="middle" font-family="Arial,sans-serif" font-size="64" font-weight="700" fill="#5f2763">${env.name
+            .split(/\s+/)
+            .map((word) => word[0] ?? "")
+            .join("")
+            .slice(0, 2)
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, "") || "TF"}</text></svg>`
+        )}`;
+      return {
+        slug: env.slug,
+        displayName: env.name,
+        tagline: env.tagline ?? "",
+        image,
+      };
+    });
 }

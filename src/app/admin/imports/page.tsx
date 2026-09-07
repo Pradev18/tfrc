@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CatalogueImportForm } from "@/components/admin/CatalogueImportForm";
+import { UiSelect } from "@/components/ui/UiSelect";
 
 type CatalogueOption = {
   id: string;
@@ -63,23 +64,22 @@ export default function AdminImportPage() {
         <p className="mt-8 text-sm text-text-muted">Create a catalogue before importing products.</p>
       ) : (
         <div className="mt-8 max-w-2xl space-y-5">
-          <label className="block">
+          <div className="block">
             <span className="mb-1 block text-sm font-medium">Target catalogue</span>
-            <select
+            <UiSelect
               value={catalogueId}
-              onChange={(event) => {
-                setCatalogueId(event.target.value);
+              onValueChange={(value) => {
+                setCatalogueId(value);
                 setMessage("");
               }}
+              ariaLabel="Target catalogue"
+              options={catalogues.map((catalogue) => ({
+                value: catalogue.id,
+                label: `${catalogue.name} · ${catalogue.productCount} products · ${catalogue.status}`,
+              }))}
               className="w-full rounded-md border border-border bg-white px-3 py-2.5 text-sm"
-            >
-              {catalogues.map((catalogue) => (
-                <option key={catalogue.id} value={catalogue.id}>
-                  {catalogue.name} · {catalogue.productCount} products · {catalogue.status}
-                </option>
-              ))}
-            </select>
-          </label>
+            />
+          </div>
 
           {selected && (
             <CatalogueImportForm

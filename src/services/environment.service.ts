@@ -9,6 +9,7 @@ import {
 import type { Environment, EnvironmentStatus } from "@prisma/client";
 import { buildConfigFromEnvironment } from "@/lib/environment-config";
 import { getCachedEnvironment, loadCatalogCache } from "@/lib/catalog-cache";
+import { cache } from "react";
 
 export type ParsedEnvironment = Environment & {
   config: EnvironmentConfig;
@@ -88,7 +89,7 @@ function environmentFromCacheOrConfig(slug: string): ParsedEnvironment | null {
   return enrichEnvironment(env);
 }
 
-export async function getActiveEnvironments() {
+export const getActiveEnvironments = cache(async function getActiveEnvironments() {
   try {
     const envs = await prisma.environment.findMany({
       where: { status: "ACTIVE" },
@@ -107,9 +108,9 @@ export async function getActiveEnvironments() {
   }
 
   return ENVIRONMENT_CONFIGS.map((cfg) => environmentFromCacheOrConfig(cfg.slug)!);
-}
+});
 
-export async function getEnvironmentBySlug(slug: string) {
+export const getEnvironmentBySlug = cache(async function getEnvironmentBySlug(slug: string) {
   try {
     const env = await prisma.environment.findUnique({ where: { slug } });
     if (!env || env.status !== "ACTIVE") return null;
@@ -118,9 +119,11 @@ export async function getEnvironmentBySlug(slug: string) {
     console.error("[env] getEnvironmentBySlug prisma failed:", error);
     return environmentFromCacheOrConfig(slug);
   }
-}
+});
 
-export async function getEnvironmentIdBySlug(slug: string): Promise<string | null> {
+export const getEnvironmentIdBySlug = cache(async function getEnvironmentIdBySlug(
+  slug: string
+): Promise<string | null> {
   try {
     const env = await prisma.environment.findUnique({
       where: { slug },
@@ -132,24 +135,14 @@ export async function getEnvironmentIdBySlug(slug: string): Promise<string | nul
     console.error("[env] getEnvironmentIdBySlug prisma failed:", error);
     return getCachedEnvironment(slug)?.id ?? null;
   }
-}
+});
 
 export async function resolveEnvironment(slug: string) {
   return getEnvironmentBySlug(slug);
 }
 
 export async function isValidEnvironmentSlug(slug: string): Promise<boolean> {
-  try {
-    const env = await prisma.environment.findUnique({
-      where: { slug },
-      select: { status: true },
-    });
-    return env?.status === "ACTIVE";
-  } catch (error) {
-    console.error("[env] isValidEnvironmentSlug prisma failed:", error);
-    if (getCachedEnvironment(slug)) return true;
-    return ENVIRONMENT_CONFIGS.some((e) => e.slug === slug);
-  }
+  return Boolean(await getEnvironmentBySlug(slug));
 }
 
 export async function seedEnvironmentDefinitions() {

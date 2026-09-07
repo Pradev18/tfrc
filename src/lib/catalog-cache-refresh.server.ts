@@ -30,6 +30,9 @@ export async function refreshCatalogCacheFromDatabase(): Promise<void> {
           description: true,
           shortDescription: true,
           isFeatured: true,
+          variantGroupKey: true,
+          variantLabel: true,
+          isVariantPrimary: true,
           createdAt: true,
           images: {
             orderBy: { sortOrder: "asc" },

@@ -16,6 +16,7 @@ interface LazyCategorySectionProps {
   whatsappSettings: WhatsAppSettings;
   siteUrl: string;
   forceVisible?: boolean;
+  includeVariants?: boolean;
 }
 
 export function LazyCategorySection({
@@ -28,9 +29,10 @@ export function LazyCategorySection({
   whatsappSettings,
   siteUrl,
   forceVisible = false,
+  includeVariants = false,
 }: LazyCategorySectionProps) {
   const v = getEnvVisual(environmentSlug);
-  const { ref, visible } = useLazyVisible("280px");
+  const { ref, visible } = useLazyVisible("64px");
   const isActive = forceVisible || visible;
 
   return (
@@ -48,7 +50,9 @@ export function LazyCategorySection({
             {name}
           </h3>
           <p className="text-sm" style={{ color: v.muted }}>
-            {productCount} products
+            {includeVariants
+              ? "All imported products in this category"
+              : `${productCount} products`}
           </p>
         </div>
       </div>
@@ -62,16 +66,10 @@ export function LazyCategorySection({
           siteUrl={siteUrl}
           shopSlug={slug}
           enabled
+          includeVariants={includeVariants}
         />
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 xl:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div
-              key={i}
-              className="store-glass-product aspect-[3/4] animate-pulse rounded-2xl bg-white/40"
-            />
-          ))}
-        </div>
+        <div className="min-h-px" aria-hidden />
       )}
     </section>
   );

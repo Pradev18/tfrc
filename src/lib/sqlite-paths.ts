@@ -5,19 +5,20 @@ import path from "path";
 export function candidateSqlitePaths(preferredRelative = "prod.db"): string[] {
   const cwd = process.cwd();
   const cleaned = preferredRelative.replace(/^\.\//, "");
+  const basename = path.basename(cleaned);
   const preferred = path.isAbsolute(cleaned) ? cleaned : path.join(cwd, cleaned);
 
   return [
     preferred,
-    path.join(cwd, "prod.db"),
-    path.join(cwd, "prisma", "prod.db"),
-    path.join(cwd, ".next", "prod.db"),
-    path.join(cwd, ".next", "standalone", "prod.db"),
-    path.join(cwd, ".next", "standalone", "prisma", "prod.db"),
-    path.join(cwd, "..", "prod.db"),
-    path.join(cwd, "..", "prisma", "prod.db"),
-    path.join("/tmp", "vitanova-prod.db"),
-    path.join("/tmp", "vitanova-db", "prod.db"),
+    path.join(cwd, basename),
+    path.join(cwd, "prisma", basename),
+    path.join(cwd, ".next", basename),
+    path.join(cwd, ".next", "standalone", basename),
+    path.join(cwd, ".next", "standalone", "prisma", basename),
+    path.join(cwd, "..", basename),
+    path.join(cwd, "..", "prisma", basename),
+    path.join("/tmp", `vitanova-${basename}`),
+    path.join("/tmp", "vitanova-db", basename),
   ];
 }
 

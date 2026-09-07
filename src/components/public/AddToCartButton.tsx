@@ -5,6 +5,7 @@ import { useCart } from "@/context/CartContext";
 import { trackMetaAddToCart } from "@/components/analytics/MetaPixel";
 import { trackCustomerInquiry } from "@/lib/track-inquiry";
 import { cn } from "@/lib/utils";
+import { calculateLineTotal } from "@/lib/money";
 
 interface AddToCartButtonProps {
   productId: string;
@@ -17,6 +18,7 @@ interface AddToCartButtonProps {
   environmentName: string;
   dbId: string;
   quantity?: number;
+  variantLabel?: string | null;
   fullWidth?: boolean;
   size?: "sm" | "md";
   accentColor?: string;
@@ -34,6 +36,7 @@ export function AddToCartButton({
   environmentName,
   dbId,
   quantity = 1,
+  variantLabel,
   fullWidth,
   size = "sm",
   accentColor,
@@ -42,6 +45,7 @@ export function AddToCartButton({
   const { isInCart, addItem, removeItem } = useCart();
   const inCart = isInCart(productId);
   const qty = Math.max(1, quantity);
+  const lineTotal = calculateLineTotal(price, qty);
 
   function handleClick() {
     const item = {
@@ -55,6 +59,7 @@ export function AddToCartButton({
       environmentSlug,
       environmentName,
       quantity: qty,
+      size: variantLabel?.trim() || undefined,
     };
 
     if (inCart) {
@@ -74,6 +79,8 @@ export function AddToCartButton({
             currency,
             environmentSlug,
             environmentName,
+            quantity: qty,
+            size: variantLabel?.trim() || undefined,
           },
         ],
       });
@@ -84,7 +91,7 @@ export function AddToCartButton({
     trackMetaAddToCart({
       contentId: productId,
       contentName: name,
-      value: price * qty,
+      value: lineTotal,
       currency,
     });
     trackCustomerInquiry({
@@ -92,7 +99,7 @@ export function AddToCartButton({
       environmentSlug,
       environmentName,
       itemCount: qty,
-      estimatedTotal: price * qty,
+      estimatedTotal: lineTotal,
       currency,
       items: [
         {
@@ -103,6 +110,8 @@ export function AddToCartButton({
           currency,
           environmentSlug,
           environmentName,
+          quantity: qty,
+          size: variantLabel?.trim() || undefined,
         },
       ],
     });

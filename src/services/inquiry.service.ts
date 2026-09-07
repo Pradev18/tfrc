@@ -41,6 +41,8 @@ export async function createCustomerInquiry(
           productName: item.productName,
           slug: item.slug,
           price: item.price,
+          quantity: Math.max(1, item.quantity ?? 1),
+          size: item.size ?? null,
           currency: item.currency ?? "QAR",
           environmentSlug: item.environmentSlug ?? null,
           environmentName: item.environmentName ?? null,
