@@ -10,7 +10,7 @@ interface EnvBrandBadgeProps {
   sizes?: string;
 }
 
-/** Catalogue / brand image on a transparent card, covering the full frame. */
+/** Bare catalogue logo — no card chrome; full logo visible (object-contain). */
 export function EnvBrandBadge({
   src,
   alt,
@@ -20,15 +20,12 @@ export function EnvBrandBadge({
   const resolved = normalizeCatalogueImageSrc(src);
 
   return (
-    <div className={cn("relative overflow-hidden bg-transparent", className)}>
+    <div className={cn("catalogue-logo relative", className)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={resolved}
         alt={alt}
-        className={cn(
-          "absolute inset-0 h-full w-full max-w-none bg-transparent object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]",
-          imageClassName
-        )}
+        className={cn("catalogue-logo__img h-full w-full", imageClassName)}
       />
     </div>
   );

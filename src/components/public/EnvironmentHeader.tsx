@@ -107,18 +107,17 @@ export function EnvironmentHeader({
           <div className="flex h-16 items-center justify-between gap-3 md:h-[4.5rem]">
             <Link href={`/${envSlug}`} prefetch className="group flex min-w-0 shrink items-center gap-2 sm:gap-3">
               {brandImage ? (
-                <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-white">
-                  <Image
+                <span className="catalogue-logo relative h-9 w-9 shrink-0 sm:h-10 sm:w-10">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
                     src={brandImage}
                     alt={environment.config.displayName}
-                    fill
-                    className="bg-white object-cover"
-                    sizes="44px"
+                    className="catalogue-logo__img h-full w-full"
                   />
                 </span>
               ) : (
                 <span
-                  className="flex h-10 w-10 items-center justify-center rounded-xl"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl sm:h-10 sm:w-10"
                   style={{ background: v.gradientAccent, color: v.heading }}
                 >
                   <EnvIcon slug={envSlug} className="h-4 w-4" />
