@@ -110,7 +110,17 @@ async function stripEdgeBlackToPng(input: Buffer, threshold = 32): Promise<Buffe
     // Only rewrite when a meaningful edge black field was removed.
     if (cleared < width * height * 0.02) return null;
 
-    return sharp(data, { raw: { width, height, channels: 4 } }).png().toBuffer();
+    const pad = Math.max(8, Math.round(Math.max(width, height) * 0.07));
+    return sharp(data, { raw: { width, height, channels: 4 } })
+      .extend({
+        top: pad,
+        bottom: pad,
+        left: pad,
+        right: pad,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png()
+      .toBuffer();
   } catch {
     return null;
   }

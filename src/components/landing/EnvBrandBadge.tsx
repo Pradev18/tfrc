@@ -25,7 +25,7 @@ export function EnvBrandBadge({
       <img
         src={resolved}
         alt={alt}
-        className={cn("catalogue-logo__img h-full w-full", imageClassName)}
+        className={cn("catalogue-logo__img", imageClassName)}
       />
     </div>
   );

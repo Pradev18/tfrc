@@ -497,6 +497,9 @@
   box-shadow: none;
   overflow: visible;
   flex-shrink: 0;
+  /* Keep circular borders from kissing the clip edge */
+  padding: 4%;
+  box-sizing: border-box;
 }
 
 .catalogue-logo__img {

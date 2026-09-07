@@ -25,7 +25,7 @@ export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps)
           <img
             src={image}
             alt={portal.displayName}
-            className="catalogue-logo__img h-full w-full"
+            className="catalogue-logo__img"
           />
         ) : (
           <div className="flex h-full items-center justify-center font-display text-3xl font-medium text-[#141414]/20">
