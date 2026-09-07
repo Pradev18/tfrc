@@ -1,10 +1,9 @@
 import Link from "next/link";
-import Image from "next/image";
 import { TfrcBrand } from "@/components/brand/TfrcBrand";
 import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
 import { LANDING_PORTALS } from "@/lib/platform-images";
 import type { LandingPortal } from "@/lib/platform-images";
-import { isDynamicCatalogueImage, normalizeCatalogueImageSrc } from "@/lib/media-url";
+import { normalizeCatalogueImageSrc } from "@/lib/media-url";
 
 interface CataloguePortalCardProps {
   portal: LandingPortal;
@@ -13,7 +12,6 @@ interface CataloguePortalCardProps {
 
 export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps) {
   const image = normalizeCatalogueImageSrc(portal.image);
-  const dynamic = isDynamicCatalogueImage(image);
 
   return (
     <Link
@@ -21,27 +19,17 @@ export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps)
       className="landing-portal-card group landing-fade-up w-full max-w-[8.5rem] sm:max-w-[10.5rem]"
       style={{ animationDelay: `${index * 0.07}s` }}
     >
-      <div className="landing-portal-badge relative aspect-square overflow-hidden rounded-xl bg-neutral-100">
+      <div className="landing-portal-badge relative aspect-square overflow-hidden rounded-xl">
         {image ? (
-          dynamic ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={image}
-              alt={portal.displayName}
-              className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05]"
-            />
-          ) : (
-            <Image
-              src={image}
-              alt={portal.displayName}
-              fill
-              className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05]"
-              sizes="(max-width:640px) 42vw, 168px"
-              priority={index < 3}
-            />
-          )
+          // Plain img always fills the badge; avoids next/image wrapper sizing quirks.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={image}
+            alt={portal.displayName}
+            className="landing-portal-badge__img"
+          />
         ) : (
-          <div className="relative z-10 flex h-full items-center justify-center font-display text-4xl font-medium text-[#141414]/20">
+          <div className="flex h-full items-center justify-center font-display text-4xl font-medium text-[#141414]/20">
             {portal.displayName.charAt(0)}
           </div>
         )}
