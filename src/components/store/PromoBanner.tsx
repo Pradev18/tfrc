@@ -52,14 +52,14 @@ export function PromoBanner({
                 className="group w-[8.5rem] shrink-0 md:w-[10rem]"
               >
                 <div
-                  className="relative aspect-square overflow-hidden rounded-xl border bg-white transition-shadow group-hover:shadow-md"
+                  className="relative aspect-square overflow-hidden rounded-xl border bg-neutral-100 transition-shadow group-hover:shadow-md"
                   style={{ borderColor: v.border }}
                 >
                   <Image
                     src={img.url}
                     alt={img.altText || product.name}
                     fill
-                    className="object-contain p-2"
+                    className="object-cover"
                     sizes="160px"
                   />
                   {pricing.isOnSale && (

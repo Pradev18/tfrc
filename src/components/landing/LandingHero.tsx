@@ -21,23 +21,21 @@ export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps)
       className="landing-portal-card group landing-fade-up w-full max-w-[8.5rem] sm:max-w-[10.5rem]"
       style={{ animationDelay: `${index * 0.07}s` }}
     >
-      <div className="landing-portal-badge relative aspect-square overflow-hidden rounded-xl">
-        <div className="env-brand-badge-glow pointer-events-none absolute inset-0" aria-hidden />
+      <div className="landing-portal-badge relative aspect-square overflow-hidden rounded-xl bg-neutral-100">
         {image ? (
           dynamic ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={image}
               alt={portal.displayName}
-              className="relative z-10 mx-auto h-full w-[76%] object-contain p-2 transition-transform duration-500 ease-out group-hover:scale-[1.05]"
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05]"
             />
           ) : (
             <Image
               src={image}
               alt={portal.displayName}
-              width={240}
-              height={240}
-              className="relative z-10 mx-auto h-full w-[76%] object-contain p-2 transition-transform duration-500 ease-out group-hover:scale-[1.05]"
+              fill
+              className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.05]"
               sizes="(max-width:640px) 42vw, 168px"
               priority={index < 3}
             />

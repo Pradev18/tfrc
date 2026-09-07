@@ -45,16 +45,15 @@ export function ProductCard({
     >
       <Link
         href={productPath}
-        className="relative block overflow-hidden"
-        style={{ aspectRatio: "1 / 1", backgroundColor: `${v.sectionAlt}cc` }}
+        className="relative block overflow-hidden bg-neutral-100"
+        style={{ aspectRatio: "1 / 1" }}
       >
         {primaryImage ? (
           <Image
             src={primaryImage.url}
             alt={primaryImage.altText || product.name}
-            width={400}
-            height={400}
-            className="h-full w-full object-contain p-4 transition-transform duration-500 ease-out group-hover:scale-[1.05]"
+            fill
+            className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
             sizes="(max-width: 640px) 50vw, 25vw"
           />
         ) : (

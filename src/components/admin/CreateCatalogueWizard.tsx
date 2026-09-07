@@ -180,7 +180,7 @@ export function CreateCatalogueWizard() {
             )}
             {form.logoUrl && (
               <div className="relative mt-3 h-32 w-32 overflow-hidden rounded-xl border bg-white">
-                <CatalogueImage src={form.logoUrl} className="h-full w-full object-contain p-2" />
+                <CatalogueImage src={form.logoUrl} className="h-full w-full object-cover" />
               </div>
             )}
           </label>

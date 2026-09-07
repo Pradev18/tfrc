@@ -112,7 +112,7 @@ export function CartDrawer({
                         src={item.imageUrl}
                         alt={item.name}
                         fill
-                        className="object-contain p-1"
+                        className="object-cover"
                         sizes="64px"
                       />
                     ) : (

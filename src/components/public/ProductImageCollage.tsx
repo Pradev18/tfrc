@@ -11,10 +11,10 @@ interface ProductImageCollageProps {
 const cellStyle = {
   position: "relative" as const,
   overflow: "hidden" as const,
-  backgroundColor: "#ffffff",
+  backgroundColor: "#f5f5f5",
 };
 
-/** Marketing collage — uses explicit sizes so layout survives missing CSS */
+/** Marketing collage — images fill each cell edge-to-edge */
 export function ProductImageCollage({
   images,
   alt,
@@ -48,7 +48,7 @@ export function ProductImageCollage({
               alt={`${alt} ${i + 1}`}
               width={100}
               height={100}
-              className="h-full w-full object-contain p-1"
+              className="h-full w-full object-cover"
             />
           </div>
         ))}
@@ -83,7 +83,7 @@ export function ProductImageCollage({
             alt={alt}
             width={280}
             height={420}
-            className="h-full w-full object-contain p-3"
+            className="h-full w-full object-cover"
             priority
           />
         </div>
@@ -97,7 +97,7 @@ export function ProductImageCollage({
               alt={`${alt} ${i + 2}`}
               width={140}
               height={140}
-              className="h-full w-full object-contain p-2"
+              className="h-full w-full object-cover"
             />
           </div>
         ))}
@@ -120,7 +120,7 @@ export function ProductImageCollage({
             alt={`${alt} ${i + 1}`}
             width={160}
             height={160}
-            className="h-full w-full object-contain p-2"
+            className="h-full w-full object-cover"
           />
         </div>
       ))}

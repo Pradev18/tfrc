@@ -107,13 +107,13 @@ export function EnvironmentHeader({
           <div className="flex h-16 items-center justify-between gap-3 md:h-[4.5rem]">
             <Link href={`/${envSlug}`} prefetch className="group flex min-w-0 shrink items-center gap-2 sm:gap-3">
               {brandImage ? (
-                <span className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#0a0a0a]">
+                <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-neutral-100">
                   <Image
                     src={brandImage}
                     alt={environment.config.displayName}
-                    width={44}
-                    height={44}
-                    className="h-9 w-9 object-contain"
+                    fill
+                    className="object-cover"
+                    sizes="44px"
                   />
                 </span>
               ) : (

@@ -73,13 +73,12 @@ export function StoreHero({ config, slug, waHref, logoUrl }: StoreHeroProps) {
                   src={brandImage}
                   alt={`${config.displayName} Qatar`}
                   className="aspect-square min-h-[200px] rounded-2xl sm:min-h-[260px] md:min-h-[340px]"
-                  imageClassName="w-[78%] max-w-[300px]"
                   sizes="(max-width: 768px) 80vw, 380px"
                   priority
                 />
               ) : (
                 <div
-                  className="env-brand-badge flex min-h-[260px] items-center justify-center rounded-2xl md:min-h-[340px]"
+                  className="flex min-h-[260px] items-center justify-center rounded-2xl md:min-h-[340px]"
                   style={{ background: v.gradientAccent }}
                 />
               )}

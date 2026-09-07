@@ -11,7 +11,7 @@ interface EnvBrandBadgeProps {
   sizes?: string;
 }
 
-/** Circular TFRC brand badge on premium dark backdrop */
+/** Catalogue / brand image that fills its card frame edge-to-edge. */
 export function EnvBrandBadge({
   src,
   alt,
@@ -24,20 +24,14 @@ export function EnvBrandBadge({
   const dynamic = isDynamicCatalogueImage(resolved);
 
   return (
-    <div
-      className={cn(
-        "env-brand-badge relative flex items-center justify-center overflow-hidden",
-        className
-      )}
-    >
-      <div className="env-brand-badge-glow pointer-events-none absolute inset-0" aria-hidden />
+    <div className={cn("relative overflow-hidden bg-neutral-100", className)}>
       {dynamic ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={resolved}
           alt={alt}
           className={cn(
-            "relative z-10 h-auto w-[78%] max-w-[280px] object-contain drop-shadow-2xl transition-transform duration-500 ease-out group-hover:scale-[1.03]",
+            "absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]",
             imageClassName
           )}
         />
@@ -45,11 +39,10 @@ export function EnvBrandBadge({
         <Image
           src={resolved}
           alt={alt}
-          width={640}
-          height={640}
+          fill
           priority={priority}
           className={cn(
-            "relative z-10 h-auto w-[78%] max-w-[280px] object-contain drop-shadow-2xl transition-transform duration-500 ease-out group-hover:scale-[1.03]",
+            "object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]",
             imageClassName
           )}
           sizes={sizes}

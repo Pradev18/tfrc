@@ -34,7 +34,7 @@ export default async function CataloguesListPage() {
                 {cat.cardImage ? (
                   <CatalogueImage
                     src={cat.cardImage}
-                    className="h-full w-full object-contain p-1"
+                    className="h-full w-full object-cover"
                   />
                 ) : (
                   <span className="flex h-full items-center justify-center text-2xl">{cat.icon}</span>
