@@ -18,6 +18,7 @@ export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps)
       href={`/${portal.slug}`}
       className="landing-portal-card group landing-fade-up flex w-full max-w-[9.5rem] flex-col items-center sm:max-w-[10.5rem]"
       style={{ animationDelay: `${index * 0.07}s` }}
+      aria-label={portal.displayName}
     >
       <div className="catalogue-logo catalogue-logo--landing relative aspect-square w-full">
         {image ? (
@@ -33,9 +34,6 @@ export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps)
           </div>
         )}
       </div>
-      <p className="mt-3 text-center text-[13px] font-medium tracking-tight text-[#141414] sm:text-sm">
-        {portal.displayName}
-      </p>
     </Link>
   );
 }
