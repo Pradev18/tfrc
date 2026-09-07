@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { StoreHero } from "@/components/store/StoreHero";
 import type { ShopCategoryItem } from "@/components/store/CategoryScroll";
 import { MobileStickyBar } from "@/components/store/MobileStickyBar";
 import { DealsAnnouncementBar } from "@/components/store/DealsAnnouncementBar";
@@ -36,7 +35,6 @@ export function EnvironmentHome({
   environment,
   shopCategories,
   brands,
-  waHref,
   whatsappSettings,
   siteUrl,
 }: EnvironmentHomeProps) {
@@ -53,8 +51,6 @@ export function EnvironmentHome({
         label={`Today's Deals at ${config.displayName} — all on this page`}
         environmentSlug={slug}
       />
-
-      <StoreHero config={config} slug={slug} waHref={waHref} logoUrl={environment.logoUrl} />
 
       <Suspense fallback={<CatalogFallback />}>
         <UnifiedStoreCatalog
