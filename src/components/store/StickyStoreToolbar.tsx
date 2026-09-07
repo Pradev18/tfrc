@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { Flame, Search, SlidersHorizontal, X } from "lucide-react";
+import { Flame, Search, X } from "lucide-react";
 import { getEnvVisual } from "@/lib/env-visuals";
 import type { StoreFilters } from "@/lib/store-catalog-filter";
 import type { ShopCategoryItem } from "@/components/store/CategoryScroll";
@@ -24,11 +24,10 @@ interface StickyStoreToolbarProps {
 }
 
 const chipClass =
-  "inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-full px-3.5 text-xs font-semibold sm:min-h-[36px] sm:px-3 sm:py-2";
+  "inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-full px-3.5 text-xs font-semibold sm:min-h-[36px] sm:px-3 sm:py-2";
 
 export function StickyStoreToolbar({
   environmentSlug,
-  shopCategories,
   brands,
   filters,
   searchInput,
@@ -123,47 +122,6 @@ export function StickyStoreToolbar({
                 Clear filters
               </button>
             )}
-          </div>
-        </div>
-
-        <div className="mt-3 flex items-center gap-2">
-          <SlidersHorizontal className="hidden h-3.5 w-3.5 shrink-0 sm:block" style={{ color: v.muted }} />
-          <div className="scrollbar-hide -mx-1 flex flex-1 gap-2 overflow-x-auto px-1 pb-1">
-            <button
-              type="button"
-              onClick={() => onFiltersChange({ shop: null })}
-              className={`${chipClass} ${!filters.shop ? "text-white" : "bg-white/70 text-[#6b6560]"}`}
-              style={!filters.shop ? { backgroundColor: v.cta } : undefined}
-            >
-              All
-            </button>
-            {shopCategories.map((cat) => (
-              <button
-                key={cat.slug}
-                type="button"
-                onClick={() => {
-                  const next = filters.shop === cat.slug ? null : cat.slug;
-                  onFiltersChange({ shop: next });
-                  if (next) {
-                    requestAnimationFrame(() => {
-                      document
-                        .getElementById(`category-${cat.slug}`)
-                        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-                    });
-                  }
-                }}
-                className={`${chipClass} whitespace-nowrap ${
-                  filters.shop === cat.slug ? "text-white" : "bg-white/70"
-                }`}
-                style={
-                  filters.shop === cat.slug
-                    ? { backgroundColor: v.cta }
-                    : { color: v.heading }
-                }
-              >
-                {cat.name} ({cat.productCount})
-              </button>
-            ))}
           </div>
         </div>
 

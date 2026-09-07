@@ -4,7 +4,6 @@ import { CategoryScroll, type ShopCategoryItem } from "@/components/store/Catego
 import { MobileStickyBar } from "@/components/store/MobileStickyBar";
 import { DealsAnnouncementBar } from "@/components/store/DealsAnnouncementBar";
 import { StorePageBackdrop } from "@/components/store/StorePageBackdrop";
-import { TrustStrip } from "@/components/store/TrustStrip";
 import { UnifiedStoreCatalog } from "@/components/store/UnifiedStoreCatalog";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 import type { ParsedEnvironment } from "@/services/environment.service";
@@ -68,8 +67,6 @@ export function EnvironmentHome({
         environmentSlug={slug}
         title={CATEGORY_SECTION_TITLES[slug] ?? "Shop by category"}
       />
-
-      <TrustStrip environmentSlug={slug} />
 
       <Suspense fallback={<CatalogFallback />}>
         <UnifiedStoreCatalog
