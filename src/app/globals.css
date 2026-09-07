@@ -417,17 +417,17 @@
 .landing-portal-grid {
   display: grid;
   width: 100%;
-  max-width: 36rem;
-  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  max-width: 44rem;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   justify-items: center;
-  gap: 0.875rem 1rem;
+  gap: 1.25rem 1.5rem;
 }
 
 @media (min-width: 640px) {
   .landing-portal-grid {
-    max-width: 42rem;
-    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
-    gap: 1.25rem 1.5rem;
+    max-width: 52rem;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 1.75rem 2rem;
   }
 }
 
