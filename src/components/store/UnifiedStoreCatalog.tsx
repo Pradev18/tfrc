@@ -6,7 +6,6 @@ import { Flame } from "lucide-react";
 import { StickyStoreToolbar } from "@/components/store/StickyStoreToolbar";
 import { PaginatedProductGrid } from "@/components/store/PaginatedProductGrid";
 import { LazyCategorySection } from "@/components/store/LazyCategorySection";
-import { CategoryScroll } from "@/components/store/CategoryScroll";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { STORE_SEARCH_DEBOUNCE_MS } from "@/lib/store-constants";
@@ -149,15 +148,8 @@ export function UnifiedStoreCatalog({
           onFiltersChange={syncFilters}
           onClear={clearFilters}
           totalLabel={`${totalProducts.toLocaleString()} products · ${shopCategories.length} categories`}
+          showCategories={!isFilteredView}
         />
-
-        {!isFilteredView && (
-          <CategoryScroll
-            categories={shopCategories}
-            environmentSlug={environmentSlug}
-            compact
-          />
-        )}
 
         {isFilteredView ? (
           <div className="mt-8">
