@@ -6,6 +6,7 @@ import { Flame } from "lucide-react";
 import { StickyStoreToolbar } from "@/components/store/StickyStoreToolbar";
 import { PaginatedProductGrid } from "@/components/store/PaginatedProductGrid";
 import { LazyCategorySection } from "@/components/store/LazyCategorySection";
+import { CategoryScroll } from "@/components/store/CategoryScroll";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { STORE_SEARCH_DEBOUNCE_MS } from "@/lib/store-constants";
@@ -117,15 +118,24 @@ export function UnifiedStoreCatalog({
 
   const totalProducts = shopCategories.reduce((n, c) => n + c.productCount, 0);
 
+  const browseTitle =
+    environmentSlug === "pawmart"
+      ? "Browse and shop pet essentials"
+      : environmentSlug === "hardware"
+        ? "Browse and shop tools & hardware"
+        : environmentSlug === "household"
+          ? "Browse and shop kitchen & home"
+          : `Browse and shop ${environmentName}`;
+
   return (
     <section id="catalog" className="store-section scroll-anchor-catalog pb-6 pt-2 md:pb-24">
       <div className="container-pawmart">
         <div className="mb-2 md:mb-4">
           <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: v.muted }}>
-            Full catalogue
+            Full catalogue curated for you
           </p>
           <h2 className="mt-1 font-display text-2xl font-medium md:text-3xl" style={{ color: v.heading }}>
-            Browse & order
+            {browseTitle}
           </h2>
         </div>
 
@@ -140,6 +150,14 @@ export function UnifiedStoreCatalog({
           onClear={clearFilters}
           totalLabel={`${totalProducts.toLocaleString()} products · ${shopCategories.length} categories`}
         />
+
+        {!isFilteredView && (
+          <CategoryScroll
+            categories={shopCategories}
+            environmentSlug={environmentSlug}
+            compact
+          />
+        )}
 
         {isFilteredView ? (
           <div className="mt-8">

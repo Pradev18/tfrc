@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { StoreHero } from "@/components/store/StoreHero";
-import { CategoryScroll, type ShopCategoryItem } from "@/components/store/CategoryScroll";
+import type { ShopCategoryItem } from "@/components/store/CategoryScroll";
 import { MobileStickyBar } from "@/components/store/MobileStickyBar";
 import { DealsAnnouncementBar } from "@/components/store/DealsAnnouncementBar";
 import { StorePageBackdrop } from "@/components/store/StorePageBackdrop";
@@ -32,12 +32,6 @@ function CatalogFallback() {
   );
 }
 
-const CATEGORY_SECTION_TITLES: Record<string, string> = {
-  pawmart: "Shop pet essentials",
-  hardware: "Shop tools & hardware",
-  household: "Shop kitchen & home",
-};
-
 export function EnvironmentHome({
   environment,
   shopCategories,
@@ -61,12 +55,6 @@ export function EnvironmentHome({
       />
 
       <StoreHero config={config} slug={slug} waHref={waHref} logoUrl={environment.logoUrl} />
-
-      <CategoryScroll
-        categories={shopCategories}
-        environmentSlug={slug}
-        title={CATEGORY_SECTION_TITLES[slug] ?? "Shop by category"}
-      />
 
       <Suspense fallback={<CatalogFallback />}>
         <UnifiedStoreCatalog
