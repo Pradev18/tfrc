@@ -1,5 +1,10 @@
 import fs from "fs";
 import path from "path";
+import {
+  OTHER_SHOP_CATEGORY,
+  resolvePrimaryShopCategory,
+  type ShopCategoryDef,
+} from "@/lib/shop-categories";
 
 export interface CachedBrand {
   id: string;
@@ -155,8 +160,8 @@ export function getCachedProducts(
     brandSlug?: string;
     onSale?: boolean;
     inStock?: boolean;
-    shopKeywords?: string[];
-    excludeShopKeywords?: string[];
+    shopSlug?: string | null;
+    shopDefs?: ShopCategoryDef[];
   } = {}
 ) {
   const env = getCachedEnvironment(slug);
@@ -181,17 +186,12 @@ export function getCachedProducts(
   if (opts.inStock) {
     items = items.filter((p) => p.inventory?.isInStock === true);
   }
-  if (opts.shopKeywords?.length) {
-    const keywords = opts.shopKeywords.map((keyword) => keyword.toLowerCase());
-    items = items.filter((product) =>
-      keywords.some((keyword) => product.name.toLowerCase().includes(keyword))
-    );
-  }
-  if (opts.excludeShopKeywords?.length) {
-    const keywords = opts.excludeShopKeywords.map((keyword) => keyword.toLowerCase());
-    items = items.filter(
-      (product) => !keywords.some((keyword) => product.name.toLowerCase().includes(keyword))
-    );
+  if (opts.shopSlug && opts.shopDefs) {
+    items = items.filter((product) => {
+      const primary = resolvePrimaryShopCategory({ name: product.name }, opts.shopDefs!);
+      if (opts.shopSlug === OTHER_SHOP_CATEGORY.slug) return primary == null;
+      return primary?.slug === opts.shopSlug;
+    });
   }
 
   const page = opts.page ?? 1;

@@ -1,10 +1,10 @@
 import prisma from "@/lib/db";
 import { getEnvironmentIdBySlug } from "@/services/environment.service";
 import {
-  buildShopCategoryNameFilter,
   getEffectiveShopCategoryDefs,
   getShopCategoryDefs,
   OTHER_SHOP_CATEGORY,
+  resolvePrimaryShopCategory,
   type ShopCategoryDef,
 } from "@/lib/shop-categories";
 import { getCachedEnvironment } from "@/lib/catalog-cache";
@@ -50,7 +50,7 @@ function parseKeywords(raw: string): string[] {
   }
 }
 
-/** Count-based category index — does not load entire catalogue into memory */
+/** Count-based category index — exclusive primary category only */
 export async function getShopCategories(environmentSlug: string): Promise<ShopCategoryItem[]> {
   try {
     return await getShopCategoriesFromPrisma(environmentSlug);
@@ -69,25 +69,19 @@ function getShopCategoriesFromCache(environmentSlug: string): ShopCategoryItem[]
     cached.products.map((p) => p.name)
   );
 
-  return defs
+  const buckets = new Map<string, typeof cached.products>();
+  for (const def of defs) buckets.set(def.slug, []);
+  buckets.set(OTHER_SHOP_CATEGORY.slug, []);
+
+  for (const product of cached.products) {
+    const primary = resolvePrimaryShopCategory({ name: product.name }, defs);
+    const slug = primary?.slug ?? OTHER_SHOP_CATEGORY.slug;
+    buckets.get(slug)!.push(product);
+  }
+
+  const items: ShopCategoryItem[] = defs
     .map((def) => {
-      if (def.isFallback || def.slug === OTHER_SHOP_CATEGORY.slug) {
-        const keywordSet = defs
-          .filter((d) => !d.isFallback && d.keywords.length)
-          .flatMap((d) => d.keywords.map((k) => k.toLowerCase()));
-        const other = cached.products.filter(
-          (p) => !keywordSet.some((kw) => p.name.toLowerCase().includes(kw))
-        );
-        return {
-          slug: OTHER_SHOP_CATEGORY.slug,
-          name: OTHER_SHOP_CATEGORY.name,
-          productCount: other.length,
-          imageUrl: other[0]?.images[0]?.url ?? null,
-        };
-      }
-      const matched = cached.products.filter((p) =>
-        def.keywords.some((kw) => p.name.toLowerCase().includes(kw.toLowerCase()))
-      );
+      const matched = buckets.get(def.slug) ?? [];
       if (matched.length === 0) return null;
       return {
         slug: def.slug,
@@ -97,6 +91,18 @@ function getShopCategoriesFromCache(environmentSlug: string): ShopCategoryItem[]
       };
     })
     .filter(Boolean) as ShopCategoryItem[];
+
+  const other = buckets.get(OTHER_SHOP_CATEGORY.slug) ?? [];
+  if (other.length > 0) {
+    items.push({
+      slug: OTHER_SHOP_CATEGORY.slug,
+      name: OTHER_SHOP_CATEGORY.name,
+      productCount: other.length,
+      imageUrl: other[0]?.images[0]?.url ?? null,
+    });
+  }
+
+  return items;
 }
 
 async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<ShopCategoryItem[]> {
@@ -129,60 +135,61 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
 
   if (defs.length === 0) return [];
 
+  const products = await prisma.product.findMany({
+    where: baseWhere,
+    select: {
+      id: true,
+      name: true,
+      googleCategory: true,
+      fbCategory: true,
+      images: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
+    },
+  });
+
   const dbRows = await prisma.shopCategory.findMany({
     where: { environmentId, isActive: true },
     select: { slug: true, imageUrl: true },
   });
   const imageBySlug = new Map(dbRows.map((r) => [r.slug, r.imageUrl]));
 
+  const buckets = new Map<string, typeof products>();
+  for (const def of defs) buckets.set(def.slug, []);
+  buckets.set(OTHER_SHOP_CATEGORY.slug, []);
+
+  for (const product of products) {
+    const primary = resolvePrimaryShopCategory(
+      {
+        name: product.name,
+        googleCategory: product.googleCategory,
+        fbCategory: product.fbCategory,
+      },
+      defs
+    );
+    const slug = primary?.slug ?? OTHER_SHOP_CATEGORY.slug;
+    buckets.get(slug)!.push(product);
+  }
+
   const items: ShopCategoryItem[] = [];
 
   for (const def of defs) {
-    const orFilter = shopCategoryOrFilter(def);
-    if (orFilter.length === 0) continue;
-
-    const [count, sample] = await Promise.all([
-      prisma.product.count({ where: { ...baseWhere, OR: orFilter } }),
-      prisma.product.findFirst({
-        where: { ...baseWhere, OR: orFilter },
-        select: {
-          images: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
-        },
-        orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
-      }),
-    ]);
-
-    if (count === 0) continue;
-
+    const matched = buckets.get(def.slug) ?? [];
+    if (matched.length === 0) continue;
     items.push({
       slug: def.slug,
       name: def.name,
-      productCount: count,
-      imageUrl: imageBySlug.get(def.slug) ?? sample?.images[0]?.url ?? null,
+      productCount: matched.length,
+      imageUrl: imageBySlug.get(def.slug) ?? matched[0]?.images[0]?.url ?? null,
     });
   }
 
-  const otherOr = otherShopCategoryFilter(defs);
-  if (otherOr.length > 0) {
-    const [otherCount, otherSample] = await Promise.all([
-      prisma.product.count({ where: { ...baseWhere, OR: otherOr } }),
-      prisma.product.findFirst({
-        where: { ...baseWhere, OR: otherOr },
-        select: {
-          images: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
-        },
-        orderBy: { createdAt: "desc" },
-      }),
-    ]);
-
-    if (otherCount > 0) {
-      items.push({
-        slug: OTHER_SHOP_CATEGORY.slug,
-        name: OTHER_SHOP_CATEGORY.name,
-        productCount: otherCount,
-        imageUrl: otherSample?.images[0]?.url ?? null,
-      });
-    }
+  const other = buckets.get(OTHER_SHOP_CATEGORY.slug) ?? [];
+  if (other.length > 0) {
+    items.push({
+      slug: OTHER_SHOP_CATEGORY.slug,
+      name: OTHER_SHOP_CATEGORY.name,
+      productCount: other.length,
+      imageUrl: other[0]?.images[0]?.url ?? null,
+    });
   }
 
   return items.sort((a, b) => {
@@ -195,13 +202,23 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
   });
 }
 
+/** @deprecated Prefer exclusive resolvePrimaryShopCategory filtering */
 export function shopCategoryOrFilter(def: ShopCategoryDef) {
   if (def.isFallback || def.slug === OTHER_SHOP_CATEGORY.slug) {
     return [];
   }
-  return buildShopCategoryNameFilter([def]);
+  const seen = new Set<string>();
+  return def.keywords
+    .filter((kw) => {
+      const key = kw.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((kw) => ({ name: { contains: kw } }));
 }
 
+/** @deprecated Prefer exclusive resolvePrimaryShopCategory filtering */
 export function otherShopCategoryFilter(defs: ShopCategoryDef[]) {
   const allKeywords = defs
     .filter((d) => !d.isFallback && d.keywords.length > 0)

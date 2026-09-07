@@ -7,11 +7,10 @@ import {
   getEffectiveShopCategoryDefs,
   getShopCategoryDefs,
   OTHER_SHOP_CATEGORY,
+  resolvePrimaryShopCategory,
 } from "@/lib/shop-categories";
 import {
   getShopCategoryDefsForEnvironment,
-  shopCategoryOrFilter,
-  otherShopCategoryFilter,
 } from "@/services/shop-category.service";
 import { getCachedEnvironment, getCachedProducts } from "@/lib/catalog-cache";
 
@@ -97,14 +96,8 @@ export async function getProducts(filters: ProductFilters = {}) {
       brandSlug: filters.brandSlug,
       onSale: filters.onSale,
       inStock: filters.inStock,
-      shopKeywords:
-        selectedCategory && selectedCategory.slug !== OTHER_SHOP_CATEGORY.slug
-          ? selectedCategory.keywords
-          : undefined,
-      excludeShopKeywords:
-        filters.shopCategorySlug === OTHER_SHOP_CATEGORY.slug
-          ? categoryDefs.flatMap((category) => category.keywords)
-          : undefined,
+      shopSlug: filters.shopCategorySlug,
+      shopDefs: categoryDefs,
     });
     if (!cached) throw error;
     return {
@@ -173,25 +166,38 @@ async function getProductsFromPrisma(filters: ProductFilters = {}) {
       ? await getShopCategoryDefsForEnvironment(environmentId, filters.environmentSlug)
       : getShopCategoryDefs(filters.environmentSlug);
 
-    if (filters.shopCategorySlug === OTHER_SHOP_CATEGORY.slug) {
-      where.AND = [
-        ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
-        { OR: otherShopCategoryFilter(defs) },
-      ];
-    } else {
-      const shopCat = defs.find((category) => category.slug === filters.shopCategorySlug);
-      if (shopCat) {
-        const orFilter = shopCategoryOrFilter(shopCat);
-        if (orFilter.length > 0) {
-          where.AND = [
-            ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
-            { OR: orFilter },
-          ];
+    const candidates = await prisma.product.findMany({
+      where: {
+        environmentId: environmentId ?? undefined,
+        status: ProductStatus.ACTIVE,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        googleCategory: true,
+        fbCategory: true,
+      },
+    });
+
+    const matchedIds = candidates
+      .filter((product) => {
+        const primary = resolvePrimaryShopCategory(
+          {
+            name: product.name,
+            googleCategory: product.googleCategory,
+            fbCategory: product.fbCategory,
+          },
+          defs
+        );
+        if (filters.shopCategorySlug === OTHER_SHOP_CATEGORY.slug) {
+          return primary == null;
         }
-      } else {
-        where.id = "__invalid_shop_category__";
-      }
-    }
+        return primary?.slug === filters.shopCategorySlug;
+      })
+      .map((product) => product.id);
+
+    where.id = matchedIds.length > 0 ? { in: matchedIds } : "__no_exclusive_shop_match__";
   }
 
   if (filters.brandSlug) {

@@ -122,7 +122,14 @@ export function groupProductsByShopCategory(
   buckets.set(OTHER_SHOP_CATEGORY.slug, []);
 
   for (const product of products) {
-    const primary = resolvePrimaryShopCategory(product.name, defs);
+    const primary = resolvePrimaryShopCategory(
+      {
+        name: product.name,
+        googleCategory: (product as { googleCategory?: string | null }).googleCategory,
+        fbCategory: (product as { fbCategory?: string | null }).fbCategory,
+      },
+      defs
+    );
     const slug = primary?.slug ?? OTHER_SHOP_CATEGORY.slug;
     buckets.get(slug)!.push(product);
   }
