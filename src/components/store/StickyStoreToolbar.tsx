@@ -2,8 +2,8 @@
 
 import { Flame, Search, X } from "lucide-react";
 import { getEnvVisual } from "@/lib/env-visuals";
+import { CategoryScroll, type ShopCategoryItem } from "@/components/store/CategoryScroll";
 import type { StoreFilters } from "@/lib/store-catalog-filter";
-import type { ShopCategoryItem } from "@/components/store/CategoryScroll";
 
 interface Brand {
   id: string;
@@ -21,6 +21,7 @@ interface StickyStoreToolbarProps {
   onFiltersChange: (patch: Partial<StoreFilters>) => void;
   onClear: () => void;
   totalLabel?: string;
+  showCategories?: boolean;
 }
 
 const chipClass =
@@ -28,6 +29,7 @@ const chipClass =
 
 export function StickyStoreToolbar({
   environmentSlug,
+  shopCategories,
   brands,
   filters,
   searchInput,
@@ -35,6 +37,7 @@ export function StickyStoreToolbar({
   onFiltersChange,
   onClear,
   totalLabel,
+  showCategories = true,
 }: StickyStoreToolbarProps) {
   const v = getEnvVisual(environmentSlug);
   const hasActiveFilters = Boolean(
@@ -124,6 +127,27 @@ export function StickyStoreToolbar({
             )}
           </div>
         </div>
+
+        {showCategories && shopCategories.length > 0 && (
+          <div className="mt-3 border-t border-black/[0.04] pt-3">
+            <CategoryScroll
+              categories={shopCategories}
+              environmentSlug={environmentSlug}
+              embedded
+              activeSlug={filters.shop}
+              onSelect={(slug) => {
+                onFiltersChange({ shop: slug });
+                if (slug) {
+                  requestAnimationFrame(() => {
+                    document
+                      .getElementById(`category-${slug}`)
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  });
+                }
+              }}
+            />
+          </div>
+        )}
 
         {totalLabel && (
           <p className="mt-2 text-[11px] font-medium sm:text-xs" style={{ color: v.muted }}>
