@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Menu, X, Search, ChevronDown, ArrowRight } from "lucide-react";
 import { WhatsAppButton } from "@/components/public/WhatsAppButton";
