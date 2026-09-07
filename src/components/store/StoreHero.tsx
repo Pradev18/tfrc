@@ -77,10 +77,7 @@ export function StoreHero({ config, slug, waHref, logoUrl }: StoreHeroProps) {
                   priority
                 />
               ) : (
-                <div
-                  className="flex min-h-[260px] items-center justify-center rounded-2xl md:min-h-[340px]"
-                  style={{ background: v.gradientAccent }}
-                />
+                <div className="flex min-h-[260px] items-center justify-center rounded-2xl bg-white md:min-h-[340px]" />
               )}
             </div>
           </div>

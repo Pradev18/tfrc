@@ -154,12 +154,12 @@ export default async function EnvironmentCategoryPage({ params, searchParams }: 
 
           {categoryCover && (
 
-            <div className="relative hidden h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[#ebe8e3] bg-neutral-100 sm:block md:h-24 md:w-24">
+            <div className="relative hidden h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[#ebe8e3] bg-white sm:block md:h-24 md:w-24">
               <Image
                 src={categoryCover}
                 alt={category.name}
                 fill
-                className="object-cover"
+                className="bg-white object-cover"
                 sizes="96px"
               />
             </div>

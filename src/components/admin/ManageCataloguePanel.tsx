@@ -206,11 +206,11 @@ export function ManageCataloguePanel({ catalogueId, catalogueName }: ManageCatal
                       key={p.id}
                       className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:gap-4"
                     >
-                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-surface-muted sm:h-14 sm:w-14">
+                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-white sm:h-14 sm:w-14">
                         {p.images[0] ? (
                           <CatalogueImage
                             src={p.images[0].url}
-                            className="h-full w-full object-cover"
+                            className="h-full w-full bg-white object-cover"
                           />
                         ) : null}
                       </div>

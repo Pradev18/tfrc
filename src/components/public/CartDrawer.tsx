@@ -106,17 +106,17 @@ export function CartDrawer({
                   key={item.id}
                   className="flex gap-3 rounded-lg border border-border p-3"
                 >
-                  <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-surface-muted">
+                  <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-white">
                     {item.imageUrl ? (
                       <Image
                         src={item.imageUrl}
                         alt={item.name}
                         fill
-                        className="object-cover"
+                        className="bg-white object-cover"
                         sizes="64px"
                       />
                     ) : (
-                      <div className="flex h-full items-center justify-center text-[10px] text-text-subtle">
+                      <div className="flex h-full items-center justify-center bg-white text-[10px] text-text-subtle">
                         No img
                       </div>
                     )}

@@ -453,8 +453,8 @@
 
 .landing-portal-badge {
   position: relative;
-  background: #e8e8e8;
-  border: 1px solid rgba(20, 20, 20, 0.06);
+  background: #ffffff;
+  border: 1px solid rgba(20, 20, 20, 0.08);
   box-shadow: 0 4px 24px rgba(20, 20, 20, 0.08);
   transition: box-shadow 0.35s ease;
 }
@@ -463,7 +463,7 @@
   box-shadow: 0 12px 36px rgba(20, 20, 20, 0.14);
 }
 
-/* Force catalogue card images to fill the badge edge-to-edge (no inset / black frame). */
+/* Force catalogue card images to fill the badge edge-to-edge on a white card. */
 .landing-portal-badge__img,
 .landing-portal-badge > img,
 .landing-portal-badge > span,
@@ -478,6 +478,7 @@
   padding: 0 !important;
   object-fit: cover !important;
   object-position: center !important;
+  background: #ffffff !important;
 }
 
 .landing-portal-card:hover .landing-portal-badge__img,
@@ -589,14 +590,11 @@
 }
 
 .env-brand-badge {
-  background:
-    radial-gradient(ellipse 80% 70% at 50% 45%, #1c1c1c 0%, #0a0a0a 55%, #050505 100%);
+  background: #ffffff;
 }
 
 .env-brand-badge-glow {
-  background:
-    radial-gradient(circle at 50% 40%, rgba(184, 149, 107, 0.14) 0%, transparent 55%),
-    radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.04) 0%, transparent 40%);
+  display: none;
 }
 
 /* ─── Store UI ─── */

@@ -30,14 +30,16 @@ export default async function CataloguesListPage() {
             className="group rounded-xl border border-border bg-surface p-5 transition-shadow hover:shadow-md"
           >
             <div className="flex items-start gap-4">
-              <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-surface-muted">
+              <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-border bg-white">
                 {cat.cardImage ? (
                   <CatalogueImage
                     src={cat.cardImage}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full bg-white object-cover"
                   />
                 ) : (
-                  <span className="flex h-full items-center justify-center text-2xl">{cat.icon}</span>
+                  <span className="flex h-full items-center justify-center bg-white text-2xl">
+                    {cat.icon}
+                  </span>
                 )}
               </div>
               <div className="min-w-0">

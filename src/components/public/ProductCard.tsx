@@ -45,7 +45,7 @@ export function ProductCard({
     >
       <Link
         href={productPath}
-        className="relative block overflow-hidden bg-neutral-100"
+        className="relative block overflow-hidden bg-white"
         style={{ aspectRatio: "1 / 1" }}
       >
         {primaryImage ? (
@@ -53,11 +53,11 @@ export function ProductCard({
             src={primaryImage.url}
             alt={primaryImage.altText || product.name}
             fill
-            className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
+            className="bg-white object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
             sizes="(max-width: 640px) 50vw, 25vw"
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-xs" style={{ color: v.muted }}>
+          <div className="flex h-full items-center justify-center bg-white text-xs" style={{ color: v.muted }}>
             No image
           </div>
         )}

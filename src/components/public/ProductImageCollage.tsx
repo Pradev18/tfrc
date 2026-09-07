@@ -11,7 +11,7 @@ interface ProductImageCollageProps {
 const cellStyle = {
   position: "relative" as const,
   overflow: "hidden" as const,
-  backgroundColor: "#f5f5f5",
+  backgroundColor: "#ffffff",
 };
 
 /** Marketing collage — images fill each cell edge-to-edge */

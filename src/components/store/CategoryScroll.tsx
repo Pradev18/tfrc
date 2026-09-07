@@ -54,13 +54,13 @@ export function CategoryScroll({
               href={`/${environmentSlug}?shop=${cat.slug}#category-${cat.slug}`}
               className="store-category-card group w-[7.5rem] shrink-0 sm:w-auto"
             >
-              <div className="glass-card store-glass-category relative aspect-square overflow-hidden rounded-2xl bg-neutral-100">
+              <div className="glass-card store-glass-category relative aspect-square overflow-hidden rounded-2xl bg-white">
                 {cat.imageUrl ? (
                   <Image
                     src={cat.imageUrl}
                     alt={cat.name}
                     fill
-                    className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
+                    className="bg-white object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
                     sizes="(max-width:768px) 132px, 160px"
                   />
                 ) : (

@@ -199,7 +199,7 @@ export function EditCatalogueForm({ catalogue }: EditCatalogueFormProps) {
         />
         {form.logoUrl && (
           <div className="relative mt-3 h-36 w-36 overflow-hidden rounded-xl border bg-white">
-            <CatalogueImage src={form.logoUrl} className="h-full w-full object-cover" />
+            <CatalogueImage src={form.logoUrl} className="h-full w-full bg-white object-cover" />
           </div>
         )}
         {uploading && <p className="mt-2 text-xs text-text-muted">Uploading & applying image…</p>}
