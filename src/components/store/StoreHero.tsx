@@ -22,10 +22,10 @@ export function StoreHero({ config, slug, waHref, logoUrl }: StoreHeroProps) {
     normalizeCatalogueImageSrc(logoUrl) || getCategoryHeroImage(slug) || "";
 
   return (
-    <section className="store-section relative overflow-hidden pt-3 md:pt-4" style={envStyle(v)}>
+    <section className="store-section relative pt-3 pb-2 md:pt-4 md:pb-3" style={envStyle(v)}>
       <div className="container-pawmart">
-        <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
-          <div className="min-w-0 flex-1 text-center sm:max-w-xl sm:text-left">
+        <div className="flex items-center justify-between gap-4 sm:gap-6">
+          <div className="min-w-0 flex-1">
             <p
               className="text-[10px] font-semibold uppercase tracking-[0.22em]"
               style={{ color: v.accent }}
@@ -34,20 +34,23 @@ export function StoreHero({ config, slug, waHref, logoUrl }: StoreHeroProps) {
             </p>
 
             <h1
-              className="mt-1.5 font-display text-xl font-medium leading-tight tracking-tight sm:text-2xl md:text-[1.75rem]"
+              className="mt-1 font-display text-lg font-medium leading-tight tracking-tight sm:text-xl md:text-2xl"
               style={{ color: v.heading }}
             >
               {headline}
             </h1>
 
-            <p className="mt-1.5 line-clamp-2 text-sm leading-snug" style={{ color: v.body }}>
+            <p
+              className="mt-1 hidden max-w-lg text-sm leading-snug sm:line-clamp-2 sm:block"
+              style={{ color: v.body }}
+            >
               {config.description}
             </p>
 
-            <div className="mt-4 flex flex-wrap justify-center gap-2 sm:justify-start">
+            <div className="mt-3 flex flex-wrap gap-2">
               <Link
                 href={`/${slug}#catalog`}
-                className="glass-btn inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold text-white transition-all hover:-translate-y-0.5"
+                className="glass-btn inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-white transition-all hover:-translate-y-0.5"
                 style={{ backgroundColor: v.cta, boxShadow: `0 6px 18px ${v.glow}` }}
               >
                 Shop all
@@ -57,7 +60,7 @@ export function StoreHero({ config, slug, waHref, logoUrl }: StoreHeroProps) {
                 href={waHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="glass-btn inline-flex items-center gap-1.5 rounded-full border border-[#128c47]/25 bg-[#128c47]/10 px-4 py-2 text-xs font-semibold text-[#0f7340] transition-all hover:-translate-y-0.5 hover:bg-[#128c47]/15"
+                className="glass-btn inline-flex items-center gap-1.5 rounded-full border border-[#128c47]/25 bg-[#128c47]/10 px-3.5 py-1.5 text-xs font-semibold text-[#0f7340] transition-all hover:-translate-y-0.5 hover:bg-[#128c47]/15"
               >
                 <WhatsAppIcon className="h-3.5 w-3.5" />
                 WhatsApp
@@ -66,12 +69,12 @@ export function StoreHero({ config, slug, waHref, logoUrl }: StoreHeroProps) {
           </div>
 
           {brandImage ? (
-            <div className="catalogue-logo shrink-0">
+            <div className="catalogue-logo h-20 w-20 shrink-0 sm:h-24 sm:w-24 md:h-28 md:w-28">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={brandImage}
                 alt={`${config.displayName} Qatar`}
-                className="catalogue-logo__img h-[7.5rem] w-[7.5rem] sm:h-[8.5rem] sm:w-[8.5rem] md:h-[9.5rem] md:w-[9.5rem]"
+                className="catalogue-logo__img"
               />
             </div>
           ) : null}
