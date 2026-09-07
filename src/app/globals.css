@@ -453,7 +453,7 @@
 
 .landing-portal-badge {
   position: relative;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid rgba(20, 20, 20, 0.08);
   box-shadow: 0 4px 24px rgba(20, 20, 20, 0.08);
   transition: box-shadow 0.35s ease;
@@ -463,7 +463,7 @@
   box-shadow: 0 12px 36px rgba(20, 20, 20, 0.14);
 }
 
-/* Force catalogue card images to fill the badge edge-to-edge on a white card. */
+/* Force catalogue card images to fill the badge edge-to-edge (transparent frame). */
 .landing-portal-badge__img,
 .landing-portal-badge > img,
 .landing-portal-badge > span,
@@ -478,7 +478,7 @@
   padding: 0 !important;
   object-fit: cover !important;
   object-position: center !important;
-  background: #ffffff !important;
+  background: transparent !important;
 }
 
 .landing-portal-card:hover .landing-portal-badge__img,
@@ -590,7 +590,7 @@
 }
 
 .env-brand-badge {
-  background: #ffffff;
+  background: transparent;
 }
 
 .env-brand-badge-glow {

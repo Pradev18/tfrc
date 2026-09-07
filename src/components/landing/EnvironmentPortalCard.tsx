@@ -32,7 +32,7 @@ export function EnvironmentPortalCard({ env }: EnvironmentPortalCardProps) {
             sizes="(max-width: 768px) 100vw, 33vw"
           />
         ) : (
-          <div className="env-brand-badge h-full w-full bg-white" />
+          <div className="env-brand-badge h-full w-full bg-transparent" />
         )}
 
         <span

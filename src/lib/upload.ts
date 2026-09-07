@@ -50,12 +50,78 @@ export function mediaPublicUrl(filename: string): string {
   return `/api/media/${encodeURIComponent(filename)}`;
 }
 
+/** Flood-fill near-black pixels connected to image edges → transparent PNG. */
+async function stripEdgeBlackToPng(input: Buffer, threshold = 32): Promise<Buffer | null> {
+  try {
+    const sharp = (await import("sharp")).default;
+    const { data, info } = await sharp(input)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    const { width, height, channels } = info;
+    if (channels < 4) return null;
+
+    const visited = new Uint8Array(width * height);
+    const queue: number[] = [];
+
+    const isNearBlack = (i: number) => {
+      const o = i * 4;
+      const a = data[o + 3];
+      if (a < 8) return true;
+      return data[o] <= threshold && data[o + 1] <= threshold && data[o + 2] <= threshold;
+    };
+
+    const push = (x: number, y: number) => {
+      if (x < 0 || y < 0 || x >= width || y >= height) return;
+      const i = y * width + x;
+      if (visited[i]) return;
+      if (!isNearBlack(i)) return;
+      visited[i] = 1;
+      queue.push(i);
+    };
+
+    for (let x = 0; x < width; x++) {
+      push(x, 0);
+      push(x, height - 1);
+    }
+    for (let y = 0; y < height; y++) {
+      push(0, y);
+      push(width - 1, y);
+    }
+
+    let cleared = 0;
+    while (queue.length) {
+      const i = queue.pop()!;
+      const o = i * 4;
+      data[o] = 0;
+      data[o + 1] = 0;
+      data[o + 2] = 0;
+      data[o + 3] = 0;
+      cleared++;
+      const x = i % width;
+      const y = (i / width) | 0;
+      push(x + 1, y);
+      push(x - 1, y);
+      push(x, y + 1);
+      push(x, y - 1);
+    }
+
+    // Only rewrite when a meaningful edge black field was removed.
+    if (cleared < width * height * 0.02) return null;
+
+    return sharp(data, { raw: { width, height, channels: 4 } }).png().toBuffer();
+  } catch {
+    return null;
+  }
+}
+
 export async function saveUploadedImage(file: File): Promise<string> {
   if (file.size === 0 || file.size > MAX_BYTES) {
     throw new Error("Image must be under 5 MB");
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
+  let buffer = Buffer.from(await file.arrayBuffer());
   const detected = detectImageType(buffer);
   if (!detected) {
     throw new Error("Only JPEG, PNG, WebP, or GIF images are allowed");
@@ -67,7 +133,16 @@ export async function saveUploadedImage(file: File): Promise<string> {
     throw new Error("Only JPEG, PNG, WebP, or GIF images are allowed");
   }
 
-  const filename = `${randomUUID()}.${detected.extension}`;
+  const stripped = await stripEdgeBlackToPng(buffer);
+  let extension = detected.extension;
+  let mime = detected.mime;
+  if (stripped) {
+    buffer = stripped;
+    extension = "png";
+    mime = "image/png";
+  }
+
+  const filename = `${randomUUID()}.${extension}`;
   let written = false;
   const errors: string[] = [];
 
@@ -84,7 +159,7 @@ export async function saveUploadedImage(file: File): Promise<string> {
   if (!written) {
     // Last-resort Hostinger fallback: keep small logos inside the database URL itself.
     if (buffer.length <= 450_000) {
-      return `data:${detected.mime};base64,${buffer.toString("base64")}`;
+      return `data:${mime};base64,${buffer.toString("base64")}`;
     }
     throw new Error(
       `Could not save image on the server. ${errors[0] ?? "Upload directory is not writable."}`
