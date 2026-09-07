@@ -329,26 +329,58 @@ export async function getProductEnvironmentSlug(productId: string): Promise<stri
 
 export async function getRelatedProducts(
   product: ProductWithRelations,
-  limit = 4,
+  limit = 8,
   environmentId?: string
 ) {
-  return prisma.product.findMany({
-    where: {
-      status: ProductStatus.ACTIVE,
-      deletedAt: null,
-      id: { not: product.id },
-      ...(environmentId || product.environmentId
-        ? { environmentId: environmentId ?? product.environmentId ?? undefined }
-        : {}),
-      OR: [
-        { categoryId: product.categoryId ?? undefined },
-        { subcategoryId: product.subcategoryId ?? undefined },
-        { brandId: product.brandId ?? undefined },
-      ],
-    },
-    include: productInclude,
-    take: limit,
-  });
+  const envId = environmentId ?? product.environmentId ?? undefined;
+  const excludeId = product.id;
+
+  const baseWhere = {
+    status: ProductStatus.ACTIVE,
+    deletedAt: null,
+    id: { not: excludeId },
+    ...(envId ? { environmentId: envId } : {}),
+  } as const;
+
+  const affinityFilters = [
+    ...(product.categoryId ? [{ categoryId: product.categoryId }] : []),
+    ...(product.subcategoryId ? [{ subcategoryId: product.subcategoryId }] : []),
+    ...(product.brandId ? [{ brandId: product.brandId }] : []),
+  ];
+
+  const related =
+    affinityFilters.length > 0
+      ? await prisma.product.findMany({
+          where: { ...baseWhere, OR: affinityFilters },
+          include: productListInclude,
+          orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
+          take: limit * 2,
+        })
+      : [];
+
+  const unique = new Map<string, (typeof related)[number]>();
+  for (const item of related) {
+    if (item.id === excludeId) continue;
+    if (!unique.has(item.id)) unique.set(item.id, item);
+    if (unique.size >= limit) break;
+  }
+
+  if (unique.size < limit) {
+    const fillers = await prisma.product.findMany({
+      where: {
+        ...baseWhere,
+        id: { notIn: [excludeId, ...Array.from(unique.keys())] },
+      },
+      include: productListInclude,
+      orderBy: [{ isBestseller: "desc" }, { createdAt: "desc" }],
+      take: limit - unique.size,
+    });
+    for (const item of fillers) {
+      if (!unique.has(item.id)) unique.set(item.id, item);
+    }
+  }
+
+  return Array.from(unique.values()).slice(0, limit);
 }
 
 export async function getFeaturedProducts(limit = 8, environmentSlug?: string) {
