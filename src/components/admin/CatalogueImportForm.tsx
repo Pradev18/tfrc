@@ -25,6 +25,7 @@ interface ImportResult {
   applied: boolean;
   canImport: boolean;
   errors: ImportError[];
+  errorSummary?: string;
   preview?: ImportPreviewRow[];
 }
 
@@ -120,7 +121,10 @@ export function CatalogueImportForm({
         } else {
           setPreviewedSignature("");
           setValidatedSignature("");
-          setError("Validation failed. Correct the listed spreadsheet rows and choose the file again.");
+          setError(
+            data.errorSummary ||
+              "Validation failed. Download the Meta template, match those columns, then choose the file again."
+          );
           setProgress("");
         }
       } else if (response.ok && data.applied) {
@@ -136,9 +140,10 @@ export function CatalogueImportForm({
         setPreviewedSignature("");
         const firstIssue = data.errors?.[0];
         setError(
-          firstIssue
-            ? `Nothing was changed. Row ${firstIssue.row}: ${firstIssue.message}`
-            : "Nothing was changed because the import failed validation."
+          data.errorSummary ||
+            (firstIssue
+              ? `Nothing was changed. Row ${firstIssue.row}: ${firstIssue.message}`
+              : "Nothing was changed because the import failed validation.")
         );
         setProgress("");
       }
@@ -174,17 +179,24 @@ export function CatalogueImportForm({
       <div>
         <h3 className="font-semibold text-primary">Replace {catalogueName} from Excel</h3>
         <p className="mt-1 text-sm leading-6 text-text-muted">
-          Upload an Excel sheet exported in <strong>Meta catalogue format</strong>. Step 1 checks
-          every row and catalogue ownership. Step 2 replaces the live catalogue for admin and
-          customers immediately.
+          Download the Excel template (.xlsx), edit it in Excel or Google Sheets, save the same
+          file, then upload it here. PawMart example rows are already filled so you can replace
+          them with your products.
         </p>
+        <a
+          href="/api/admin/catalogues/import-template"
+          download="TFRC-catalogue-template.xlsx"
+          className="mt-3 inline-flex min-h-10 items-center rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-primary hover:bg-surface-muted"
+        >
+          Download Excel template (.xlsx)
+        </a>
       </div>
 
       <label className="block">
         <span className="mb-1 block text-sm font-medium">Meta catalogue Excel file</span>
         <span className="mb-2 block text-xs text-text-muted">
-          Required format: Meta product catalogue with id, title, price and image_link columns.
-          Accepted files: .xlsx or .xls, up to 25 MB.
+          Upload the same edited .xlsx template. Required columns: id, title, price, image_link.
+          Empty rows are ignored. Accepted files: .xlsx or .xls, up to 25 MB.
         </span>
         <input
           ref={inputRef}
@@ -282,14 +294,26 @@ export function CatalogueImportForm({
             </div>
           )}
 
-          {result.errors.length > 0 && (
-            <ul className="mt-4 max-h-52 space-y-1 overflow-y-auto text-xs text-red-800">
-              {result.errors.slice(0, 50).map((item, index) => (
-                <li key={`${item.row}-${index}`}>
-                  Row {item.row}: {item.message}
-                </li>
-              ))}
-            </ul>
+          {(result.errorSummary || result.errors.length > 0) && (
+            <div className="mt-4 space-y-2">
+              {result.errorSummary && (
+                <p className="rounded-md bg-red-50 px-3 py-2 text-sm font-medium text-red-900">
+                  {result.errorSummary}
+                </p>
+              )}
+              {result.errors.length > 0 && (
+                <ul className="max-h-52 space-y-1 overflow-y-auto text-xs text-red-800">
+                  {result.errors.slice(0, 20).map((item, index) => (
+                    <li key={`${item.row}-${index}`}>
+                      Row {item.row}: {item.message}
+                    </li>
+                  ))}
+                  {result.errors.length > 20 && (
+                    <li>…and {result.errors.length - 20} more template errors</li>
+                  )}
+                </ul>
+              )}
+            </div>
           )}
         </div>
       )}

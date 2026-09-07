@@ -51,13 +51,12 @@ export function CreateCatalogueWizard() {
           ...form,
           slug: form.slug || slugify(form.name),
           autoCategories: false,
+          status: "INACTIVE",
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create");
       setCatalogueId(data.catalogue.id);
-      announceSiteDataUpdate();
-      router.refresh();
       setStep("import");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -88,7 +87,8 @@ export function CreateCatalogueWizard() {
           <div>
             <h2 className="text-lg font-semibold text-primary">Catalogue details</h2>
             <p className="mt-1 text-sm text-text-muted">
-              This appears on the home page card and store header.
+              Saved as a draft only. The public home page will not show this logo or name until
+              you click Replace catalogue after a valid Excel upload.
             </p>
           </div>
 
@@ -200,6 +200,7 @@ export function CreateCatalogueWizard() {
             catalogueId={catalogueId}
             catalogueName={form.name}
             onImported={() => {
+              announceSiteDataUpdate();
               router.refresh();
               setStep("done");
             }}
@@ -209,7 +210,7 @@ export function CreateCatalogueWizard() {
             onClick={() => setStep("done")}
             className="w-full text-sm text-text-muted hover:underline"
           >
-            Skip import for now
+            Keep as draft — do not publish yet
           </button>
         </div>
       )}
@@ -217,7 +218,10 @@ export function CreateCatalogueWizard() {
       {step === "done" && (
         <div className="rounded-xl border border-border bg-surface p-8 text-center">
           <p className="text-2xl">✓</p>
-          <h2 className="mt-2 text-xl font-semibold text-primary">Catalogue ready</h2>
+          <h2 className="mt-2 text-xl font-semibold text-primary">Saved</h2>
+          <p className="mt-2 text-sm text-text-muted">
+            The public site updates only after a successful Replace catalogue.
+          </p>
           <div className="mt-6 flex justify-center gap-3">
             <button
               type="button"

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 import { parseExcelBuffer } from "../src/lib/import/catalog-parser";
+import { buildMetaCatalogueTemplateBuffer } from "../src/lib/import/meta-catalogue-template";
 
 function workbookBuffer(rows: Record<string, unknown>[]) {
   const workbook = XLSX.utils.book_new();
@@ -43,5 +44,18 @@ describe("Meta catalogue Excel validation", () => {
     expect(parsed.errors).toHaveLength(1);
     expect(parsed.errors[0].message).toContain("not a supported Meta catalogue Excel sheet");
     expect(parsed.errors[0].message).toContain("id, title, price, image_link");
+  });
+
+  it("parses the downloadable PawMart Excel template and ignores empty edit rows", () => {
+    const parsed = parseExcelBuffer(buildMetaCatalogueTemplateBuffer(), "PawMart");
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.rows).toHaveLength(3);
+    expect(parsed.rows.map((row) => row.id)).toEqual([
+      "TFRC-PM-EXAMPLE-001",
+      "TFRC-PM-EXAMPLE-002",
+      "TFRC-PM-EXAMPLE-003",
+    ]);
+    expect(parsed.rows[0].title).toContain("Black Pet Hat");
+    expect(parsed.rows[0].size).toBe("L");
   });
 });

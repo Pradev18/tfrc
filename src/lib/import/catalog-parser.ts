@@ -136,8 +136,16 @@ export function parseExcelBuffer(
     const id = cellStr(row.id || row.product_id || row.item_id);
     const title = cellStr(row.title || row.name || row.product_name);
 
+    const priceValue = cellStr(row.price);
+    const imageValue = cellStr(row.image_link || row.image_url);
+    const isBlankRow = !id && !title && !priceValue && !imageValue;
+    if (isBlankRow) return;
     if (!id || !title) {
-      errors.push({ row: rowNum, message: "Missing required id or title column/value" });
+      errors.push({
+        row: rowNum,
+        message:
+          "This row is incomplete in the Excel template. Fill both id and title, or delete the row.",
+      });
       return;
     }
     if (seenIds.has(id)) {

@@ -2,7 +2,8 @@
 
 Guide for **Hostinger Node.js** (Deployments panel) and **Docker VPS**.
 
-Repository: https://github.com/Pradev18/vitanovaservice
+Repository Hostinger must use: https://github.com/Pradev18/vitanovaservice
+(Do not connect Hostinger to `tfrc` — that repo is a copy, not the live deploy source.)
 
 ---
 

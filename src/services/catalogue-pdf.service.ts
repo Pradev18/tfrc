@@ -5,6 +5,9 @@ import { getCatalogueById } from "@/services/catalogue-admin.service";
 import { getShopCategories } from "@/services/shop-category.service";
 import { OTHER_SHOP_CATEGORY } from "@/lib/shop-categories";
 import { getEnvVisual } from "@/lib/env-visuals";
+import { getWhatsAppSettings } from "@/lib/whatsapp.server";
+import { buildWhatsAppUrl, generateWhatsAppLinkSync } from "@/lib/whatsapp";
+import { getSiteUrl } from "@/lib/site-config";
 
 export interface CataloguePdfProduct {
   id: string;
@@ -15,6 +18,7 @@ export interface CataloguePdfProduct {
   currency: string;
   inStock: boolean;
   imageUrl: string | null;
+  whatsappUrl: string;
 }
 
 export interface CataloguePdfCategory {
@@ -32,6 +36,7 @@ export interface CataloguePdfPayload {
     logoUrl: string | null;
     tagline: string | null;
   };
+  whatsappUrl: string;
   generatedAt: string;
   totalProducts: number;
   accent: string;
@@ -52,7 +57,7 @@ export async function getCataloguePdfPayload(
   const catalogue = await getCatalogueById(catalogueId);
   if (!catalogue) return null;
 
-  const [shopCategories, products] = await Promise.all([
+  const [shopCategories, products, whatsappSettings] = await Promise.all([
     getShopCategories(catalogue.slug),
     prisma.product.findMany({
       where: {
@@ -67,7 +72,9 @@ export async function getCataloguePdfPayload(
         images: { orderBy: { sortOrder: "asc" }, take: 1 },
       },
     }),
+    getWhatsAppSettings(),
   ]);
+  const siteUrl = getSiteUrl();
 
   const buckets = new Map<string, CataloguePdfProduct[]>();
   for (const cat of shopCategories) buckets.set(cat.slug, []);
@@ -83,15 +90,31 @@ export async function getCataloguePdfPayload(
 
     if (!buckets.has(slug)) buckets.set(slug, []);
     const { pricing } = mapProductPrices(product);
+    const name = cleanName(product.name, product.productId);
     buckets.get(slug)!.push({
       id: product.id,
-      name: cleanName(product.name, product.productId),
+      name,
       productId: product.productId,
       size: product.variantLabel,
       price: pricing.displayPrice,
       currency: pricing.currency,
       inStock: product.inventory?.isInStock !== false,
       imageUrl: product.images[0]?.url ?? null,
+      whatsappUrl: generateWhatsAppLinkSync(
+        whatsappSettings,
+        {
+          name,
+          productId: product.productId,
+          regularPrice: pricing.regular,
+          salePrice: pricing.sale,
+          currency: pricing.currency,
+          slug: product.slug,
+          environmentSlug: catalogue.slug,
+          environmentName: catalogue.name,
+          size: product.variantLabel ?? undefined,
+        },
+        siteUrl
+      ),
     });
   }
 
@@ -140,6 +163,10 @@ export async function getCataloguePdfPayload(
       logoUrl: catalogue.logoUrl,
       tagline: catalogue.tagline,
     },
+    whatsappUrl: buildWhatsAppUrl(
+      whatsappSettings.phoneNumber,
+      `${whatsappSettings.defaultGreeting}\n\nI'd like to order from ${catalogue.name}.`
+    ),
     generatedAt: new Date().toISOString(),
     totalProducts,
     accent: visual.accent,

@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
         icon: body.icon,
         departmentSource: body.departmentSource,
         heroHeadline: body.heroHeadline,
-        status: body.status,
+        status: body.status ?? "INACTIVE",
       },
       session!.user?.id
     );
@@ -44,11 +44,13 @@ export async function POST(req: NextRequest) {
       await generateShopCategories(env.id, env.slug);
     }
 
-    await touchSiteRevision();
-    await persistRuntimeCatalogueDataSafely();
-    revalidatePath("/", "layout");
+    if (env.status === "ACTIVE") {
+      await touchSiteRevision();
+      await persistRuntimeCatalogueDataSafely();
+      revalidatePath("/", "layout");
+      revalidatePath("/sitemap.xml");
+    }
     revalidatePath("/admin/catalogues");
-    revalidatePath("/sitemap.xml");
     return NextResponse.json({ catalogue: env }, { status: 201 });
   } catch (e) {
     return NextResponse.json(

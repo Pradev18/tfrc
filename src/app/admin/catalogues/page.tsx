@@ -52,10 +52,10 @@ export default async function CataloguesListPage() {
                   className={`mt-2 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
                     cat.status === "ACTIVE"
                       ? "bg-green-100 text-green-800"
-                      : "bg-gray-100 text-gray-600"
+                      : "bg-amber-100 text-amber-800"
                   }`}
                 >
-                  {cat.status}
+                  {cat.status === "ACTIVE" ? "Live" : "Draft — not on website"}
                 </span>
               </div>
             </div>

@@ -7,7 +7,7 @@ import {
   rowCategorySegments,
 } from "@/lib/import/catalog-parser";
 import { Prisma, ProductStatus } from "@prisma/client";
-import { generateShopCategories } from "@/services/catalogue-admin.service";
+import { generateShopCategories, updateCatalogue } from "@/services/catalogue-admin.service";
 import { persistRuntimeCatalogueData } from "@/lib/persist-runtime-data.server";
 import { deriveProductVariantIdentity } from "@/lib/product-variants";
 
@@ -104,9 +104,27 @@ async function validateProductOwnership(
     .map((row) => ({
       row: row.rowNumber,
       message:
-        `Product ID ${row.id} already exists in “${conflicts.get(row.id)}”. ` +
-        "Product IDs must be unique across catalogues; remove this row or use a different ID.",
+        `Template column id “${row.id}” is already used in “${conflicts.get(row.id)}”. ` +
+        "Each product ID can belong to only one catalogue. Import this file into that catalogue, " +
+        "or download the Meta template and give this catalogue new unique IDs.",
     }));
+}
+
+function summarizeValidationErrors(
+  errors: Array<{ row: number; message: string }>
+): string | undefined {
+  if (errors.length === 0) return undefined;
+  const ownership = errors.filter((error) => error.message.includes("already used in"));
+  if (ownership.length > 0) {
+    const match = ownership[0].message.match(/already used in “([^”]+)”/);
+    const catalogueName = match?.[1] ?? "another catalogue";
+    return (
+      `${ownership.length} product ID(s) already belong to “${catalogueName}”. ` +
+      "This Excel is not for a new catalogue. Open that existing catalogue and replace there, " +
+      "or download the Meta template and use new unique IDs."
+    );
+  }
+  return `This Excel does not match the Meta catalogue template. First error: ${errors[0].message}`;
 }
 
 export async function importCatalogueExcel(options: ImportCatalogueOptions) {
@@ -151,6 +169,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
       applied: false,
       canImport: validRows > 0 && invalidRows === 0,
       errors: validationErrors,
+      errorSummary: summarizeValidationErrors(validationErrors),
       preview: parsed.rows
         .filter((row) => !conflictingRows.has(row.rowNumber))
         .slice(0, 10),
@@ -181,6 +200,11 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
         validationErrors.length > 0
           ? validationErrors
           : [{ row: 1, message: "No valid product rows were found" }],
+      errorSummary: summarizeValidationErrors(
+        validationErrors.length > 0
+          ? validationErrors
+          : [{ row: 1, message: "No valid product rows were found" }]
+      ),
     };
   }
 
@@ -409,9 +433,11 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
       applied: false,
       canImport: false,
       errors: [{ row: currentRow?.rowNumber ?? 1, message }],
+      errorSummary: message,
     };
   }
 
+  await updateCatalogue(environmentId, { status: "ACTIVE" }, userId);
   await generateShopCategories(environmentId, environmentSlug);
   try {
     await persistRuntimeCatalogueData();
@@ -453,5 +479,6 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
     applied: true,
     canImport: true,
     errors: [],
+    errorSummary: undefined,
   };
 }

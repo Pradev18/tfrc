@@ -85,7 +85,7 @@ export async function createCatalogue(input: CreateCatalogueInput, userId?: stri
       logoUrl: input.logoUrl || null,
       icon: input.icon || "✦",
       departmentSource: input.departmentSource?.trim() || input.name.trim(),
-      status: input.status ?? "ACTIVE",
+      status: input.status ?? "INACTIVE",
       sortOrder: (maxOrder._max.sortOrder ?? -1) + 1,
       theme: JSON.stringify({
         primary: "#0f172a",

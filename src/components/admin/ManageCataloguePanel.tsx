@@ -184,27 +184,13 @@ export function ManageCataloguePanel({
     setError("");
     try {
       const url = `/api/admin/catalogues/${catalogueId}/pdf${autoPrint ? "?print=1" : ""}`;
-      const response = await fetch(url, {
-        cache: "no-store",
-        headers: { Accept: "text/html" },
-      });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error || "Could not generate catalogue PDF");
-      }
-      const html = await response.text();
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const objectUrl = URL.createObjectURL(blob);
-      const popup = window.open(objectUrl, "_blank", "noopener,noreferrer");
+      const popup = window.open(url, "_blank", "noopener,noreferrer");
       if (!popup) {
-        // Popup blocked — fall back to same-tab navigation.
-        window.location.href = objectUrl;
-      } else {
-        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+        window.location.href = url;
       }
       setMessage(
         autoPrint
-          ? "Catalogue PDF opened — choose Save as PDF in the print dialog. Every product in each category is included."
+          ? "Catalogue PDF opened — 9 products per page, images embedded, WhatsApp order on each card."
           : "Catalogue PDF preview opened."
       );
     } catch (cause) {
@@ -323,8 +309,8 @@ export function ManageCataloguePanel({
             </div>
           </div>
           <p className="mb-4 text-xs text-text-muted">
-            PDF includes every product by category (12 cards per page). Use Jump to category on each
-            page, or the cover index, to open any category.
+            PDF shows 9 full-size cards per page. Images are embedded so they appear immediately.
+            Each card and the cover include Order on WhatsApp.
           </p>
 
           {loading ? (

@@ -1,8 +1,8 @@
 import type { CataloguePdfPayload } from "@/services/catalogue-pdf.service";
 
-export const PDF_PRODUCTS_PER_PAGE = 12;
+export const PDF_PRODUCTS_PER_PAGE = 9;
 export const PDF_COLS = 3;
-export const PDF_ROWS = 4;
+export const PDF_ROWS = 3;
 
 export function chunkProducts<T>(items: T[], size = PDF_PRODUCTS_PER_PAGE): T[][] {
   if (items.length === 0) return [[]];
@@ -18,8 +18,17 @@ export function formatPdfPrice(amount: number, currency = "QAR"): string {
 }
 
 export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { autoPrint?: boolean }) {
-  const { catalogue, categories, totalProducts, accent, heading, muted, surface, generatedAt } =
-    payload;
+  const {
+    catalogue,
+    categories,
+    totalProducts,
+    accent,
+    heading,
+    muted,
+    surface,
+    generatedAt,
+    whatsappUrl,
+  } = payload;
   const dateLabel = new Date(generatedAt).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
@@ -59,18 +68,18 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
               <div class="card-image">
                 ${
                   product.imageUrl
-                    ? `<img src="${escapeAttr(product.imageUrl)}" alt="" loading="lazy" />`
+                    ? `<img src="${escapeAttr(product.imageUrl)}" alt="${escapeAttr(product.name)}" decoding="sync" fetchpriority="high" />`
                     : `<div class="card-fallback">${escapeHtml(product.name.charAt(0) || "P")}</div>`
                 }
               </div>
               <div class="card-body">
                 <h3>${escapeHtml(product.name)}</h3>
-                <p class="meta">ID ${escapeHtml(product.productId)}</p>
-                ${product.size ? `<p class="meta">Size ${escapeHtml(product.size)}</p>` : ""}
+                <p class="meta">ID ${escapeHtml(product.productId)}${product.size ? ` · Size ${escapeHtml(product.size)}` : ""}</p>
                 <p class="price">${escapeHtml(formatPdfPrice(product.price, product.currency))}</p>
                 <span class="stock ${product.inStock ? "in" : "out"}">${
-                  product.inStock ? "In Stock" : "Out of Stock"
+                  product.inStock ? "In Stock" : "Check availability"
                 }</span>
+                <a class="wa-btn" href="${escapeAttr(product.whatsappUrl)}" target="_blank" rel="noopener noreferrer">Order on WhatsApp</a>
               </div>
             </article>`
             )
@@ -306,32 +315,36 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      grid-template-rows: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-      min-height: 210mm;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      align-content: stretch;
     }
     .card {
       border: 1px solid #e5eee8;
-      border-radius: 16px;
+      border-radius: 18px;
       overflow: hidden;
-      background: linear-gradient(180deg, #ffffff 0%, #fbfdfc 100%);
+      background: #fff;
       display: flex;
       flex-direction: column;
-      min-height: 0;
+      min-height: 78mm;
       box-shadow: 0 8px 20px rgba(15, 41, 34, 0.04);
     }
     .card-image {
-      height: 92px;
-      background: #f3f8f5;
-      display: grid;
-      place-items: center;
+      height: 46mm;
+      padding: 8px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       overflow: hidden;
+      border-bottom: 1px solid #eef3ef;
     }
     .card-image img {
       width: 100%;
       height: 100%;
       object-fit: contain;
+      object-position: center;
       background: #fff;
     }
     .card-fallback {
@@ -344,12 +357,20 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
       color: var(--accent);
       background: color-mix(in srgb, var(--accent) 14%, white);
     }
-    .card-body { padding: 10px 11px 12px; }
+    .card-body {
+      padding: 10px 12px 12px;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
     .card-body h3 {
       margin: 0 0 4px;
-      font-size: 12.5px;
-      line-height: 1.25;
-      min-height: 2.5em;
+      font-size: 13px;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .meta {
       margin: 0;
@@ -379,6 +400,20 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
       height: 6px;
       border-radius: 50%;
       background: currentColor;
+    }
+    .wa-btn {
+      margin-top: auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+      border-radius: 999px;
+      background: #128c47;
+      color: #fff !important;
+      font-size: 11px;
+      font-weight: 800;
+      text-decoration: none !important;
+      padding: 6px 10px;
     }
     .sheet-footer {
       display: flex;
@@ -410,8 +445,10 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
         page-break-after: auto;
         break-after: auto;
       }
-      a { color: inherit; text-decoration: none; }
+      .toc-row, .sheet-footer a { color: inherit; text-decoration: none; }
+      .wa-btn { color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .jump-select { border: 0; }
+      .card-image img { break-inside: avoid; }
     }
     @page { size: A4; margin: 10mm; }
   </style>
@@ -438,6 +475,9 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
       </div>
       <h1>${escapeHtml(catalogue.name)} Product Catalogue</h1>
       <p>Every product below is grouped by category. Use the category list or the Jump menu on each page.</p>
+      <p style="margin-top:14px">
+        <a class="wa-btn" href="${escapeAttr(whatsappUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;min-width:220px;min-height:36px">Order on WhatsApp</a>
+      </p>
       <div class="stats">
         <div class="stat"><span>Products</span><strong>${totalProducts}</strong></div>
         <div class="stat"><span>Categories</span><strong>${categories.length}</strong></div>
@@ -451,7 +491,7 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
 
   ${categoryPages}
   <script>
-    ${options?.autoPrint ? "window.addEventListener('load', () => setTimeout(() => window.print(), 400));" : ""}
+    ${options?.autoPrint ? "window.addEventListener('load', () => setTimeout(() => window.print(), 120));" : ""}
   </script>
 </body>
 </html>`;

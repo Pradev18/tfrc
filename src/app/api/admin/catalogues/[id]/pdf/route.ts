@@ -3,6 +3,7 @@ import { requireAdminSession } from "@/lib/admin-auth";
 import { getCataloguePdfPayload } from "@/services/catalogue-pdf.service";
 import { buildCataloguePdfHtml } from "@/lib/catalogue-pdf-html";
 import { getSiteUrl } from "@/lib/site-config";
+import { embedCatalogueImages, optimizePdfImageUrl } from "@/lib/catalogue-pdf-images";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -10,6 +11,7 @@ interface RouteContext {
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 function absolutizeMediaUrl(url: string | null, origin: string): string | null {
   if (!url) return null;
@@ -30,14 +32,23 @@ export async function GET(req: NextRequest, context: RouteContext) {
   }
 
   const origin = (req.nextUrl.origin || getSiteUrl()).replace(/\/$/, "");
+  const absoluteUrls = payload.categories.flatMap((category) =>
+    category.products.map((product) => absolutizeMediaUrl(product.imageUrl, origin))
+  );
+  const embedded = await embedCatalogueImages(absoluteUrls);
   const withAbsoluteMedia = {
     ...payload,
     categories: payload.categories.map((category) => ({
       ...category,
-      products: category.products.map((product) => ({
-        ...product,
-        imageUrl: absolutizeMediaUrl(product.imageUrl, origin),
-      })),
+      products: category.products.map((product) => {
+        const absolute = absolutizeMediaUrl(product.imageUrl, origin);
+        return {
+          ...product,
+          imageUrl: absolute
+            ? embedded.get(absolute) ?? optimizePdfImageUrl(absolute, origin)
+            : null,
+        };
+      }),
     })),
   };
 
