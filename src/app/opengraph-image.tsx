@@ -19,7 +19,7 @@ export default function OpenGraphImage() {
           justifyContent: "center",
           background: "linear-gradient(135deg, #0a0e14 0%, #1a2836 50%, #0c2e26 100%)",
           color: "#f7f5f2",
-          fontFamily: "Georgia, serif",
+          fontFamily: "system-ui, -apple-system, sans-serif",
         }}
       >
         <div

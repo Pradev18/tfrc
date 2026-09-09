@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import type { ShopCategoryItem } from "@/components/store/CategoryScroll";
 import { MobileStickyBar } from "@/components/store/MobileStickyBar";
-import { DealsAnnouncementBar } from "@/components/store/DealsAnnouncementBar";
 import { StorePageBackdrop } from "@/components/store/StorePageBackdrop";
 import { UnifiedStoreCatalog } from "@/components/store/UnifiedStoreCatalog";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
@@ -36,15 +35,37 @@ export function EnvironmentHome({
   const config = environment.config;
   const v = getEnvVisual(slug);
 
+  const collectionJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: `${config.displayName} Catalogue | TFRC Qatar`,
+    description: config.description,
+    url: `${siteUrl}/${slug}`,
+    isPartOf: {
+      "@type": "WebSite",
+      name: "TFRC Vita Nova",
+      url: siteUrl,
+    },
+    about: {
+      "@type": "Organization",
+      name: "TFRC",
+      url: siteUrl,
+    },
+    numberOfItems: totalProducts,
+    hasPart: shopCategories.map((category) => ({
+      "@type": "CollectionPage",
+      name: category.name,
+      url: `${siteUrl}/${slug}#category-${category.slug}`,
+    })),
+  };
+
   return (
     <div className="relative min-h-screen overflow-x-clip" style={{ ...envStyle(v), backgroundColor: "transparent" }}>
-      <StorePageBackdrop slug={slug} />
-
-      <DealsAnnouncementBar
-        href={`/${slug}#deals`}
-        label={`Today's Deals at ${config.displayName} — all on this page`}
-        environmentSlug={slug}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionJsonLd) }}
       />
+      <StorePageBackdrop slug={slug} />
 
       <Suspense fallback={null}>
         <UnifiedStoreCatalog

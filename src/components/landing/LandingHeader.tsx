@@ -130,7 +130,7 @@ export function LandingHeader({ portals, whatsappSettings, siteUrl }: LandingHea
           />
           <div className="absolute inset-y-0 right-0 flex w-[min(100%,320px)] flex-col bg-[#faf9f7] shadow-xl">
             <div className="flex items-center justify-between border-b border-[#ebe8e3] p-4">
-              <span className="font-display text-lg font-medium text-[#141414]">Catalogues</span>
+              <span className="text-base font-semibold text-[#141414]">Catalogues</span>
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}

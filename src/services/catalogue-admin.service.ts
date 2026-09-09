@@ -96,9 +96,17 @@ export async function createCatalogue(input: CreateCatalogueInput, userId?: stri
         surface: "#ffffff",
       }),
       seo: JSON.stringify({
-        title: `${input.name} | TFRC Qatar`,
-        description: input.description ?? `Shop ${input.name} in Qatar. Order on WhatsApp.`,
-        keywords: [input.name.toLowerCase(), "qatar", "tfrc"],
+        title: `${input.name} Catalogue Qatar | TFRC`,
+        description:
+          input.description?.trim() ||
+          `Browse the ${input.name} catalogue by category in Qatar. Order on WhatsApp with TFRC.`,
+        keywords: [
+          input.name.toLowerCase(),
+          "tfrc",
+          "qatar",
+          "online catalogue qatar",
+          "whatsapp order qatar",
+        ],
       }),
       settings,
     },

@@ -9,7 +9,10 @@ import {
 import { Prisma, ProductStatus } from "@prisma/client";
 import { generateShopCategories, updateCatalogue } from "@/services/catalogue-admin.service";
 import { persistRuntimeCatalogueData } from "@/lib/persist-runtime-data.server";
-import { deriveProductVariantIdentity } from "@/lib/product-variants";
+import {
+  classifyProductVariants,
+  compareVariantLabels,
+} from "@/lib/product-variants";
 
 function parseSaleWindow(value: string | null): {
   saleStart: Date | null;
@@ -209,23 +212,29 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
   }
 
   const cache = new Map<string, string>();
+  const classified = classifyProductVariants(
+    parsed.rows.map((row) => ({
+      id: row.id,
+      productId: row.id,
+      title: row.title,
+      size: row.size,
+      itemGroupId: row.item_group_id,
+    }))
+  );
   const variantIdentityById = new Map(
-    parsed.rows.map((row) => [
-      row.id,
-      deriveProductVariantIdentity({
-        title: row.title,
-        productId: row.id,
-        size: row.size,
-        itemGroupId: row.item_group_id,
-      }),
-    ])
+    classified.map((identity) => [identity.id, identity] as const)
   );
   const primaryIdByVariantGroup = new Map<string, string>();
-  for (const row of parsed.rows) {
-    const groupKey = variantIdentityById.get(row.id)?.groupKey;
-    if (groupKey && !primaryIdByVariantGroup.has(groupKey)) {
-      primaryIdByVariantGroup.set(groupKey, row.id);
-    }
+  const grouped = new Map<string, typeof classified>();
+  for (const identity of classified) {
+    if (!identity.groupKey) continue;
+    const group = grouped.get(identity.groupKey) ?? [];
+    group.push(identity);
+    grouped.set(identity.groupKey, group);
+  }
+  for (const [groupKey, group] of grouped) {
+    group.sort((a, b) => compareVariantLabels(a.label, b.label));
+    primaryIdByVariantGroup.set(groupKey, group[0]!.id);
   }
   let created = 0;
   let updated = 0;

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Flame } from "lucide-react";
 import { StickyStoreToolbar } from "@/components/store/StickyStoreToolbar";
 import { PaginatedProductGrid } from "@/components/store/PaginatedProductGrid";
 import { LazyCategorySection } from "@/components/store/LazyCategorySection";
@@ -79,7 +78,6 @@ export function UnifiedStoreCatalog({
   useEffect(() => {
     const next = {
       ...parseStoreFilters(Object.fromEntries(searchParams.entries())),
-      // Category tiles are section anchors, not filters.
       shop: null,
     };
     filtersRef.current = next;
@@ -130,13 +128,11 @@ export function UnifiedStoreCatalog({
         requestAnimationFrame(() => scrollToStoreCategory(slug));
       });
     }
-    function onShowAll(event: Event) {
-      const hash =
-        (event as CustomEvent<{ hash?: "#catalog" | "#deals" }>).detail?.hash ?? "#catalog";
+    function onShowAll() {
       setFocusedCategorySlug(null);
       setShowAllProducts(false);
       requestAnimationFrame(() => {
-        document.getElementById(hash.slice(1))?.scrollIntoView({
+        document.getElementById("catalog")?.scrollIntoView({
           behavior: "smooth",
           block: "start",
         });
@@ -223,17 +219,13 @@ export function UnifiedStoreCatalog({
     showAllStoreProducts();
   }, []);
 
-  const selectDeals = useCallback(() => {
-    showAllStoreCategories("#deals");
-  }, []);
-
   useEffect(() => {
     if (isFilteredView) return;
     const preferred = showAllProducts
       ? shopCategories.slice(0, 3)
       : focusedCategorySlug
-      ? shopCategories.filter((category) => category.slug === focusedCategorySlug)
-      : shopCategories.slice(0, 3);
+        ? shopCategories.filter((category) => category.slug === focusedCategorySlug)
+        : shopCategories.slice(0, 3);
     const timers = preferred.map((category, index) =>
       window.setTimeout(() => {
         prefetchStoreFeed(
@@ -256,21 +248,23 @@ export function UnifiedStoreCatalog({
     showAllProducts,
   ]);
 
-  const browseTitle = `Browse and shop ${environmentName}`;
   const activeCategorySlug = showAllProducts
     ? ALL_PRODUCTS_CATEGORY_SLUG
     : focusedCategorySlug;
 
   return (
-    <section id="catalog" className="store-section scroll-anchor-catalog pb-6 pt-2 md:pb-24">
+    <section id="catalog" className="store-section scroll-anchor-catalog pb-6 pt-3 md:pb-24 md:pt-5">
       <div className="container-pawmart">
-        <div className="mb-2 md:mb-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: v.muted }}>
-            Full catalogue curated for you
+        <div className="mb-3 md:mb-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em]" style={{ color: v.muted }}>
+            TFRC · {environmentName}
           </p>
-          <h2 className="mt-1 font-display text-2xl font-medium md:text-3xl" style={{ color: v.heading }}>
-            {browseTitle}
-          </h2>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight md:text-3xl" style={{ color: v.heading }}>
+            {environmentName} catalogue
+          </h1>
+          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed md:text-[15px]" style={{ color: v.body }}>
+            Browse by category below. Select a product, choose options, and order on WhatsApp.
+          </p>
         </div>
 
         <StickyStoreToolbar
@@ -284,8 +278,7 @@ export function UnifiedStoreCatalog({
           onClear={clearFilters}
           activeCategorySlug={activeCategorySlug}
           onCategorySelect={selectCategory}
-          onDealsSelect={selectDeals}
-          onShowAllCategories={() => showAllStoreCategories("#catalog")}
+          onShowAllCategories={() => showAllStoreCategories()}
           onAllProductsSelect={selectAllProducts}
           totalProducts={totalProducts}
           totalLabel={`${totalProducts.toLocaleString()} products · ${shopCategories.length} categories`}
@@ -293,7 +286,7 @@ export function UnifiedStoreCatalog({
         />
 
         {isFilteredView ? (
-          <div className="mt-8">
+          <div className="mt-6 md:mt-8">
             <PaginatedProductGrid
               environmentSlug={environmentSlug}
               environmentName={environmentName}
@@ -304,34 +297,7 @@ export function UnifiedStoreCatalog({
             />
           </div>
         ) : (
-          <>
-            {!focusedCategorySlug && !showAllProducts && <div id="deals" className="scroll-anchor-section mt-8">
-              <div className="mb-5 flex items-center gap-2.5">
-                <span
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-white"
-                  style={{ backgroundColor: v.accent }}
-                >
-                  <Flame className="h-4 w-4" />
-                </span>
-                <div>
-                  <h3 className="font-display text-xl font-medium md:text-2xl" style={{ color: v.heading }}>
-                    Today&apos;s Deals
-                  </h3>
-                  <p className="text-sm" style={{ color: v.muted }}>
-                    All discounted products · load more as you browse
-                  </p>
-                </div>
-              </div>
-              <PaginatedProductGrid
-                environmentSlug={environmentSlug}
-                environmentName={environmentName}
-                filters={apiFilters}
-                whatsappSettings={whatsappSettings}
-                siteUrl={siteUrl}
-                onSaleOnly
-              />
-            </div>}
-
+          <div className="mt-2">
             {visibleCategories.map((cat) => (
               <LazyCategorySection
                 key={cat.slug}
@@ -347,7 +313,7 @@ export function UnifiedStoreCatalog({
                 includeVariants={showAllProducts}
               />
             ))}
-          </>
+          </div>
         )}
       </div>
     </section>

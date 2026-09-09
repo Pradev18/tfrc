@@ -48,10 +48,17 @@ export const ENVIRONMENT_CONFIGS: EnvironmentConfig[] = [
       surface: "#ffffff",
     },
     seo: {
-      title: "PawMart | Pet Products Catalogue Qatar",
+      title: "PawMart Pet Shop Catalogue Qatar | TFRC",
       description:
-        "Shop pet food, accessories, grooming and care products in Qatar. Order easily on WhatsApp — no account needed.",
-      keywords: ["pet products qatar", "pet food", "pet accessories", "pawmart"],
+        "Shop pet food, accessories, grooming and care products in Qatar from TFRC PawMart. Browse by category and order on WhatsApp.",
+      keywords: [
+        "pawmart qatar",
+        "pet shop qatar",
+        "pet food qatar",
+        "pet accessories qatar",
+        "tfrc pawmart",
+        "whatsapp pet order qatar",
+      ],
     },
   },
   {
@@ -74,10 +81,17 @@ export const ENVIRONMENT_CONFIGS: EnvironmentConfig[] = [
       surface: "#ffffff",
     },
     seo: {
-      title: "Pro Tools & Hardware | Tools Catalogue Qatar",
+      title: "Pro Tools & Hardware Catalogue Qatar | TFRC",
       description:
-        "Browse professional tools, kits and hardware in Qatar. Order on WhatsApp with product details included.",
-      keywords: ["tools qatar", "hardware", "power tools", "tool kits"],
+        "Browse professional tools, kits and hardware in Qatar from TFRC. Shop by category and order on WhatsApp with product details included.",
+      keywords: [
+        "tools qatar",
+        "hardware qatar",
+        "power tools qatar",
+        "wokin tools qatar",
+        "tfrc tools",
+        "whatsapp tools order",
+      ],
     },
   },
   {
@@ -100,10 +114,16 @@ export const ENVIRONMENT_CONFIGS: EnvironmentConfig[] = [
       surface: "#ffffff",
     },
     seo: {
-      title: "Kitchen & Home | Household Accessories Qatar",
+      title: "Kitchen & Home Catalogue Qatar | TFRC",
       description:
-        "Discover kitchenware, home accessories and living essentials in Qatar. Simple WhatsApp ordering.",
-      keywords: ["home accessories qatar", "kitchen", "household", "home living"],
+        "Discover kitchenware, home accessories and living essentials in Qatar from TFRC. Browse categories and order on WhatsApp.",
+      keywords: [
+        "kitchen qatar",
+        "home accessories qatar",
+        "household qatar",
+        "tfrc kitchen",
+        "whatsapp home order qatar",
+      ],
     },
   },
 ];
@@ -121,18 +141,21 @@ export const PLATFORM = {
   tagline: "Vita Nova",
   fullName: "TFRC Vita Nova",
   description:
-    "Qatar's premium catalogue platform — pets, kitchen & home, and professional tools. Browse, add to cart, order on WhatsApp.",
+    "TFRC Vita Nova catalogues for Qatar — pets, kitchen & home, and professional tools. Browse by category and order on WhatsApp.",
   seo: {
-    title: "TFRC Vita Nova | Premium Catalogue Platform Qatar",
+    title: "TFRC Vita Nova | Online Catalogues Qatar — Pets, Home, Tools",
     description:
-      "TFRC Vita Nova — PawMart pets, Kitchen & Home, Pro Tools hardware. Order on WhatsApp across Qatar.",
+      "TFRC Vita Nova online catalogues in Qatar: PawMart pets, Kitchen & Home, and Pro Tools. Browse categories, compare products, and order on WhatsApp.",
     keywords: [
+      "tfrc",
+      "tfrc qatar",
       "tfrc vita nova",
-      "catalogue qatar",
+      "online catalogue qatar",
       "whatsapp shopping qatar",
-      "pet products",
-      "kitchen home",
-      "tools qatar",
+      "pet products qatar",
+      "kitchen home qatar",
+      "tools hardware qatar",
+      "pawmart qatar",
     ],
   },
 } as const;

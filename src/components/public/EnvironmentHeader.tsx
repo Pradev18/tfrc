@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Menu, X, Search, ChevronDown, ArrowRight } from "lucide-react";
+import { TfrcBrand } from "@/components/brand/TfrcBrand";
 import { WhatsAppButton } from "@/components/public/WhatsAppButton";
 import { CartButton } from "@/components/public/CartButton";
 import { CartDrawer } from "@/components/public/CartDrawer";
@@ -117,25 +118,22 @@ export function EnvironmentHeader({
                   />
                 </span>
               ) : (
-                <span
-                  className="flex h-9 w-9 items-center justify-center rounded-xl sm:h-10 sm:w-10"
-                  style={{ background: v.gradientAccent, color: v.heading }}
-                >
-                  <EnvIcon slug={envSlug} className="h-4 w-4" />
-                </span>
+                <TfrcBrand showText={false} iconClassName="h-5 w-auto sm:h-6" />
               )}
               <div className="flex min-w-0 flex-col leading-none">
                 <span
-                  className="truncate font-display text-base font-medium tracking-tight sm:text-lg md:text-xl"
+                  className="truncate text-base font-semibold tracking-tight sm:text-lg md:text-xl"
                   style={{ color: v.heading }}
                 >
                   {environment.config.displayName}
                 </span>
-                <span
-                  className="mt-0.5 text-[8px] font-semibold uppercase tracking-[0.25em]"
-                  style={{ color: v.muted }}
-                >
-                  by TFRC
+                <span className="mt-1 inline-flex items-center gap-1.5">
+                  <TfrcBrand
+                    showText
+                    className="gap-1.5"
+                    iconClassName="h-2.5"
+                    textClassName="text-[10px] font-semibold uppercase tracking-[0.18em]"
+                  />
                 </span>
               </div>
             </Link>
@@ -155,7 +153,7 @@ export function EnvironmentHeader({
                 style={navLinkStyle}
                 onClick={(event) => {
                   event.preventDefault();
-                  showAllStoreCategories("#catalog");
+                  showAllStoreCategories();
                 }}
               >
                 Shop all
@@ -201,18 +199,6 @@ export function EnvironmentHeader({
                   )}
                 </div>
               )}
-
-              <Link
-                href={`/${envSlug}#deals`}
-                className="nav-link px-3 py-5 text-[13px] font-medium"
-                style={{ color: v.accent }}
-                onClick={(event) => {
-                  event.preventDefault();
-                  showAllStoreCategories("#deals");
-                }}
-              >
-                Deals
-              </Link>
 
               <div className="relative">
                 <button
@@ -365,22 +351,10 @@ export function EnvironmentHeader({
                 onClick={(event) => {
                   event.preventDefault();
                   setMobileOpen(false);
-                  showAllStoreCategories("#catalog");
+                  showAllStoreCategories();
                 }}
               >
                 Shop All
-              </Link>
-              <Link
-                href={`/${envSlug}#deals`}
-                className="block min-h-[44px] py-3 font-medium"
-                style={{ color: v.accent }}
-                onClick={(event) => {
-                  event.preventDefault();
-                  setMobileOpen(false);
-                  showAllStoreCategories("#deals");
-                }}
-              >
-                Today&apos;s Deals
               </Link>
               {shopCategories.length > 0 && (
                 <div className="py-2" style={{ borderTop: `1px solid ${v.border}` }}>

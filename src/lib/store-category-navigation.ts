@@ -37,13 +37,14 @@ export function focusStoreCategory(slug: string) {
 }
 
 /** Clear category focus and return to full catalogue browse. */
-export function showAllStoreCategories(hash: "#catalog" | "#deals" = "#catalog") {
-  window.dispatchEvent(new CustomEvent(STORE_SHOW_ALL_EVENT, { detail: { hash } }));
-  window.history.replaceState(null, "", hash);
+export function showAllStoreCategories() {
+  window.dispatchEvent(new CustomEvent(STORE_SHOW_ALL_EVENT));
+  window.history.replaceState(null, "", "#catalog");
   requestAnimationFrame(() => {
-    document
-      .getElementById(hash.slice(1))
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("catalog")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   });
 }
 

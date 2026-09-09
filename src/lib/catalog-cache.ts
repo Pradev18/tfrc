@@ -5,6 +5,7 @@ import {
   resolvePrimaryShopCategory,
   type ShopCategoryDef,
 } from "@/lib/shop-categories";
+import { compareVariantLabels } from "@/lib/product-variants";
 
 export interface CachedBrand {
   id: string;
@@ -205,8 +206,26 @@ export function getCachedProducts(
   const start = (page - 1) * limit;
   const slice = items.slice(start, start + limit);
 
+  const siblingsByGroup = new Map<string, CachedProduct[]>();
+  for (const product of env.products) {
+    if (!product.variantGroupKey) continue;
+    const siblings = siblingsByGroup.get(product.variantGroupKey) ?? [];
+    siblings.push(product);
+    siblingsByGroup.set(product.variantGroupKey, siblings);
+  }
+  for (const siblings of siblingsByGroup.values()) {
+    siblings.sort((a, b) =>
+      compareVariantLabels(a.variantLabel ?? null, b.variantLabel ?? null)
+    );
+  }
+
   return {
-    items: slice,
+    items: slice.map((item) => ({
+      ...item,
+      sizeVariants: item.variantGroupKey
+        ? siblingsByGroup.get(item.variantGroupKey) ?? []
+        : [],
+    })),
     total: items.length,
     page,
     limit,

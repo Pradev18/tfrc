@@ -24,12 +24,16 @@ export async function generateMetadata({ params }: LayoutProps): Promise<Metadat
     const heroImages = await getEnvironmentHeroImages(slug);
 
     return buildPageMetadata({
-      title: env.seoParsed.title,
-      description: env.seoParsed.description,
+      title: env.seoParsed.title || `${env.config.displayName} Catalogue Qatar | TFRC`,
+      description:
+        env.seoParsed.description ||
+        `Browse ${env.config.displayName} by category in Qatar. Order on WhatsApp with TFRC.`,
       path: `/${slug}`,
-      keywords: env.seoParsed.keywords,
+      keywords: env.seoParsed.keywords?.length
+        ? env.seoParsed.keywords
+        : [env.config.displayName.toLowerCase(), "tfrc", "qatar", "catalogue"],
       image: heroImages[0] ?? null,
-      imageAlt: env.config.displayName,
+      imageAlt: `${env.config.displayName} | TFRC`,
     });
   } catch {
     return { title: "Catalogue" };

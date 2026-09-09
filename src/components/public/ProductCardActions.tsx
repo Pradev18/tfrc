@@ -14,6 +14,7 @@ import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { UiSelect } from "@/components/ui/UiSelect";
 import { calculateLineTotal } from "@/lib/money";
+import { variantOptionLabel } from "@/lib/product-variants";
 
 interface ProductCardActionsProps {
   product: ProductWithRelations | ProductListItem;
@@ -49,7 +50,7 @@ export function ProductCardActions({
 }: ProductCardActionsProps) {
   const [quantity, setQuantity] = useState(1);
   const v = getEnvVisual(environmentSlug);
-  const requiresSize = sizeVariants.length > 0;
+  const requiresSize = sizeVariants.length > 1;
   const sizeSelected = !requiresSize || Boolean(selectedVariantId);
 
   const productPayload = {
@@ -76,21 +77,21 @@ export function ProductCardActions({
           <UiSelect
             value={selectedVariantId ?? ""}
             options={[
-              { value: "", label: "Select size" },
+              { value: "", label: "Select option" },
               ...sizeVariants.map((variant) => ({
                 value: variant.id,
-                label: `${variant.variantLabel ?? variant.name}${
+                label: `${variantOptionLabel(variant, sizeVariants)}${
                   variant.inventory?.isInStock === false ? " — unavailable" : ""
                 }`,
                 disabled: variant.inventory?.isInStock === false,
               })),
             ]}
             onValueChange={(next) => onVariantChange?.(next || null)}
-            ariaLabel={`Size for ${product.name}`}
+            ariaLabel={`Option for ${product.name}`}
           />
           {!sizeSelected && (
             <p className="mt-1 px-1 text-[11px] font-medium text-red-600">
-              Select a size first
+              Select a size / option first
             </p>
           )}
         </div>

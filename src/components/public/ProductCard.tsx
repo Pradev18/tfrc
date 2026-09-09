@@ -13,6 +13,7 @@ import { getEnvVisual } from "@/lib/env-visuals";
 import { cn } from "@/lib/utils";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
 import { MEDIA_BLUR_DATA_URL, MediaFallback } from "@/components/public/MediaFallback";
+import { deriveProductVariantIdentity, productDisplayTitle } from "@/lib/product-variants";
 
 interface ProductCardProps {
   product: (ProductWithRelations | ProductListItem) & {
@@ -50,10 +51,10 @@ export function ProductCard({
   eagerPrefetch = false,
 }: ProductCardProps) {
   const router = useRouter();
-  const variants = useMemo(
-    () => (product.sizeVariants?.length ? product.sizeVariants : []),
-    [product.sizeVariants]
-  );
+  const variants = useMemo(() => {
+    const list = product.sizeVariants?.length ? product.sizeVariants : [];
+    return list.length > 1 ? list : [];
+  }, [product.sizeVariants]);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
     variantPreselected && product.variantLabel ? product.id : null
   );
@@ -70,7 +71,17 @@ export function ProductCard({
   }`;
   const compact = variant === "compact";
   const itemCode = selectedProduct.productId || selectedProduct.sku || "";
-  const title = productDisplayName(selectedProduct.name, selectedProduct.productId);
+  const selectedTitle = productDisplayTitle(
+    selectedProduct.name,
+    selectedProduct.productId
+  );
+  const title =
+    variants.length > 0 && !selectedVariantId
+      ? deriveProductVariantIdentity({
+          title: product.name,
+          productId: product.productId,
+        }).baseName || selectedTitle
+      : selectedTitle;
 
   useEffect(() => {
     if (!eagerPrefetch) return;

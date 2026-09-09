@@ -7,7 +7,7 @@ interface TfrcBrandProps {
   showText?: boolean;
 }
 
-/** TFRC purple bars mark + wordmark */
+/** TFRC purple bars mark + wordmark (standard sans) */
 export function TfrcBrand({
   className,
   textClassName,
@@ -29,7 +29,7 @@ export function TfrcBrand({
       {showText && (
         <span
           className={cn(
-            "font-display text-[1.65rem] font-medium tracking-tight text-[#141414] md:text-[1.75rem]",
+            "text-lg font-semibold tracking-tight text-[#141414] md:text-xl",
             textClassName
           )}
         >

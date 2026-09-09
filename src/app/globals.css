@@ -76,7 +76,7 @@
   body {
     background-color: var(--color-background);
     color: var(--color-text);
-    font-family: var(--font-body), "DM Sans", system-ui, sans-serif;
+    font-family: var(--font-body), "DM Sans", system-ui, -apple-system, sans-serif;
     font-feature-settings: "kern" 1, "liga" 1;
   }
 
@@ -84,9 +84,9 @@
   h2,
   h3,
   h4 {
-    font-family: var(--font-display), "Cormorant Garamond", Georgia, serif;
-    font-weight: 500;
-    letter-spacing: -0.025em;
+    font-family: var(--font-body), "DM Sans", system-ui, -apple-system, sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.02em;
   }
 
   ::selection {
@@ -143,26 +143,26 @@
 }
 
 .text-display {
-  font-family: var(--font-display), "Cormorant Garamond", Georgia, serif;
+  font-family: var(--font-body), "DM Sans", system-ui, -apple-system, sans-serif;
 }
 
 .font-display {
-  font-family: var(--font-display), "Cormorant Garamond", Georgia, serif;
+  font-family: var(--font-body), "DM Sans", system-ui, -apple-system, sans-serif;
 }
 
 .eyebrow {
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--color-secondary);
 }
 
 .section-title {
-  font-family: var(--font-display), "Cormorant Garamond", Georgia, serif;
-  font-size: 1.875rem;
-  font-weight: 500;
-  line-height: 1.1;
+  font-family: var(--font-body), "DM Sans", system-ui, -apple-system, sans-serif;
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.2;
   color: var(--color-primary);
 }
 

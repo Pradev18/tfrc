@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { TfrcBrand } from "@/components/brand/TfrcBrand";
 import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { getActiveEnvironments } from "@/services/environment.service";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { TfrcStaffLink } from "@/components/public/TfrcStaffLink";
 import type { ParsedEnvironment } from "@/services/environment.service";
+
 interface StoreFooterProps {
   environment: ParsedEnvironment;
 }
@@ -12,7 +14,8 @@ export async function StoreFooter({ environment }: StoreFooterProps) {
   const [waSettings, allEnvs] = await Promise.all([
     getWhatsAppSettings(),
     getActiveEnvironments(),
-  ]);  const waHref = `https://wa.me/${waSettings.phoneNumber}?text=${encodeURIComponent(waSettings.defaultGreeting)}`;
+  ]);
+  const waHref = `https://wa.me/${waSettings.phoneNumber}?text=${encodeURIComponent(waSettings.defaultGreeting)}`;
   const v = getEnvVisual(environment.slug);
 
   return (
@@ -23,8 +26,13 @@ export async function StoreFooter({ environment }: StoreFooterProps) {
       <div className="container-pawmart py-8 md:py-10">
         <div className="grid gap-8 md:grid-cols-3">
           <div>
-            <p className="font-display text-xl font-medium">{environment.config.displayName}</p>
-            <p className="mt-1 text-xs uppercase tracking-[0.2em] opacity-60">by TFRC · Qatar</p>
+            <TfrcBrand
+              className="gap-2"
+              iconClassName="h-4 brightness-0 invert"
+              textClassName="text-lg font-semibold text-white"
+            />
+            <p className="mt-2 text-sm font-semibold opacity-95">{environment.config.displayName}</p>
+            <p className="mt-1 text-xs opacity-60">Catalogue shopping · WhatsApp orders · Qatar</p>
             <a
               href={waHref}
               target="_blank"
@@ -40,12 +48,12 @@ export async function StoreFooter({ environment }: StoreFooterProps) {
             <ul className="mt-3 space-y-2 text-sm opacity-80">
               <li>
                 <Link href={`/${environment.slug}#catalog`} className="hover:opacity-100">
-                  Browse all products
+                  Browse categories
                 </Link>
               </li>
               <li>
-                <Link href={`/${environment.slug}#deals`} className="hover:opacity-100">
-                  Today&apos;s deals
+                <Link href={`/${environment.slug}#catalog`} className="hover:opacity-100">
+                  All products
                 </Link>
               </li>
             </ul>
@@ -59,13 +67,16 @@ export async function StoreFooter({ environment }: StoreFooterProps) {
                   All catalogues
                 </Link>
               </li>
-              {allEnvs.filter((e) => e.slug !== environment.slug).map((env) => (
-                <li key={env.slug}>
-                  <Link href={`/${env.slug}`} className="hover:opacity-100">
-                    {env.config.displayName}
-                  </Link>
-                </li>
-              ))}            </ul>
+              {allEnvs
+                .filter((e) => e.slug !== environment.slug)
+                .map((env) => (
+                  <li key={env.slug}>
+                    <Link href={`/${env.slug}`} className="hover:opacity-100">
+                      {env.config.displayName}
+                    </Link>
+                  </li>
+                ))}
+            </ul>
           </div>
         </div>
 
@@ -74,7 +85,8 @@ export async function StoreFooter({ environment }: StoreFooterProps) {
         </p>
         <div className="mt-3 text-center">
           <TfrcStaffLink className="opacity-40 hover:opacity-70" />
-        </div>      </div>
+        </div>
+      </div>
     </footer>
   );
 }

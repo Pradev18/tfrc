@@ -1,6 +1,6 @@
 "use client";
 
-import { Flame, Search, X, LayoutGrid } from "lucide-react";
+import { Search, X, LayoutGrid } from "lucide-react";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { CategoryScroll, type ShopCategoryItem } from "@/components/store/CategoryScroll";
 import type { StoreFilters } from "@/lib/store-catalog-filter";
@@ -24,7 +24,6 @@ interface StickyStoreToolbarProps {
   onClear: () => void;
   activeCategorySlug?: string | null;
   onCategorySelect?: (slug: string) => void;
-  onDealsSelect?: () => void;
   onShowAllCategories?: () => void;
   onAllProductsSelect?: () => void;
   totalProducts?: number;
@@ -46,7 +45,6 @@ export function StickyStoreToolbar({
   onClear,
   activeCategorySlug = null,
   onCategorySelect,
-  onDealsSelect,
   onShowAllCategories,
   onAllProductsSelect,
   totalProducts,
@@ -66,7 +64,7 @@ export function StickyStoreToolbar({
 
   return (
     <div className="store-sticky-toolbar pb-2 pt-1 sm:pb-3 sm:pt-2 md:pb-4">
-      <div className="glass-panel-elevated rounded-2xl p-3 shadow-lg sm:p-4">
+      <div className="rounded-2xl border border-black/[0.06] bg-white/95 p-3 shadow-sm sm:p-4">
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <div className="relative min-w-0 flex-1">
             <Search
@@ -77,34 +75,18 @@ export function StickyStoreToolbar({
               type="search"
               value={searchInput}
               onChange={(e) => onSearchInputChange(e.target.value)}
-              placeholder="Search products..."
-              className="w-full min-h-[44px] rounded-full border border-white/80 bg-white/80 py-2.5 pl-10 pr-4 text-base sm:text-sm backdrop-blur-sm focus:border-[#141414]/20 focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
+              placeholder="Search products, brands, item codes..."
+              className="w-full min-h-[44px] rounded-full border border-black/[0.08] bg-white py-2.5 pl-10 pr-4 text-base sm:text-sm focus:border-[#141414]/25 focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
               aria-label="Search products"
             />
           </div>
 
           <div className="scrollbar-hide -mx-0.5 flex min-w-0 items-center gap-2 overflow-x-auto px-0.5 pb-0.5">
-            <button
-              type="button"
-              onClick={() => {
-                if (onDealsSelect) onDealsSelect();
-                else
-                  document
-                    .getElementById("deals")
-                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-              className={`${chipClass} gap-1 border border-white/70 bg-white/70`}
-              style={{ color: v.heading }}
-            >
-              <Flame className="h-3.5 w-3.5" />
-              Deals
-            </button>
-
             {activeCategorySlug && (
               <button
                 type="button"
                 onClick={() => onShowAllCategories?.()}
-                className={`${chipClass} gap-1 border border-white/70 bg-white/70`}
+                className={`${chipClass} gap-1 border border-black/[0.08] bg-white`}
                 style={{ color: v.heading }}
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
@@ -116,7 +98,7 @@ export function StickyStoreToolbar({
               type="button"
               onClick={() => onFiltersChange({ inStock: !filters.inStock })}
               className={`${chipClass} ${
-                filters.inStock ? "text-white" : "border border-white/70 bg-white/70"
+                filters.inStock ? "text-white" : "border border-black/[0.08] bg-white"
               }`}
               style={filters.inStock ? { backgroundColor: v.cta } : { color: v.heading }}
             >
@@ -131,7 +113,7 @@ export function StickyStoreToolbar({
                 { value: "", label: "All brands" },
                 ...brands.map((brand) => ({ value: brand.slug, label: brand.name })),
               ]}
-              className={`${chipClass} !w-auto min-w-[7rem] border-white/70 bg-white/70 sm:max-w-[9rem]`}
+              className={`${chipClass} !w-auto min-w-[7rem] border-black/[0.08] bg-white sm:max-w-[9rem]`}
             />
 
             <UiSelect
@@ -145,10 +127,9 @@ export function StickyStoreToolbar({
                 { value: "featured", label: "Featured" },
                 { value: "price_asc", label: "Price ↑" },
                 { value: "price_desc", label: "Price ↓" },
-                { value: "discount", label: "Discount" },
                 { value: "name", label: "A–Z" },
               ]}
-              className={`${chipClass} !w-auto min-w-[6.5rem] border-white/70 bg-white/70`}
+              className={`${chipClass} !w-auto min-w-[6.5rem] border-black/[0.08] bg-white`}
             />
 
             {hasActiveFilters && (
@@ -165,7 +146,7 @@ export function StickyStoreToolbar({
         </div>
 
         {showCategories && shopCategories.length > 0 && (
-          <div className="mt-3 border-t border-black/[0.04] pt-3">
+          <div className="mt-3 border-t border-black/[0.05] pt-3">
             <CategoryScroll
               categories={shopCategories}
               environmentSlug={environmentSlug}

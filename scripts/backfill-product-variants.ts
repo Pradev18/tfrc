@@ -1,7 +1,7 @@
 import prisma from "../src/lib/db";
 import {
+  classifyProductVariants,
   compareVariantLabels,
-  deriveProductVariantIdentity,
 } from "../src/lib/product-variants";
 
 async function main() {
@@ -15,44 +15,37 @@ async function main() {
       select: { id: true, productId: true, name: true },
     });
 
-    const rows = products.map((product) => ({
-      ...product,
-      identity: deriveProductVariantIdentity({
-        title: product.name,
-        productId: product.productId,
-      }),
-    }));
-    const groups = new Map<string, typeof rows>();
-    for (const row of rows) {
-      if (!row.identity.groupKey) continue;
-      const group = groups.get(row.identity.groupKey) ?? [];
+    const classified = classifyProductVariants(products);
+
+    const groups = new Map<string, typeof classified>();
+    for (const row of classified) {
+      if (!row.groupKey) continue;
+      const group = groups.get(row.groupKey) ?? [];
       group.push(row);
-      groups.set(row.identity.groupKey, group);
+      groups.set(row.groupKey, group);
     }
     for (const group of groups.values()) {
-      group.sort((a, b) =>
-        compareVariantLabels(a.identity.label, b.identity.label)
-      );
+      group.sort((a, b) => compareVariantLabels(a.label, b.label));
     }
 
     let updated = 0;
-    for (const row of rows) {
-      const group = row.identity.groupKey
-        ? groups.get(row.identity.groupKey)
-        : undefined;
+    for (const row of classified) {
+      const group = row.groupKey ? groups.get(row.groupKey) : undefined;
       const primaryId = group?.[0]?.id;
       await prisma.product.update({
         where: { id: row.id },
         data: {
-          variantGroupKey: row.identity.groupKey,
-          variantLabel: row.identity.label,
-          isVariantPrimary: !row.identity.groupKey || row.id === primaryId,
+          variantGroupKey: row.groupKey,
+          variantLabel: row.label,
+          isVariantPrimary: !row.groupKey || row.id === primaryId,
         },
       });
       updated += 1;
     }
 
-    console.log(`[ok] ${environment.slug}: classified ${updated} products, ${groups.size} variant groups`);
+    console.log(
+      `[ok] ${environment.slug}: classified ${updated} products, ${groups.size} variant groups`
+    );
   }
 }
 

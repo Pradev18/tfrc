@@ -46,13 +46,13 @@ export function LazyCategorySection({
         style={{ borderColor: v.border }}
       >
         <div>
-          <h3 className="font-display text-xl font-medium md:text-2xl" style={{ color: v.heading }}>
+          <h3 className="text-xl font-semibold tracking-tight md:text-2xl" style={{ color: v.heading }}>
             {name}
           </h3>
-          <p className="text-sm" style={{ color: v.muted }}>
+          <p className="mt-0.5 text-sm" style={{ color: v.muted }}>
             {includeVariants
-              ? "All imported products in this category"
-              : `${productCount} products`}
+              ? "All products in this category"
+              : `${productCount} ${productCount === 1 ? "product" : "products"}`}
           </p>
         </div>
       </div>

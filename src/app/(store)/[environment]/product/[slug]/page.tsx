@@ -288,8 +288,11 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
                     id: variant.id,
                     productId: variant.productId,
                     slug: variant.slug,
-                    name: variant.name,
-                    label: variant.variantLabel ?? variant.name,
+                    name: productDisplayName(variant.name, variant.productId),
+                    label:
+                      productDisplayName(variant.name, variant.productId) ||
+                      variant.variantLabel ||
+                      variant.name,
                     inStock: variant.inventory?.isInStock ?? true,
                     price: mapProductPrices(variant).pricing.displayPrice,
                     currency: mapProductPrices(variant).pricing.currency,

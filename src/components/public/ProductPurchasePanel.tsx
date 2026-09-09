@@ -15,6 +15,7 @@ import { UiSelect } from "@/components/ui/UiSelect";
 import { useCart } from "@/context/CartContext";
 import { trackCustomerInquiry } from "@/lib/track-inquiry";
 import { calculateLineTotal } from "@/lib/money";
+import { variantOptionLabel } from "@/lib/product-variants";
 
 export interface ProductDetailSpec {
   label: string;
@@ -81,7 +82,7 @@ export function ProductPurchasePanel({
   const [multiSizeQuantities, setMultiSizeQuantities] = useState<Record<string, number>>({});
   const [multiSizeError, setMultiSizeError] = useState("");
   const [multiSizeAdded, setMultiSizeAdded] = useState(false);
-  const requiresSize = sizeVariants.length > 0;
+  const requiresSize = sizeVariants.length > 1;
   const [selectedSizeSlug, setSelectedSizeSlug] = useState(
     initialSizeSelected ? slug : ""
   );
@@ -207,15 +208,17 @@ export function ProductPurchasePanel({
       {requiresSize && (
         <div className="mt-4">
           <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#6b6560]">
-            Size
+            Size / option
           </span>
           <UiSelect
             value={selectedSizeSlug}
             options={[
-              { value: "", label: "Select a size" },
+              { value: "", label: "Select an option" },
               ...sizeVariants.map((variant) => ({
                 value: variant.slug,
-                label: `${variant.label}${variant.inStock ? "" : " — unavailable"}`,
+                label: `${variantOptionLabel(variant, sizeVariants)}${
+                  variant.inStock ? "" : " — unavailable"
+                }`,
                 disabled: !variant.inStock,
               })),
             ]}
@@ -228,12 +231,12 @@ export function ProductPurchasePanel({
                 );
               }
             }}
-            ariaLabel={`Size for ${name}`}
+            ariaLabel={`Option for ${name}`}
             className="min-h-[44px] border-[#ebe8e3] bg-[#faf9f7]"
           />
           {!sizeSelectionReady && (
             <p className="mt-1.5 text-sm font-semibold text-red-600">
-              Please select a size before adding this item.
+              Please select an option before adding this item.
             </p>
           )}
         </div>
@@ -266,7 +269,7 @@ export function ProductPurchasePanel({
               >
                 <div>
                   <p className="text-sm font-semibold text-[#141414]">
-                    Size {variant.label}
+                    {variantOptionLabel(variant, sizeVariants)}
                   </p>
                   <p className="text-xs text-[#6b6560]">
                     {variant.inStock
