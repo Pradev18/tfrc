@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { auth, signOut } from "@/lib/auth";
 import { getVerifiedAdminSession } from "@/lib/admin-auth";
 import { AdminMobileNav } from "@/components/admin/AdminMobileNav";
+import { AdminOverlayGuard } from "@/components/admin/AdminOverlayGuard";
 
 export const metadata: Metadata = {
   title: "Administration",
@@ -45,6 +46,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="flex min-h-screen bg-surface-muted">
+      <AdminOverlayGuard />
       {session && (
         <aside className="relative hidden w-56 shrink-0 border-r border-border bg-surface lg:block">
           <div className="border-b border-border p-5">
