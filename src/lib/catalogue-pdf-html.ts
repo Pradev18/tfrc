@@ -1,4 +1,4 @@
-import type { CataloguePdfPayload } from "@/services/catalogue-pdf.service";
+import type { CataloguePdfPayload, CataloguePdfProduct } from "@/services/catalogue-pdf.service";
 
 export const PDF_PRODUCTS_PER_PAGE = 9;
 export const PDF_COLS = 3;
@@ -17,21 +17,64 @@ export function formatPdfPrice(amount: number, currency = "QAR"): string {
   return `${currency} ${amount.toFixed(2)}`;
 }
 
-function brandBlock(catalogue: CataloguePdfPayload["catalogue"], accent: string) {
+function tfrcMarkSvg() {
+  return `<svg class="brand-logo brand-logo--tfrc" viewBox="0 0 36 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect x="0" y="0" width="8" height="24" rx="1" fill="#7B2D8E"/>
+    <rect x="14" y="0" width="8" height="24" rx="1" fill="#7B2D8E"/>
+    <rect x="28" y="0" width="8" height="24" rx="1" fill="#7B2D8E"/>
+  </svg>`;
+}
+
+function brandBlock(catalogue: CataloguePdfPayload["catalogue"], accent: string, large = false) {
   const logo = catalogue.logoUrl
-    ? `<img class="brand-logo" src="${escapeAttr(catalogue.logoUrl)}" alt="" />`
-    : `<div class="brand-mark" style="background:${escapeAttr(accent)};color:#fff">${escapeHtml(
-        (catalogue.name.charAt(0) || "C").toUpperCase()
-      )}</div>`;
+    ? `<img class="brand-logo${large ? " brand-logo--lg" : ""}" src="${escapeAttr(catalogue.logoUrl)}" alt="${escapeAttr(catalogue.name)}" />`
+    : tfrcMarkSvg();
 
   return `
-    <div class="brand-row">
+    <div class="brand-row${large ? " brand-row--lg" : ""}">
       ${logo}
-      <div>
+      <div class="brand-copy">
         <p class="brand-name">${escapeHtml(catalogue.name)}</p>
-        <p class="brand-sub">${escapeHtml(catalogue.tagline || "Product catalogue")}</p>
+        <p class="brand-sub">${escapeHtml(catalogue.tagline || "TFRC catalogue")}</p>
+        <p class="brand-by">by TFRC</p>
       </div>
     </div>`;
+}
+
+function sizeChips(product: CataloguePdfProduct): string {
+  if (!product.availableSizes.length) return "";
+  const chips = product.availableSizes
+    .map((size) => `<span class="size-chip">${escapeHtml(size)}</span>`)
+    .join("");
+  return `
+    <div class="sizes">
+      <p class="sizes-label">${product.availableSizes.length > 1 ? "Sizes available" : "Size"}</p>
+      <div class="size-row">${chips}</div>
+    </div>`;
+}
+
+function productCard(product: CataloguePdfProduct): string {
+  const priceLabel = `${product.priceFrom ? "From " : ""}${formatPdfPrice(product.price, product.currency)}`;
+  return `
+    <article class="card">
+      <div class="card-image">
+        <img src="${escapeAttr(product.imageUrl || "")}" alt="${escapeAttr(product.displayName)}" />
+      </div>
+      <div class="card-body">
+        <h3>${escapeHtml(product.displayName)}</h3>
+        <p class="meta">Item ${escapeHtml(product.productId)}</p>
+        ${sizeChips(product)}
+        <div class="card-foot">
+          <div>
+            <p class="price">${escapeHtml(priceLabel)}</p>
+            <p class="stock ${product.inStock ? "in" : "out"}">${
+              product.inStock ? "In stock" : "Check availability"
+            }</p>
+          </div>
+          <p class="wa-label">WhatsApp</p>
+        </div>
+      </div>
+    </article>`;
 }
 
 export function buildCataloguePdfHtml(
@@ -54,6 +97,7 @@ export function buildCataloguePdfHtml(
     month: "short",
     year: "numeric",
   });
+  const phone = whatsappUrl.replace(/^https?:\/\/wa\.me\//, "").split("?")[0] || "TFRC";
 
   const coverLinks = categories
     .map(
@@ -73,27 +117,7 @@ export function buildCataloguePdfHtml(
         .map((pageProducts, pageIndex) => {
           const isFirst = pageIndex === 0;
           const continued = !isFirst;
-          const cards = pageProducts
-            .map(
-              (product) => `
-            <article class="card">
-              <div class="card-image">
-                <img src="${escapeAttr(product.imageUrl || "")}" alt="${escapeAttr(product.name)}" />
-              </div>
-              <div class="card-body">
-                <h3>${escapeHtml(product.name)}</h3>
-                <p class="meta">ID ${escapeHtml(product.productId)}${
-                  product.size ? ` · ${escapeHtml(product.size)}` : ""
-                }</p>
-                <p class="price">${escapeHtml(formatPdfPrice(product.price, product.currency))}</p>
-                <p class="stock ${product.inStock ? "in" : "out"}">${
-                  product.inStock ? "In Stock" : "Check availability"
-                }</p>
-                <p class="wa-label">Order on WhatsApp</p>
-              </div>
-            </article>`
-            )
-            .join("");
+          const cards = pageProducts.map(productCard).join("");
 
           return `
           <section class="sheet category-sheet" ${
@@ -108,8 +132,8 @@ export function buildCataloguePdfHtml(
             </header>
 
             <div class="title-block">
-              <h1>${escapeHtml(cat.name)}${continued ? " <span>continued</span>" : ""}</h1>
-              <p>${cat.productCount} products in this category · ${pageProducts.length} on this page</p>
+              <h1>${escapeHtml(cat.name)}${continued ? ' <span>continued</span>' : ""}</h1>
+              <p>${cat.productCount} products · ${pageProducts.length} on this page</p>
             </div>
 
             <div class="grid">
@@ -117,7 +141,7 @@ export function buildCataloguePdfHtml(
             </div>
 
             <footer class="sheet-footer">
-              <span>${escapeHtml(catalogue.name)} brochure</span>
+              <span>${escapeHtml(catalogue.name)} · TFRC</span>
               <span>${dateLabel}</span>
             </footer>
           </section>`;
@@ -137,13 +161,15 @@ export function buildCataloguePdfHtml(
       --heading: ${escapeAttr(heading)};
       --muted: ${escapeAttr(muted)};
       --surface: ${escapeAttr(surface)};
+      --line: #e6ebe8;
+      --soft: #f5f8f6;
     }
     * { box-sizing: border-box; }
     html, body {
       margin: 0;
       padding: 0;
       color: var(--heading);
-      background: #dfe8e2;
+      background: #e8eee9;
       font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
@@ -157,8 +183,8 @@ export function buildCataloguePdfHtml(
       align-items: center;
       justify-content: space-between;
       padding: 12px 18px;
-      background: rgba(255,255,255,0.97);
-      border-bottom: 1px solid #d5e3da;
+      background: rgba(255,255,255,0.98);
+      border-bottom: 1px solid var(--line);
     }
     .toolbar p { margin: 0; font-size: 13px; color: var(--muted); }
     .toolbar button {
@@ -175,10 +201,10 @@ export function buildCataloguePdfHtml(
       width: 210mm;
       height: 297mm;
       margin: 16px auto;
-      padding: 10mm 10mm 9mm;
+      padding: 9mm 9mm 8mm;
       background: #fff;
-      box-shadow: 0 18px 50px rgba(15, 41, 34, 0.12);
-      border-radius: 4px;
+      box-shadow: 0 16px 40px rgba(15, 41, 34, 0.1);
+      border-radius: 6px;
       page-break-after: always;
       break-after: page;
       overflow: hidden;
@@ -190,7 +216,7 @@ export function buildCataloguePdfHtml(
       content: "";
       position: absolute;
       inset: 0 0 auto 0;
-      height: 5px;
+      height: 6px;
       background: var(--accent);
     }
     .brand-row {
@@ -199,36 +225,45 @@ export function buildCataloguePdfHtml(
       align-items: center;
       min-width: 0;
     }
+    .brand-row--lg { gap: 14px; }
     .brand-logo {
-      width: 42px;
-      height: 42px;
+      width: 48px;
+      height: 48px;
       object-fit: contain;
       background: #fff;
-      border: 1px solid #e5eee8;
-      border-radius: 10px;
-      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 4px;
       flex-shrink: 0;
     }
-    .brand-mark {
-      width: 42px;
-      height: 42px;
-      border-radius: 10px;
-      display: grid;
-      place-items: center;
-      font-weight: 800;
-      font-size: 18px;
-      flex-shrink: 0;
+    .brand-logo--lg {
+      width: 72px;
+      height: 72px;
+      border-radius: 16px;
+      padding: 6px;
+    }
+    .brand-logo--tfrc {
+      padding: 10px 8px;
     }
     .brand-name {
       margin: 0;
       font-weight: 800;
-      font-size: 15px;
+      font-size: 16px;
       line-height: 1.15;
     }
+    .brand-row--lg .brand-name { font-size: 22px; }
     .brand-sub {
       margin: 2px 0 0;
       font-size: 11px;
       color: var(--muted);
+    }
+    .brand-by {
+      margin: 2px 0 0;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #7B2D8E;
     }
     .sheet-header {
       display: flex;
@@ -237,7 +272,7 @@ export function buildCataloguePdfHtml(
       align-items: center;
       margin-bottom: 8px;
       padding-bottom: 8px;
-      border-bottom: 1px solid #e7eee9;
+      border-bottom: 1px solid var(--line);
     }
     .page-meta { text-align: right; }
     .page-cat {
@@ -254,12 +289,13 @@ export function buildCataloguePdfHtml(
     .title-block { margin-bottom: 8px; }
     .title-block h1 {
       margin: 0;
-      font-size: 22px;
+      font-size: 20px;
       letter-spacing: -0.02em;
-      line-height: 1.1;
+      line-height: 1.15;
+      font-weight: 800;
     }
     .title-block h1 span {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       color: var(--muted);
     }
@@ -273,29 +309,30 @@ export function buildCataloguePdfHtml(
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       grid-auto-rows: 1fr;
-      gap: 7px;
+      gap: 8px;
       align-content: start;
       min-height: 0;
     }
     .card {
-      border: 1px solid #dfe8e3;
-      border-radius: 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
       overflow: hidden;
       background: #fff;
       display: flex;
       flex-direction: column;
       min-height: 0;
-      height: 78mm;
+      height: 80mm;
+      box-shadow: 0 1px 0 rgba(20,20,20,0.03);
     }
     .card-image {
-      height: 42mm;
+      height: 36mm;
       width: 100%;
-      padding: 5px;
-      background: #f7faf8;
+      padding: 6px;
+      background: var(--soft);
       display: flex;
       align-items: center;
       justify-content: center;
-      border-bottom: 1px solid #eef3ef;
+      border-bottom: 1px solid var(--line);
       flex-shrink: 0;
     }
     .card-image img {
@@ -304,13 +341,14 @@ export function buildCataloguePdfHtml(
       object-fit: contain;
       object-position: center;
       background: #fff;
+      border-radius: 6px;
       display: block;
     }
     .card-body {
-      padding: 6px 8px 8px;
+      padding: 7px 8px 8px;
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 3px;
       min-height: 0;
       flex: 1;
     }
@@ -318,7 +356,8 @@ export function buildCataloguePdfHtml(
       margin: 0;
       font-size: 11px;
       line-height: 1.25;
-      height: 2.5em;
+      font-weight: 700;
+      max-height: 2.5em;
       overflow: hidden;
     }
     .meta {
@@ -329,29 +368,67 @@ export function buildCataloguePdfHtml(
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .sizes { margin-top: 1px; }
+    .sizes-label {
+      margin: 0 0 2px;
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .size-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      max-height: 18px;
+      overflow: hidden;
+    }
+    .size-chip {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid #d5e3da;
+      background: var(--soft);
+      color: var(--heading);
+      font-size: 8px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 3px 5px;
+      white-space: nowrap;
+    }
+    .card-foot {
+      margin-top: auto;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 6px;
+      padding-top: 4px;
+    }
     .price {
-      margin: 2px 0 0;
+      margin: 0;
       font-size: 12px;
       font-weight: 800;
       color: var(--accent);
     }
     .stock {
-      margin: 0;
-      font-size: 9px;
+      margin: 1px 0 0;
+      font-size: 8px;
       font-weight: 700;
     }
     .stock.in { color: #166534; }
     .stock.out { color: #9f1239; }
     .wa-label {
-      margin-top: auto;
-      display: block;
+      margin: 0;
+      display: inline-block;
       text-align: center;
       border-radius: 999px;
       background: #128c47;
       color: #fff;
-      font-size: 9px;
+      font-size: 8px;
       font-weight: 800;
-      padding: 5px 6px;
+      padding: 5px 8px;
+      white-space: nowrap;
     }
     .sheet-footer {
       display: flex;
@@ -359,65 +436,68 @@ export function buildCataloguePdfHtml(
       gap: 12px;
       margin-top: 7px;
       padding-top: 6px;
-      border-top: 1px solid #e7eee9;
+      border-top: 1px solid var(--line);
       font-size: 10px;
       color: var(--muted);
     }
     .cover {
-      background: linear-gradient(165deg, #ffffff 0%, var(--surface) 100%);
+      background: linear-gradient(165deg, #ffffff 0%, var(--surface) 55%, #fff 100%);
     }
     .cover-hero h1 {
-      margin: 18px 0 8px;
-      font-size: 34px;
+      margin: 16px 0 8px;
+      font-size: 32px;
       line-height: 1.05;
       letter-spacing: -0.03em;
+      font-weight: 800;
     }
-    .cover-hero p { margin: 0; color: var(--muted); font-size: 13px; }
+    .cover-hero p.lead { margin: 0; color: var(--muted); font-size: 13px; max-width: 460px; }
     .stats {
       display: flex;
       gap: 10px;
-      margin: 20px 0 18px;
+      margin: 18px 0 16px;
     }
     .stat {
       flex: 1;
-      border-radius: 12px;
-      padding: 12px;
+      border-radius: 14px;
+      padding: 12px 14px;
       background: #fff;
-      border: 1px solid #e4efe8;
+      border: 1px solid var(--line);
+      box-shadow: 0 1px 0 rgba(20,20,20,0.03);
     }
-    .stat strong { display: block; font-size: 20px; margin-top: 4px; }
+    .stat strong { display: block; font-size: 22px; margin-top: 4px; font-weight: 800; }
     .stat span {
-      font-size: 11px;
+      font-size: 10px;
       color: var(--muted);
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.08em;
+      font-weight: 700;
     }
-    .toc-title { margin: 0 0 8px; font-size: 18px; }
+    .toc-title { margin: 0 0 6px; font-size: 16px; font-weight: 800; }
     .toc-note { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
     .toc-row {
       display: grid;
       grid-template-columns: 32px 1fr auto;
       gap: 10px;
       align-items: center;
-      padding: 8px 10px;
+      padding: 9px 11px;
       margin-bottom: 6px;
-      border-radius: 10px;
+      border-radius: 12px;
       background: #fff;
-      border: 1px solid #e4efe8;
+      border: 1px solid var(--line);
     }
     .toc-num {
       width: 28px;
       height: 28px;
-      border-radius: 8px;
+      border-radius: 9px;
       display: grid;
       place-items: center;
-      font-weight: 700;
+      font-weight: 800;
       font-size: 12px;
       color: #fff;
       background: var(--accent);
     }
     .toc-name { font-weight: 700; font-size: 13px; }
-    .toc-count { color: var(--muted); font-size: 12px; }
+    .toc-count { color: var(--muted); font-size: 12px; font-weight: 600; }
     .wa-cover {
       display: inline-block;
       margin-top: 14px;
@@ -452,16 +532,16 @@ export function buildCataloguePdfHtml(
 </head>
 <body>
   <div class="toolbar">
-    <p>${escapeHtml(catalogue.name)} brochure · ${totalProducts} products · ${categories.length} categories</p>
+    <p>${escapeHtml(catalogue.name)} brochure · ${totalProducts} products · ${categories.length} categories · TFRC</p>
     <button type="button" onclick="window.print()">Download / Print PDF</button>
   </div>
 
   <section class="sheet cover" id="toc">
     <div class="cover-hero">
-      ${brandBlock(catalogue, accent)}
+      ${brandBlock(catalogue, accent, true)}
       <h1>${escapeHtml(catalogue.name)} Product Brochure</h1>
-      <p>Print-ready catalogue booklet. Every category continues until all products are shown.</p>
-      <div class="wa-cover">WhatsApp orders · ${escapeHtml(whatsappUrl.replace(/^https?:\/\/wa\.me\//, "").split("?")[0] || "TFRC")}</div>
+      <p class="lead">Print-ready A4 booklet with category pages, product cards, and available sizes clearly listed for customers.</p>
+      <div class="wa-cover">WhatsApp orders · ${escapeHtml(phone)}</div>
       <div class="stats">
         <div class="stat"><span>Products</span><strong>${totalProducts}</strong></div>
         <div class="stat"><span>Categories</span><strong>${categories.length}</strong></div>
@@ -469,7 +549,7 @@ export function buildCataloguePdfHtml(
       </div>
     </div>
     <h2 class="toc-title">Categories</h2>
-    <p class="toc-note">Use this index when assembling the printed brochure.</p>
+    <p class="toc-note">Index for the printed brochure — products are grouped under each category.</p>
     ${coverLinks || "<p>No products found.</p>"}
   </section>
 

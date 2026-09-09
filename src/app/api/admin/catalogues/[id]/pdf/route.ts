@@ -43,8 +43,9 @@ export async function GET(req: NextRequest, context: RouteContext) {
     ...payload,
     catalogue: {
       ...payload.catalogue,
+      // Keep absolute URL if embed fails so the browser can still load the uploaded logo.
       logoUrl: logoAbsolute
-        ? embedded.get(logoAbsolute) ?? null
+        ? embedded.get(logoAbsolute) ?? logoAbsolute
         : null,
     },
     categories: payload.categories.map((category) => ({
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
         const absolute = absolutizeMediaUrl(product.imageUrl, origin);
         return {
           ...product,
-          imageUrl: pdfImageOrPlaceholder(absolute, embedded, product.name),
+          imageUrl: pdfImageOrPlaceholder(absolute, embedded, product.displayName),
         };
       }),
     })),

@@ -190,7 +190,7 @@ export function ManageCataloguePanel({
       }
       setMessage(
         autoPrint
-          ? "Catalogue PDF opened — 9 products per page, images embedded, WhatsApp order on each card."
+          ? "Catalogue PDF opened — logo, size options, and 9 product cards per page."
           : "Catalogue PDF preview opened."
       );
     } catch (cause) {
@@ -309,8 +309,8 @@ export function ManageCataloguePanel({
             </div>
           </div>
           <p className="mb-4 text-xs text-text-muted">
-            Print-ready A4 brochure: 9 equal product cards per page, catalogue logo on every page,
-            and every product image embedded so nothing is missing when you save as PDF.
+            Print-ready A4 brochure: uploaded catalogue logo on every page, clearer product
+            cards, and available sizes (S/M/L or mm sizes) listed when variants exist.
           </p>
 
           {loading ? (

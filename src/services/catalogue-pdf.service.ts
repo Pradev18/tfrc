@@ -5,17 +5,26 @@ import { getCatalogueById } from "@/services/catalogue-admin.service";
 import { getShopCategories } from "@/services/shop-category.service";
 import { OTHER_SHOP_CATEGORY } from "@/lib/shop-categories";
 import { getEnvVisual } from "@/lib/env-visuals";
-import { getEnvironmentCardImage } from "@/lib/environment-config";
 import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { buildWhatsAppUrl, generateWhatsAppLinkSync } from "@/lib/whatsapp";
 import { getSiteUrl } from "@/lib/site-config";
+import { normalizeCatalogueImageSrc } from "@/lib/media-url";
+import {
+  compareVariantLabels,
+  productDisplayTitle,
+} from "@/lib/product-variants";
 
 export interface CataloguePdfProduct {
   id: string;
   name: string;
+  /** Base display title without size token */
+  displayName: string;
   productId: string;
   size: string | null;
+  /** All available size / measurement labels for this card */
+  availableSizes: string[];
   price: number;
+  priceFrom: boolean;
   currency: string;
   inStock: boolean;
   imageUrl: string | null;
@@ -47,9 +56,157 @@ export interface CataloguePdfPayload {
   categories: CataloguePdfCategory[];
 }
 
-function cleanName(name: string, productId: string): string {
-  const escaped = productId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return name.replace(new RegExp(`(?:\\s+${escaped})+$`, "i"), "").trim();
+type ProductRow = {
+  id: string;
+  name: string;
+  productId: string;
+  slug: string;
+  variantGroupKey: string | null;
+  variantLabel: string | null;
+  isVariantPrimary: boolean;
+  shopCategorySlug: string | null;
+  prices: Array<{
+    type: string;
+    amount: number;
+    currency: string;
+    saleStart: Date | null;
+    saleEnd: Date | null;
+  }>;
+  inventory: { isInStock: boolean } | null;
+  images: Array<{ url: string }>;
+};
+
+function toPdfProduct(
+  product: ProductRow,
+  catalogue: { slug: string; name: string },
+  whatsappSettings: Awaited<ReturnType<typeof getWhatsAppSettings>>,
+  siteUrl: string,
+  availableSizes: string[],
+  displayName: string,
+  price: number,
+  priceFrom: boolean
+): CataloguePdfProduct {
+  const { pricing } = mapProductPrices(product);
+  const name = productDisplayTitle(product.name, product.productId);
+
+  return {
+    id: product.id,
+    name,
+    displayName,
+    productId: product.productId,
+    size: product.variantLabel,
+    availableSizes,
+    price,
+    priceFrom,
+    currency: pricing.currency,
+    inStock: product.inventory?.isInStock !== false,
+    imageUrl: product.images[0]?.url ?? null,
+    whatsappUrl: generateWhatsAppLinkSync(
+      whatsappSettings,
+      {
+        name: displayName,
+        productId: product.productId,
+        regularPrice: pricing.regular,
+        salePrice: pricing.sale,
+        currency: pricing.currency,
+        slug: product.slug,
+        environmentSlug: catalogue.slug,
+        environmentName: catalogue.name,
+        size:
+          availableSizes.length > 1
+            ? availableSizes.join(", ")
+            : product.variantLabel ?? undefined,
+      },
+      siteUrl
+    ),
+  };
+}
+
+function collapseVariantGroups(
+  products: ProductRow[],
+  catalogue: { slug: string; name: string },
+  whatsappSettings: Awaited<ReturnType<typeof getWhatsAppSettings>>,
+  siteUrl: string
+): CataloguePdfProduct[] {
+  const groups = new Map<string, ProductRow[]>();
+  const ungrouped: ProductRow[] = [];
+
+  for (const product of products) {
+    if (product.variantGroupKey) {
+      const list = groups.get(product.variantGroupKey) ?? [];
+      list.push(product);
+      groups.set(product.variantGroupKey, list);
+    } else {
+      ungrouped.push(product);
+    }
+  }
+
+  const cards: CataloguePdfProduct[] = [];
+
+  for (const siblings of groups.values()) {
+    siblings.sort((a, b) => compareVariantLabels(a.variantLabel, b.variantLabel));
+    const primary =
+      siblings.find((item) => item.isVariantPrimary) ?? siblings[0]!;
+    const sizes = siblings
+      .map((item) => item.variantLabel?.trim())
+      .filter((label): label is string => Boolean(label));
+    const uniqueSizes = [...new Set(sizes)];
+    uniqueSizes.sort(compareVariantLabels);
+
+    const prices = siblings.map((item) => mapProductPrices(item).pricing.displayPrice);
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const priceFrom = maxPrice - minPrice > 0.009;
+
+    const identityName = productDisplayTitle(primary.name, primary.productId);
+    // Prefer base name without the size token when we have multiple sizes
+    let displayName = identityName;
+    if (uniqueSizes.length > 0 && primary.variantLabel) {
+      const stripped = identityName
+        .replace(
+          new RegExp(
+            `\\s*\\(?\\s*${primary.variantLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\)?\\s*$`,
+            "i"
+          ),
+          ""
+        )
+        .trim();
+      if (stripped.length >= 3) displayName = stripped;
+    }
+
+    cards.push(
+      toPdfProduct(
+        primary,
+        catalogue,
+        whatsappSettings,
+        siteUrl,
+        uniqueSizes,
+        displayName,
+        minPrice,
+        priceFrom
+      )
+    );
+  }
+
+  for (const product of ungrouped) {
+    const { pricing } = mapProductPrices(product);
+    const name = productDisplayTitle(product.name, product.productId);
+    cards.push(
+      toPdfProduct(
+        product,
+        catalogue,
+        whatsappSettings,
+        siteUrl,
+        product.variantLabel ? [product.variantLabel] : [],
+        name,
+        pricing.displayPrice,
+        false
+      )
+    );
+  }
+
+  cards.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }));
+  return cards;
 }
 
 export async function getCataloguePdfPayload(
@@ -77,7 +234,7 @@ export async function getCataloguePdfPayload(
   ]);
   const siteUrl = getSiteUrl();
 
-  const buckets = new Map<string, CataloguePdfProduct[]>();
+  const buckets = new Map<string, ProductRow[]>();
   for (const cat of shopCategories) buckets.set(cat.slug, []);
   buckets.set(OTHER_SHOP_CATEGORY.slug, []);
 
@@ -90,78 +247,58 @@ export async function getCataloguePdfPayload(
           : product.shopCategorySlug;
 
     if (!buckets.has(slug)) buckets.set(slug, []);
-    const { pricing } = mapProductPrices(product);
-    const name = cleanName(product.name, product.productId);
-    buckets.get(slug)!.push({
-      id: product.id,
-      name,
-      productId: product.productId,
-      size: product.variantLabel,
-      price: pricing.displayPrice,
-      currency: pricing.currency,
-      inStock: product.inventory?.isInStock !== false,
-      imageUrl: product.images[0]?.url ?? null,
-      whatsappUrl: generateWhatsAppLinkSync(
-        whatsappSettings,
-        {
-          name,
-          productId: product.productId,
-          regularPrice: pricing.regular,
-          salePrice: pricing.sale,
-          currency: pricing.currency,
-          slug: product.slug,
-          environmentSlug: catalogue.slug,
-          environmentName: catalogue.name,
-          size: product.variantLabel ?? undefined,
-        },
-        siteUrl
-      ),
-    });
+    buckets.get(slug)!.push(product);
   }
 
+  const catalogueMeta = { slug: catalogue.slug, name: catalogue.name };
   const categories: CataloguePdfCategory[] = [];
+
   for (const cat of shopCategories) {
     const list = buckets.get(cat.slug) ?? [];
     if (list.length === 0) continue;
+    const collapsed = collapseVariantGroups(list, catalogueMeta, whatsappSettings, siteUrl);
     categories.push({
       slug: cat.slug,
       name: cat.name,
-      productCount: list.length,
-      products: list,
+      productCount: collapsed.length,
+      products: collapsed,
     });
   }
 
   const other = buckets.get(OTHER_SHOP_CATEGORY.slug) ?? [];
   if (other.length > 0 && !categories.some((c) => c.slug === OTHER_SHOP_CATEGORY.slug)) {
+    const collapsed = collapseVariantGroups(other, catalogueMeta, whatsappSettings, siteUrl);
     categories.push({
       slug: OTHER_SHOP_CATEGORY.slug,
       name: OTHER_SHOP_CATEGORY.name,
-      productCount: other.length,
-      products: other,
+      productCount: collapsed.length,
+      products: collapsed,
     });
   }
 
-  // Include any unexpected shopCategorySlug buckets
   for (const [slug, list] of buckets) {
     if (list.length === 0) continue;
     if (categories.some((c) => c.slug === slug)) continue;
+    const collapsed = collapseVariantGroups(list, catalogueMeta, whatsappSettings, siteUrl);
     categories.push({
       slug,
       name: slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      productCount: list.length,
-      products: list,
+      productCount: collapsed.length,
+      products: collapsed,
     });
   }
 
   const visual = getEnvVisual(catalogue.slug);
   const totalProducts = categories.reduce((sum, c) => sum + c.productCount, 0);
+  // Prefer the uploaded catalogue logo only (not category hero placeholders).
+  const logoUrl = normalizeCatalogueImageSrc(catalogue.logoUrl) || null;
 
   return {
     catalogue: {
       id: catalogue.id,
       name: catalogue.name,
       slug: catalogue.slug,
-      logoUrl: getEnvironmentCardImage(catalogue) || catalogue.logoUrl || null,
+      logoUrl,
       tagline: catalogue.tagline,
     },
     whatsappUrl: buildWhatsAppUrl(
