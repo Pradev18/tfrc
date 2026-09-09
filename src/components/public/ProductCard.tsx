@@ -34,16 +34,6 @@ interface ProductCardProps {
   eagerPrefetch?: boolean;
 }
 
-function productDisplayName(name: string, productId: string) {
-  const id = productId?.trim();
-  if (!id) return name;
-  const trimmed = name.trim();
-  if (trimmed.endsWith(id)) {
-    return trimmed.slice(0, -id.length).replace(/[\s\-_|]+$/u, "").trim() || trimmed;
-  }
-  return trimmed;
-}
-
 export function ProductCard({
   product,
   whatsappSettings,
