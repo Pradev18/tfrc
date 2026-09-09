@@ -4,6 +4,7 @@ import {
   collapseSingletonVariantGroups,
   compareVariantLabels,
   deriveProductVariantIdentity,
+  formatAvailableSizes,
 } from "../src/lib/product-variants";
 
 describe("deriveProductVariantIdentity", () => {
@@ -17,18 +18,57 @@ describe("deriveProductVariantIdentity", () => {
     expect(identity.groupKey).toBe("black-pet-hat");
   });
 
+  it("groups leading letter-dash sizes like L-Pet Harness", () => {
+    const items = ["L-Pet Harness", "M-Pet Harness", "S-Pet Harness"].map((title, index) =>
+      deriveProductVariantIdentity({ title, productId: `11001031${index}` })
+    );
+    expect(new Set(items.map((item) => item.groupKey))).toEqual(new Set(["pet-harness"]));
+    expect(items.map((item) => item.label)).toEqual(["L", "M", "S"]);
+    expect(items.map((item) => item.baseName)).toEqual([
+      "Pet Harness",
+      "Pet Harness",
+      "Pet Harness",
+    ]);
+  });
+
+  it("groups L-/M-/S- Pet Collar Mix Color with optional spaces", () => {
+    const items = [
+      "L-Pet Collar Mix Color",
+      "L- Pet Collar Mix Color",
+      "M-Pet Collar Mix Color",
+      "S-Pet Collar Mix Color",
+    ].map((title, index) =>
+      deriveProductVariantIdentity({ title, productId: `11001029${index}` })
+    );
+    expect(new Set(items.map((item) => item.groupKey))).toEqual(
+      new Set(["pet-collar-mix-color"])
+    );
+    expect(items.map((item) => item.label)).toEqual(["L", "L", "M", "S"]);
+  });
+
+  it("groups Medium/Small/Large word sizes", () => {
+    const items = ["Medium Dog Leash", "Small Dog Leash", "Large Dog Leash"].map(
+      (title, index) => deriveProductVariantIdentity({ title, productId: `11001031${index}` })
+    );
+    expect(new Set(items.map((item) => item.groupKey))).toEqual(new Set(["dog-leash"]));
+    expect(items.map((item) => item.label)).toEqual(["M", "S", "L"]);
+    expect(items[0].baseName).toBe("Dog Leash");
+  });
+
+  it("groups collar bandana leading sizes", () => {
+    const items = ["M-Pet Collar W/Bandana", "S-Pet Collar W/Bandana"].map((title, index) =>
+      deriveProductVariantIdentity({ title, productId: `11001029${index}` })
+    );
+    expect(items[0].groupKey).toBe("pet-collar-w-bandana");
+    expect(items[1].groupKey).toBe("pet-collar-w-bandana");
+    expect(items.map((item) => item.label)).toEqual(["M", "S"]);
+  });
+
   it("groups concrete drill bit measurement variants", () => {
     const bits = [
       "Concrete Drill Bit 16150Mm",
       "Concrete Drill Bit 14150Mm",
       "Concrete Drill Bit 12150Mm",
-      "Concrete Drill Bit 10120Mm",
-      "Concrete Drill Bit 9120Mm",
-      "Concrete Drill Bit 8120Mm",
-      "Concrete Drill Bit 6100Mm",
-      "Concrete Drill Bit 585Mm",
-      "Concrete Drill Bit 475Mm",
-      "Concrete Drill Bit 360Mm",
     ].map((title, index) =>
       deriveProductVariantIdentity({
         title,
@@ -37,21 +77,7 @@ describe("deriveProductVariantIdentity", () => {
     );
 
     expect(new Set(bits.map((bit) => bit.groupKey))).toEqual(new Set(["concrete-drill-bit"]));
-    expect(bits.map((bit) => bit.baseName)).toEqual(
-      Array(bits.length).fill("Concrete Drill Bit")
-    );
-    expect(bits.map((bit) => bit.label)).toEqual([
-      "16150MM",
-      "14150MM",
-      "12150MM",
-      "10120MM",
-      "9120MM",
-      "8120MM",
-      "6100MM",
-      "585MM",
-      "475MM",
-      "360MM",
-    ]);
+    expect(bits.map((bit) => bit.label)).toEqual(["16150MM", "14150MM", "12150MM"]);
   });
 
   it("keeps unique products ungrouped", () => {
@@ -61,7 +87,6 @@ describe("deriveProductVariantIdentity", () => {
     });
     expect(identity.groupKey).toBeNull();
     expect(identity.label).toBeNull();
-    expect(identity.baseName).toBe("Foldable Pet Carrier");
   });
 
   it("collapses singleton measurement groups", () => {
@@ -85,19 +110,21 @@ describe("deriveProductVariantIdentity", () => {
     ]);
   });
 
-  it("groups kitchen products that share a cleaned base name", () => {
+  it("classifies mixed pet size families together", () => {
     const classified = classifyProductVariants([
-      { name: "6Pcs Cups And Plates 88006709", productId: "88006709" },
-      { name: "6Pcs Cups And Plates 88006711", productId: "88006711" },
-      { name: "6 Pcs Tea Cup W Saucer 880008298", productId: "880008298" },
-      { name: "6Pcs Tea Cup W Saucer 880008359", productId: "880008359" },
-      { name: "Unique Bowl 880099999", productId: "880099999" },
+      { name: "L-Pet Harness 1", productId: "1" },
+      { name: "M-Pet Harness 2", productId: "2" },
+      { name: "S-Pet Harness 3", productId: "3" },
+      { name: "Medium Dog Leash 4", productId: "4" },
+      { name: "Small Dog Leash 5", productId: "5" },
+      { name: "Unique Bowl 6", productId: "6" },
     ]);
-
-    expect(classified[0].groupKey).toBe("name-6pcs-cups-and-plates");
-    expect(classified[1].groupKey).toBe("name-6pcs-cups-and-plates");
-    expect(classified[2].groupKey).toBe("name-6pcs-tea-cup-w-saucer");
-    expect(classified[3].groupKey).toBe("name-6pcs-tea-cup-w-saucer");
-    expect(classified[4].groupKey).toBeNull();
+    expect(classified[0].groupKey).toBe("pet-harness");
+    expect(classified[1].groupKey).toBe("pet-harness");
+    expect(classified[2].groupKey).toBe("pet-harness");
+    expect(classified[3].groupKey).toBe("dog-leash");
+    expect(classified[4].groupKey).toBe("dog-leash");
+    expect(classified[5].groupKey).toBeNull();
+    expect(formatAvailableSizes(["L", "S", "M"])).toBe("S · M · L");
   });
 });

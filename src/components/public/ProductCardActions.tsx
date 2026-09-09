@@ -77,7 +77,7 @@ export function ProductCardActions({
           <UiSelect
             value={selectedVariantId ?? ""}
             options={[
-              { value: "", label: "Select option" },
+              { value: "", label: "Select size" },
               ...sizeVariants.map((variant) => ({
                 value: variant.id,
                 label: `${variantOptionLabel(variant, sizeVariants)}${
@@ -87,11 +87,11 @@ export function ProductCardActions({
               })),
             ]}
             onValueChange={(next) => onVariantChange?.(next || null)}
-            ariaLabel={`Option for ${product.name}`}
+            ariaLabel={`Size for ${product.name}`}
           />
           {!sizeSelected && (
             <p className="mt-1 px-1 text-[11px] font-medium text-red-600">
-              Select a size / option first
+              Select a size first
             </p>
           )}
         </div>

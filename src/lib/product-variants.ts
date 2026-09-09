@@ -1,23 +1,41 @@
 const CLOTHING_SIZE_TOKEN =
   "(?:XXXXL|XXXL|XXL|XL|L|M|S|XS|XXS|XXXS|ONE\\s*SIZE|FREE\\s*SIZE)";
 
+const WORD_SIZE_TOKEN =
+  "(?:XXXXL|XXXL|XXL|EXTRA\\s*EXTRA\\s*LARGE|EXTRA\\s*LARGE|LARGE|MEDIUM|SMALL|X-?LARGE|X-?SMALL)";
+
 const MEASUREMENT_TOKEN =
   "(?:\\d+(?:[./x×*]\\d+)*\\s*(?:mm|cm|m|ml|l|inch|in|\"|')|\\d+(?:mm|cm|m|ml))";
 
 const PAREN_SIZE_RE = new RegExp(
-  `\\s*\\(\\s*(${CLOTHING_SIZE_TOKEN}|${MEASUREMENT_TOKEN}|\\d+(?:\\.\\d+)?)\\s*\\)`,
+  `\\s*\\(\\s*(${CLOTHING_SIZE_TOKEN}|${MEASUREMENT_TOKEN}|${WORD_SIZE_TOKEN}|\\d+(?:\\.\\d+)?)\\s*\\)`,
   "i"
 );
 const LABELED_SIZE_RE = new RegExp(
-  `\\s+(?:size\\s*[:\\-]?\\s*)(${CLOTHING_SIZE_TOKEN}|${MEASUREMENT_TOKEN}|\\d+(?:\\.\\d+)?)(?=\\s|$)`,
+  `\\s+(?:size\\s*[:\\-]?\\s*)(${CLOTHING_SIZE_TOKEN}|${MEASUREMENT_TOKEN}|${WORD_SIZE_TOKEN}|\\d+(?:\\.\\d+)?)(?=\\s|$)`,
   "i"
 );
+/** "L-Pet Harness", "M - Pet Collar", "S-Pet Collar Mix Color" */
+const LEADING_LETTER_SIZE_RE = new RegExp(
+  `^(${CLOTHING_SIZE_TOKEN})\\s*[-–—:/]\\s*(.+)$`,
+  "i"
+);
+/** "Medium Dog Leash", "Small Dog Leash", "Large Dog Leash" */
+const LEADING_WORD_SIZE_RE = new RegExp(`^(${WORD_SIZE_TOKEN})\\s+(.+)$`, "i");
 const TRAILING_CLOTHING_SIZE_RE = new RegExp(`\\s+(${CLOTHING_SIZE_TOKEN})\\s*$`, "i");
+const TRAILING_WORD_SIZE_RE = new RegExp(`\\s+(${WORD_SIZE_TOKEN})\\s*$`, "i");
 const TRAILING_MEASUREMENT_RE = new RegExp(`\\s+(${MEASUREMENT_TOKEN})\\s*$`, "i");
 const TRAILING_ID_RE = /\s+\d{5,}\s*$/;
 
 function normalizeLabel(value: string): string {
-  return value.trim().replace(/\s+/g, " ").toUpperCase();
+  const upper = value.trim().replace(/\s+/g, " ").toUpperCase();
+  if (/^EXTRA\s*EXTRA\s*LARGE$/i.test(upper) || upper === "XXXXL") return "XXXXL";
+  if (/^EXTRA\s*LARGE$/i.test(upper) || /^X-?LARGE$/i.test(upper)) return "XL";
+  if (/^X-?SMALL$/i.test(upper)) return "XS";
+  if (upper === "LARGE") return "L";
+  if (upper === "MEDIUM") return "M";
+  if (upper === "SMALL") return "S";
+  return upper;
 }
 
 function normalizeGroupKey(value: string): string {
@@ -47,8 +65,11 @@ export interface ProductVariantIdentity {
 
 /**
  * Infer variant siblings from catalogue titles.
- * Handles Meta size/item_group_id, clothing sizes, and measurement codes like:
- * "Concrete Drill Bit 16150Mm" → group "concrete-drill-bit", label "16150MM"
+ * Handles:
+ * - "Black Pet Hat (L)" / "size: M"
+ * - "L-Pet Harness", "M-Pet Collar Mix Color"
+ * - "Medium Dog Leash", "Small Dog Leash"
+ * - "Concrete Drill Bit 16150Mm"
  */
 export function deriveProductVariantIdentity(input: {
   title: string;
@@ -57,33 +78,47 @@ export function deriveProductVariantIdentity(input: {
   itemGroupId?: string | null;
 }): ProductVariantIdentity {
   const titleWithoutId = stripTrailingProductId(input.title, input.productId);
+  const explicitSize = input.size?.trim();
+  const explicitGroup = input.itemGroupId?.trim();
 
   const parenthesized = titleWithoutId.match(PAREN_SIZE_RE);
   const labeled = titleWithoutId.match(LABELED_SIZE_RE);
+  const leadingLetter = titleWithoutId.match(LEADING_LETTER_SIZE_RE);
+  const leadingWord = titleWithoutId.match(LEADING_WORD_SIZE_RE);
   const trailingClothing = titleWithoutId.match(TRAILING_CLOTHING_SIZE_RE);
+  const trailingWord = titleWithoutId.match(TRAILING_WORD_SIZE_RE);
   const trailingMeasurement = titleWithoutId.match(TRAILING_MEASUREMENT_RE);
-  const explicitSize = input.size?.trim();
 
-  const label = explicitSize
-    ? normalizeLabel(explicitSize)
-    : parenthesized?.[1]
-      ? normalizeLabel(parenthesized[1])
-      : labeled?.[1]
-        ? normalizeLabel(labeled[1])
-        : trailingClothing?.[1]
-          ? normalizeLabel(trailingClothing[1])
-          : trailingMeasurement?.[1]
-            ? normalizeLabel(trailingMeasurement[1])
-            : null;
-
+  let label: string | null = null;
   let baseName = titleWithoutId;
-  if (parenthesized) baseName = baseName.replace(PAREN_SIZE_RE, " ");
-  else if (labeled) baseName = baseName.replace(LABELED_SIZE_RE, " ");
-  else if (trailingClothing) baseName = baseName.replace(TRAILING_CLOTHING_SIZE_RE, " ");
-  else if (trailingMeasurement) baseName = baseName.replace(TRAILING_MEASUREMENT_RE, " ");
+
+  if (explicitSize) {
+    label = normalizeLabel(explicitSize);
+  } else if (parenthesized?.[1]) {
+    label = normalizeLabel(parenthesized[1]);
+    baseName = baseName.replace(PAREN_SIZE_RE, " ");
+  } else if (labeled?.[1]) {
+    label = normalizeLabel(labeled[1]);
+    baseName = baseName.replace(LABELED_SIZE_RE, " ");
+  } else if (leadingLetter?.[1] && leadingLetter[2]) {
+    label = normalizeLabel(leadingLetter[1]);
+    baseName = leadingLetter[2].trim();
+  } else if (leadingWord?.[1] && leadingWord[2]) {
+    label = normalizeLabel(leadingWord[1]);
+    baseName = leadingWord[2].trim();
+  } else if (trailingClothing?.[1]) {
+    label = normalizeLabel(trailingClothing[1]);
+    baseName = baseName.replace(TRAILING_CLOTHING_SIZE_RE, " ");
+  } else if (trailingWord?.[1]) {
+    label = normalizeLabel(trailingWord[1]);
+    baseName = baseName.replace(TRAILING_WORD_SIZE_RE, " ");
+  } else if (trailingMeasurement?.[1]) {
+    label = normalizeLabel(trailingMeasurement[1]);
+    baseName = baseName.replace(TRAILING_MEASUREMENT_RE, " ");
+  }
+
   baseName = baseName.replace(/\s+/g, " ").trim() || titleWithoutId;
 
-  const explicitGroup = input.itemGroupId?.trim();
   const groupKey = explicitGroup
     ? `meta-${normalizeGroupKey(explicitGroup)}`
     : label
@@ -96,7 +131,6 @@ export function deriveProductVariantIdentity(input: {
 /**
  * Group products that share the same cleaned title (after stripping SKU / size tokens)
  * even when there is no measurement/size label — e.g. kitchen "6Pcs Cups And Plates".
- * Dropdowns still show each product's full display name.
  */
 export function assignSharedBaseNameGroups<
   T extends {
@@ -153,9 +187,23 @@ export function classifyProductVariants<
 }
 
 const SIZE_ORDER = new Map(
-  ["XXXS", "XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL", "XXXXL", "ONE SIZE", "FREE SIZE"].map(
-    (size, index) => [size, index]
-  )
+  [
+    "XXXS",
+    "XXS",
+    "XS",
+    "S",
+    "M",
+    "L",
+    "XL",
+    "XXL",
+    "XXXL",
+    "XXXXL",
+    "ONE SIZE",
+    "FREE SIZE",
+    "SMALL",
+    "MEDIUM",
+    "LARGE",
+  ].map((size, index) => [size, index])
 );
 
 function measurementSortValue(label: string | null): number | null {
@@ -185,11 +233,38 @@ export function productDisplayTitle(name: string, productId?: string | null): st
   return stripTrailingProductId(name, productId ?? undefined);
 }
 
-/** Dropdown label: full cleaned name, plus item code when siblings share that name. */
+/** Compact “S · M · L” / “360MM · 12150MM” line for cards and PDF. */
+export function formatAvailableSizes(labels: Array<string | null | undefined>): string {
+  const unique = [
+    ...new Set(
+      labels
+        .map((label) => label?.trim())
+        .filter((label): label is string => Boolean(label))
+    ),
+  ];
+  unique.sort(compareVariantLabels);
+  return unique.join(" · ");
+}
+
+/**
+ * Dropdown label: prefer size/measurement code when present so customers
+ * instantly see S/M/L or 12150MM; fall back to full cleaned title.
+ */
 export function variantOptionLabel(
-  variant: { name: string; productId: string },
-  siblings: Array<{ name: string; productId: string }>
+  variant: { name: string; productId: string; variantLabel?: string | null },
+  siblings: Array<{ name: string; productId: string; variantLabel?: string | null }>
 ): string {
+  const size = variant.variantLabel?.trim();
+  if (size) {
+    const sameSizeCount = siblings.filter(
+      (sibling) => (sibling.variantLabel?.trim() || "") === size
+    ).length;
+    if (sameSizeCount > 1) {
+      return `${size} · ${variant.productId}`;
+    }
+    return size;
+  }
+
   const title = productDisplayTitle(variant.name, variant.productId);
   const sameTitleCount = siblings.filter(
     (sibling) => productDisplayTitle(sibling.name, sibling.productId) === title

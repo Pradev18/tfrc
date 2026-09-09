@@ -13,7 +13,12 @@ import { getEnvVisual } from "@/lib/env-visuals";
 import { cn } from "@/lib/utils";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
 import { MEDIA_BLUR_DATA_URL, MediaFallback } from "@/components/public/MediaFallback";
-import { deriveProductVariantIdentity, productDisplayTitle } from "@/lib/product-variants";
+import { TfrcBrand } from "@/components/brand/TfrcBrand";
+import {
+  deriveProductVariantIdentity,
+  formatAvailableSizes,
+  productDisplayTitle,
+} from "@/lib/product-variants";
 
 interface ProductCardProps {
   product: (ProductWithRelations | ProductListItem) & {
@@ -75,13 +80,17 @@ export function ProductCard({
     selectedProduct.name,
     selectedProduct.productId
   );
+  const baseIdentity = deriveProductVariantIdentity({
+    title: product.name,
+    productId: product.productId,
+  });
   const title =
     variants.length > 0 && !selectedVariantId
-      ? deriveProductVariantIdentity({
-          title: product.name,
-          productId: product.productId,
-        }).baseName || selectedTitle
+      ? baseIdentity.baseName || selectedTitle
       : selectedTitle;
+  const availableSizesLabel = formatAvailableSizes(
+    variants.map((variant) => variant.variantLabel)
+  );
 
   useEffect(() => {
     if (!eagerPrefetch) return;
@@ -166,15 +175,29 @@ export function ProductCard({
           className="relative z-[2] flex flex-1 flex-col"
           aria-label={`View ${title} details`}
         >
-          {selectedProduct.brand && (
-            <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: v.muted }}>
-              {selectedProduct.brand.name}
-            </p>
-          )}
+          {selectedProduct.brand ? (
+            <div className="flex items-center gap-1.5">
+              {/tfrc/i.test(selectedProduct.brand.name) ? (
+                <TfrcBrand
+                  showText
+                  className="gap-1"
+                  iconClassName="h-2.5"
+                  textClassName="text-[10px] font-semibold uppercase tracking-[0.14em]"
+                />
+              ) : (
+                <p
+                  className="text-[10px] font-medium uppercase tracking-wider"
+                  style={{ color: v.muted }}
+                >
+                  {selectedProduct.brand.name}
+                </p>
+              )}
+            </div>
+          ) : null}
 
           <div className="mt-1 flex-1">
             <p
-              className="line-clamp-2 font-sans text-sm font-medium leading-snug md:text-[15px]"
+              className="line-clamp-2 font-sans text-sm font-semibold leading-snug md:text-[15px]"
               style={{ color: v.heading }}
             >
               {title}
@@ -182,6 +205,14 @@ export function ProductCard({
             {itemCode ? (
               <p className="mt-1 font-sans text-[11px] tabular-nums" style={{ color: v.muted }}>
                 Item code: {itemCode}
+              </p>
+            ) : null}
+            {availableSizesLabel ? (
+              <p className="mt-1.5 text-[11px] font-semibold leading-snug" style={{ color: v.body }}>
+                <span className="font-medium" style={{ color: v.muted }}>
+                  Sizes available:{" "}
+                </span>
+                {availableSizesLabel}
               </p>
             ) : null}
           </div>
