@@ -47,16 +47,22 @@
   }
 
   :root {
-    --store-header-height: 6.75rem;
-    --store-toolbar-offset: 15.5rem;
+    --store-header-height: 3.5rem;
+    --store-toolbar-offset: 12.5rem;
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --mobile-bar-height: calc(4.25rem + var(--safe-bottom));
   }
 
+  @media (min-width: 640px) {
+    :root {
+      --store-header-height: 5.25rem;
+    }
+  }
+
   @media (min-width: 768px) {
     :root {
-      --store-header-height: 7rem;
-      --store-toolbar-offset: 14.5rem;
+      --store-header-height: 5.5rem;
+      --store-toolbar-offset: 13.5rem;
     }
   }
 

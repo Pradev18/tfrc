@@ -82,203 +82,198 @@ export function EnvironmentHeader({
     <>
       <div className="store-site-header sticky top-0 z-50">
         <div
-          className="hidden py-1.5 text-center sm:block"
+          className="hidden py-1 text-center sm:block"
           style={{ backgroundColor: v.badgeBg, borderBottom: `1px solid ${v.badgeBorder}` }}
         >
           <p
-            className="text-[10px] font-semibold uppercase tracking-[0.18em]"
+            className="px-3 text-[10px] font-semibold uppercase tracking-[0.14em]"
             style={{ color: v.badgeText }}
           >
-            {environment.config.tagline} · WhatsApp orders · Qatar delivery
-          </p>
-        </div>
-        <div
-          className="py-1.5 text-center sm:hidden"
-          style={{ backgroundColor: v.badgeBg, borderBottom: `1px solid ${v.badgeBorder}` }}
-        >
-          <p
-            className="text-[10px] font-semibold uppercase tracking-[0.14em]"
-            style={{ color: v.badgeText }}
-          >
-            WhatsApp orders · Qatar
+            {environment.config.tagline} · WhatsApp orders · Qatar
           </p>
         </div>
 
         <header className="glass-nav">
-        <div className="container-pawmart" ref={menuRef}>
-          <div className="flex h-16 items-center justify-between gap-3 md:h-[4.5rem]">
-            <Link href={`/${envSlug}`} prefetch className="group flex min-w-0 shrink items-center gap-2 sm:gap-3">
-              {brandImage ? (
-                <span className="catalogue-logo relative h-10 w-10 shrink-0 sm:h-11 sm:w-11">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={brandImage}
-                    alt={environment.config.displayName}
-                    className="catalogue-logo__img"
-                  />
-                </span>
-              ) : (
-                <TfrcBrand showText={false} iconClassName="h-5 w-auto sm:h-6" />
-              )}
-              <div className="flex min-w-0 flex-col leading-none">
-                <span
-                  className="truncate text-base font-semibold tracking-tight sm:text-lg md:text-xl"
-                  style={{ color: v.heading }}
-                >
-                  {environment.config.displayName}
-                </span>
-                <span className="mt-1 inline-flex items-center gap-1.5">
-                  <TfrcBrand
-                    showText
-                    className="gap-1.5"
-                    iconClassName="h-2.5"
-                    textClassName="text-[10px] font-semibold uppercase tracking-[0.18em]"
-                  />
-                </span>
-              </div>
-            </Link>
-
-            <nav className="hidden items-center lg:flex" aria-label="Main navigation">
+          <div className="container-pawmart" ref={menuRef}>
+            <div className="flex h-14 min-w-0 items-center justify-between gap-2 sm:h-16 sm:gap-3">
               <Link
-                href="/"
+                href={`/${envSlug}`}
                 prefetch
-                className="nav-link px-3 py-5 text-[13px] font-medium"
-                style={navLinkStyle}
+                className="group flex min-w-0 max-w-[58%] flex-1 items-center gap-2 sm:max-w-none sm:flex-none sm:gap-2.5"
               >
-                Home
-              </Link>
-              <Link
-                href={`/${envSlug}#catalog`}
-                className="nav-link px-3 py-5 text-[13px] font-medium"
-                style={navLinkStyle}
-                onClick={(event) => {
-                  event.preventDefault();
-                  showAllStoreCategories();
-                }}
-              >
-                Shop all
+                {brandImage ? (
+                  <span className="catalogue-logo relative h-9 w-9 shrink-0 sm:h-10 sm:w-10">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={brandImage}
+                      alt={environment.config.displayName}
+                      className="catalogue-logo__img"
+                    />
+                  </span>
+                ) : (
+                  <TfrcBrand showText={false} iconClassName="h-4 w-auto sm:h-5" />
+                )}
+                <span className="flex min-w-0 flex-col justify-center leading-tight">
+                  <span
+                    className="truncate text-sm font-semibold tracking-tight sm:text-base md:text-lg"
+                    style={{ color: v.heading }}
+                  >
+                    {environment.config.displayName}
+                  </span>
+                  <span className="mt-0.5 inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#7B2D8E]">
+                    <svg viewBox="0 0 36 24" className="h-2 w-auto shrink-0" aria-hidden>
+                      <rect x="0" y="0" width="8" height="24" rx="1" fill="#7B2D8E" />
+                      <rect x="14" y="0" width="8" height="24" rx="1" fill="#7B2D8E" />
+                      <rect x="28" y="0" width="8" height="24" rx="1" fill="#7B2D8E" />
+                    </svg>
+                    TFRC
+                  </span>
+                </span>
               </Link>
 
-              {shopCategories.length > 0 && (
+              <nav className="hidden items-center lg:flex" aria-label="Main navigation">
+                <Link
+                  href="/"
+                  prefetch
+                  className="nav-link px-3 py-5 text-[13px] font-medium"
+                  style={navLinkStyle}
+                >
+                  Home
+                </Link>
+                <Link
+                  href={`/${envSlug}#catalog`}
+                  className="nav-link px-3 py-5 text-[13px] font-medium"
+                  style={navLinkStyle}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    showAllStoreCategories();
+                  }}
+                >
+                  Shop all
+                </Link>
+
+                {shopCategories.length > 0 && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCategoriesOpen(!categoriesOpen);
+                        setCatalogueOpen(false);
+                      }}
+                      className="nav-link flex items-center gap-1 px-3 py-5 text-[13px] font-medium"
+                      style={navLinkStyle}
+                    >
+                      Categories
+                      <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+                    </button>
+                    {categoriesOpen && (
+                      <div className="glass-panel animate-dropdown absolute left-0 top-full z-50 min-w-[240px] p-2">
+                        {shopCategories.map((cat) => (
+                          <Link
+                            key={cat.slug}
+                            href={`/${envSlug}#category-${cat.slug}`}
+                            className="flex items-center justify-between rounded-xl px-4 py-2.5 text-sm transition-colors hover:bg-black/[0.03]"
+                            style={{ color: v.body }}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              setCategoriesOpen(false);
+                              focusStoreCategory(cat.slug);
+                            }}
+                          >
+                            <span>{cat.name}</span>
+                            {cat.productCount != null && (
+                              <span className="text-xs opacity-50">{cat.productCount}</span>
+                            )}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => {
-                      setCategoriesOpen(!categoriesOpen);
-                      setCatalogueOpen(false);
+                      setCatalogueOpen(!catalogueOpen);
+                      setCategoriesOpen(false);
                     }}
                     className="nav-link flex items-center gap-1 px-3 py-5 text-[13px] font-medium"
                     style={navLinkStyle}
                   >
-                    Categories
+                    All Catalogues
                     <ChevronDown className="h-3.5 w-3.5 opacity-50" />
                   </button>
-                  {categoriesOpen && (
-                    <div
-                      className="glass-panel animate-dropdown absolute left-0 top-full z-50 min-w-[240px] p-2"
-                    >
-                      {shopCategories.map((cat) => (
-                        <Link
-                          key={cat.slug}
-                          href={`/${envSlug}#category-${cat.slug}`}
-                          className="flex items-center justify-between rounded-xl px-4 py-2.5 text-sm transition-colors hover:bg-black/[0.03]"
-                          style={{ color: v.body }}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            setCategoriesOpen(false);
-                            focusStoreCategory(cat.slug);
-                          }}
-                        >
-                          <span>{cat.name}</span>
-                          {cat.productCount != null && (
-                            <span className="text-xs opacity-50">{cat.productCount}</span>
-                          )}
-                        </Link>
-                      ))}
+                  {catalogueOpen && (
+                    <div className="glass-panel animate-dropdown absolute right-0 top-full z-50 w-72 p-2">
+                      <Link
+                        href="/"
+                        className="block rounded-xl px-3 py-2.5 text-xs transition-colors hover:bg-black/[0.03]"
+                        style={{ color: v.muted }}
+                        onClick={() => setCatalogueOpen(false)}
+                      >
+                        ← TFRC Vita Nova Home
+                      </Link>
+                      {activeEnvironments.map((env) => {
+                        const ev = getEnvVisual(env.slug);
+                        return (
+                          <Link
+                            key={env.slug}
+                            href={`/${env.slug}`}
+                            className="mt-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors hover:bg-black/[0.03]"
+                            style={{
+                              backgroundColor: env.slug === envSlug ? ev.badgeBg : undefined,
+                              color: v.heading,
+                              fontWeight: env.slug === envSlug ? 600 : 400,
+                            }}
+                            onClick={() => setCatalogueOpen(false)}
+                          >
+                            <span
+                              className="flex h-8 w-8 items-center justify-center rounded-lg"
+                              style={{ background: ev.gradientAccent, color: ev.heading }}
+                            >
+                              <EnvIcon slug={env.slug} className="h-3.5 w-3.5" />
+                            </span>
+                            {env.displayName}
+                          </Link>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
-              )}
+              </nav>
 
-              <div className="relative">
+              <div className="flex shrink-0 items-center gap-0.5 sm:gap-1.5">
                 <button
                   type="button"
-                  onClick={() => {
-                    setCatalogueOpen(!catalogueOpen);
-                    setCategoriesOpen(false);
-                  }}
-                  className="nav-link flex items-center gap-1 px-3 py-5 text-[13px] font-medium"
-                  style={navLinkStyle}
+                  onClick={() => setSearchOpen(true)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-black/[0.04]"
+                  style={{ color: v.heading }}
+                  aria-label="Search"
                 >
-                  All Catalogues
-                  <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+                  <Search className="h-5 w-5" strokeWidth={1.5} />
                 </button>
-                {catalogueOpen && (
-                  <div className="glass-panel animate-dropdown absolute right-0 top-full z-50 w-72 p-2">
-                    <Link
-                      href="/"
-                      className="block rounded-xl px-3 py-2.5 text-xs transition-colors hover:bg-black/[0.03]"
-                      style={{ color: v.muted }}
-                      onClick={() => setCatalogueOpen(false)}
-                    >
-                      ← TFRC Vita Nova Home
-                    </Link>
-                    {activeEnvironments.map((env) => {
-                      const ev = getEnvVisual(env.slug);
-                      return (
-                        <Link
-                          key={env.slug}
-                          href={`/${env.slug}`}
-                          className="mt-1 flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors hover:bg-black/[0.03]"
-                          style={{
-                            backgroundColor: env.slug === envSlug ? ev.badgeBg : undefined,
-                            color: v.heading,
-                            fontWeight: env.slug === envSlug ? 600 : 400,
-                          }}
-                          onClick={() => setCatalogueOpen(false)}
-                        >
-                          <span
-                            className="flex h-8 w-8 items-center justify-center rounded-lg"
-                            style={{ background: ev.gradientAccent, color: ev.heading }}
-                          >
-                            <EnvIcon slug={env.slug} className="h-3.5 w-3.5" />
-                          </span>
-                          {env.displayName}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
+                <CartButton onClick={() => setCartOpen(true)} className="!h-9 !w-9" />
+                <WhatsAppButton href={waHref} iconOnly className="lg:hidden" />
+                <WhatsAppButton
+                  href={waHref}
+                  size="sm"
+                  label="WhatsApp"
+                  className="hidden lg:inline-flex"
+                />
+                <button
+                  type="button"
+                  onClick={() => setMobileOpen(true)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full lg:hidden"
+                  style={{ color: v.heading }}
+                  aria-label="Open menu"
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
               </div>
-            </nav>
-
-            <div className="flex items-center gap-1 md:gap-2">
-              <button
-                type="button"
-                onClick={() => setSearchOpen(true)}
-                className="touch-target flex items-center justify-center rounded-full transition-colors hover:bg-black/[0.04]"
-                style={{ color: v.heading }}
-                aria-label="Search"
-              >
-                <Search className="h-5 w-5" strokeWidth={1.5} />
-              </button>
-              <CartButton onClick={() => setCartOpen(true)} />
-              <div className="hidden sm:block">
-                <WhatsAppButton href={waHref} size="sm" />
-              </div>
-              <button
-                type="button"
-                onClick={() => setMobileOpen(true)}
-                className="touch-target flex items-center justify-center rounded-full lg:hidden"
-                style={{ color: v.heading }}
-                aria-label="Open menu"
-              >
-                <Menu className="h-5 w-5" />
-              </button>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
       </div>
 
       {searchOpen && (
