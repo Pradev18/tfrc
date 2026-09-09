@@ -65,11 +65,36 @@ describe("catalogue PDF HTML", () => {
   it("embeds uploaded logo and available size chips", () => {
     const html = buildCataloguePdfHtml(payload);
     expect(html).toContain('src="/api/media/pawmart-logo.png"');
-    expect(html).toContain("Sizes available");
+    expect(html).toContain("Available sizes");
     expect(html).toContain(">S</span>");
     expect(html).toContain(">M</span>");
     expect(html).toContain(">L</span>");
     expect(html).toContain("From QAR 15.00");
     expect(html).toContain("by TFRC");
+  });
+
+  it("does not treat item codes as sizes", () => {
+    const skuPayload: CataloguePdfPayload = {
+      ...payload,
+      categories: [
+        {
+          slug: "toys",
+          name: "Toys",
+          productCount: 1,
+          products: [
+            {
+              ...payload.categories[0]!.products[0]!,
+              availableSizes: [],
+              displayName: "Rope Pet Toy",
+              productId: "110009578",
+            },
+          ],
+        },
+      ],
+    };
+    const html = buildCataloguePdfHtml(skuPayload);
+    expect(html).not.toContain("Available sizes");
+    expect(html).toContain("Rope Pet Toy");
+    expect(html).toContain("Item code 110009578");
   });
 });

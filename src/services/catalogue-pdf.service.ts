@@ -11,6 +11,8 @@ import { getSiteUrl } from "@/lib/site-config";
 import { normalizeCatalogueImageSrc } from "@/lib/media-url";
 import {
   compareVariantLabels,
+  deriveProductVariantIdentity,
+  isHumanReadableSizeLabel,
   productDisplayTitle,
 } from "@/lib/product-variants";
 
@@ -145,34 +147,52 @@ function collapseVariantGroups(
 
   for (const siblings of groups.values()) {
     siblings.sort((a, b) => compareVariantLabels(a.variantLabel, b.variantLabel));
+    const readableSizes = [
+      ...new Set(
+        siblings
+          .map((item) => item.variantLabel?.trim())
+          .filter((label): label is string => isHumanReadableSizeLabel(label))
+      ),
+    ];
+    readableSizes.sort(compareVariantLabels);
+
+    // Same-name / colour twins with only item-code labels → separate PDF cards
+    // so each image stays visible. Real S/M/L or mm sizes collapse to one card.
+    if (readableSizes.length === 0) {
+      for (const product of siblings) {
+        const { pricing } = mapProductPrices(product);
+        const name = productDisplayTitle(product.name, product.productId);
+        cards.push(
+          toPdfProduct(
+            product,
+            catalogue,
+            whatsappSettings,
+            siteUrl,
+            [],
+            name,
+            pricing.displayPrice,
+            false
+          )
+        );
+      }
+      continue;
+    }
+
     const primary =
       siblings.find((item) => item.isVariantPrimary) ?? siblings[0]!;
-    const sizes = siblings
-      .map((item) => item.variantLabel?.trim())
-      .filter((label): label is string => Boolean(label));
-    const uniqueSizes = [...new Set(sizes)];
-    uniqueSizes.sort(compareVariantLabels);
-
     const prices = siblings.map((item) => mapProductPrices(item).pricing.displayPrice);
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
     const priceFrom = maxPrice - minPrice > 0.009;
 
-    const identityName = productDisplayTitle(primary.name, primary.productId);
-    // Prefer base name without the size token when we have multiple sizes
-    let displayName = identityName;
-    if (uniqueSizes.length > 0 && primary.variantLabel) {
-      const stripped = identityName
-        .replace(
-          new RegExp(
-            `\\s*\\(?\\s*${primary.variantLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\)?\\s*$`,
-            "i"
-          ),
-          ""
-        )
-        .trim();
-      if (stripped.length >= 3) displayName = stripped;
-    }
+    const identity = deriveProductVariantIdentity({
+      title: primary.name,
+      productId: primary.productId,
+    });
+    const displayName =
+      identity.baseName.length >= 3
+        ? identity.baseName
+        : productDisplayTitle(primary.name, primary.productId);
 
     cards.push(
       toPdfProduct(
@@ -180,7 +200,7 @@ function collapseVariantGroups(
         catalogue,
         whatsappSettings,
         siteUrl,
-        uniqueSizes,
+        readableSizes,
         displayName,
         minPrice,
         priceFrom
@@ -197,7 +217,9 @@ function collapseVariantGroups(
         catalogue,
         whatsappSettings,
         siteUrl,
-        product.variantLabel ? [product.variantLabel] : [],
+        isHumanReadableSizeLabel(product.variantLabel)
+          ? [product.variantLabel!.trim()]
+          : [],
         name,
         pricing.displayPrice,
         false

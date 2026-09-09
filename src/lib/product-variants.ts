@@ -233,13 +233,23 @@ export function productDisplayTitle(name: string, productId?: string | null): st
   return stripTrailingProductId(name, productId ?? undefined);
 }
 
-/** Compact “S · M · L” / “360MM · 12150MM” line for cards and PDF. */
+/** True for S/M/L, Medium, 16150MM — false for raw item codes used as fake labels. */
+export function isHumanReadableSizeLabel(label: string | null | undefined): boolean {
+  if (!label) return false;
+  const value = label.trim();
+  if (!value) return false;
+  if (/^\d{5,}$/.test(value)) return false;
+  if (/^name-/i.test(value)) return false;
+  return true;
+}
+
+/** Compact “S · M · L” / “360MM · 12150MM” line — skips item-code fake labels. */
 export function formatAvailableSizes(labels: Array<string | null | undefined>): string {
   const unique = [
     ...new Set(
       labels
         .map((label) => label?.trim())
-        .filter((label): label is string => Boolean(label))
+        .filter((label): label is string => isHumanReadableSizeLabel(label))
     ),
   ];
   unique.sort(compareVariantLabels);
@@ -247,15 +257,15 @@ export function formatAvailableSizes(labels: Array<string | null | undefined>): 
 }
 
 /**
- * Dropdown label: prefer size/measurement code when present so customers
- * instantly see S/M/L or 12150MM; fall back to full cleaned title.
+ * Dropdown label: prefer real size/measurement codes; never show bare item codes
+ * as if they were sizes — use the cleaned product title instead.
  */
 export function variantOptionLabel(
   variant: { name: string; productId: string; variantLabel?: string | null },
   siblings: Array<{ name: string; productId: string; variantLabel?: string | null }>
 ): string {
   const size = variant.variantLabel?.trim();
-  if (size) {
+  if (size && isHumanReadableSizeLabel(size)) {
     const sameSizeCount = siblings.filter(
       (sibling) => (sibling.variantLabel?.trim() || "") === size
     ).length;
