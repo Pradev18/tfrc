@@ -5,6 +5,7 @@ import { getCatalogueById } from "@/services/catalogue-admin.service";
 import { getShopCategories } from "@/services/shop-category.service";
 import { OTHER_SHOP_CATEGORY } from "@/lib/shop-categories";
 import { getEnvVisual } from "@/lib/env-visuals";
+import { getEnvironmentCardImage } from "@/lib/environment-config";
 import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { buildWhatsAppUrl, generateWhatsAppLinkSync } from "@/lib/whatsapp";
 import { getSiteUrl } from "@/lib/site-config";
@@ -160,7 +161,7 @@ export async function getCataloguePdfPayload(
       id: catalogue.id,
       name: catalogue.name,
       slug: catalogue.slug,
-      logoUrl: catalogue.logoUrl,
+      logoUrl: getEnvironmentCardImage(catalogue) || catalogue.logoUrl || null,
       tagline: catalogue.tagline,
     },
     whatsappUrl: buildWhatsAppUrl(

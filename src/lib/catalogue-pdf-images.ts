@@ -1,11 +1,17 @@
-const MAX_EMBED_BYTES = 400_000;
-const FETCH_TIMEOUT_MS = 2500;
-const CONCURRENCY = 16;
+const MAX_EMBED_BYTES = 1_500_000;
+const FETCH_TIMEOUT_MS = 12_000;
+const CONCURRENCY = 8;
 const cache = new Map<string, string>();
 
 function toDataUri(buffer: Buffer, contentType: string): string {
   const type = contentType.split(";")[0]?.trim() || "image/jpeg";
   return `data:${type};base64,${buffer.toString("base64")}`;
+}
+
+function placeholderDataUri(label: string): string {
+  const safe = (label || "P").slice(0, 2).toUpperCase().replace(/[<>&"']/g, "");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480"><rect width="480" height="480" fill="#f4f7f5"/><rect x="24" y="24" width="432" height="432" rx="36" fill="#ffffff" stroke="#d7e4dc" stroke-width="4"/><text x="240" y="268" text-anchor="middle" font-family="Arial,sans-serif" font-size="120" font-weight="700" fill="#9bb3a4">${safe}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
 async function fetchImageAsDataUri(url: string): Promise<string | null> {
@@ -15,15 +21,23 @@ async function fetchImageAsDataUri(url: string): Promise<string | null> {
   try {
     const response = await fetch(url, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      cache: "force-cache",
-      headers: { Accept: "image/*" },
+      redirect: "follow",
+      headers: {
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        "User-Agent": "TFRC-Catalogue-PDF/1.0",
+      },
     });
     if (!response.ok) return null;
     const contentType = response.headers.get("content-type") ?? "image/jpeg";
-    if (!contentType.startsWith("image/")) return null;
+    if (!contentType.startsWith("image/") && !contentType.includes("octet-stream")) {
+      return null;
+    }
     const buffer = Buffer.from(await response.arrayBuffer());
     if (buffer.length === 0 || buffer.length > MAX_EMBED_BYTES) return null;
-    const dataUri = toDataUri(buffer, contentType);
+    const dataUri = toDataUri(
+      buffer,
+      contentType.startsWith("image/") ? contentType : "image/jpeg"
+    );
     cache.set(url, dataUri);
     return dataUri;
   } catch {
@@ -31,7 +45,9 @@ async function fetchImageAsDataUri(url: string): Promise<string | null> {
   }
 }
 
-export async function embedCatalogueImages(urls: Array<string | null>): Promise<Map<string, string>> {
+export async function embedCatalogueImages(
+  urls: Array<string | null>
+): Promise<Map<string, string>> {
   const unique = [...new Set(urls.filter((url): url is string => Boolean(url)))];
   const embedded = new Map<string, string>();
 
@@ -48,9 +64,13 @@ export async function embedCatalogueImages(urls: Array<string | null>): Promise<
   return embedded;
 }
 
-export function optimizePdfImageUrl(url: string, origin: string): string {
-  if (url.startsWith("data:")) return url;
-  if (url.startsWith("/_next/image")) return url.startsWith("http") ? url : `${origin}${url}`;
-  const encoded = encodeURIComponent(url);
-  return `${origin}/_next/image?url=${encoded}&w=384&q=60`;
+export function pdfImageOrPlaceholder(
+  absoluteUrl: string | null,
+  embedded: Map<string, string>,
+  label: string
+): string {
+  if (!absoluteUrl) return placeholderDataUri(label);
+  return embedded.get(absoluteUrl) ?? placeholderDataUri(label);
 }
+
+export { placeholderDataUri };

@@ -17,7 +17,27 @@ export function formatPdfPrice(amount: number, currency = "QAR"): string {
   return `${currency} ${amount.toFixed(2)}`;
 }
 
-export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { autoPrint?: boolean }) {
+function brandBlock(catalogue: CataloguePdfPayload["catalogue"], accent: string) {
+  const logo = catalogue.logoUrl
+    ? `<img class="brand-logo" src="${escapeAttr(catalogue.logoUrl)}" alt="" />`
+    : `<div class="brand-mark" style="background:${escapeAttr(accent)};color:#fff">${escapeHtml(
+        (catalogue.name.charAt(0) || "C").toUpperCase()
+      )}</div>`;
+
+  return `
+    <div class="brand-row">
+      ${logo}
+      <div>
+        <p class="brand-name">${escapeHtml(catalogue.name)}</p>
+        <p class="brand-sub">${escapeHtml(catalogue.tagline || "Product catalogue")}</p>
+      </div>
+    </div>`;
+}
+
+export function buildCataloguePdfHtml(
+  payload: CataloguePdfPayload,
+  options?: { autoPrint?: boolean }
+) {
   const {
     catalogue,
     categories,
@@ -35,22 +55,14 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
     year: "numeric",
   });
 
-  const categoryOptions = categories
-    .map(
-      (cat) =>
-        `<option value="#category-${escapeHtml(cat.slug)}">${escapeHtml(cat.name)} (${cat.productCount})</option>`
-    )
-    .join("");
-
   const coverLinks = categories
     .map(
       (cat, index) => `
-      <a class="toc-row" href="#category-${escapeHtml(cat.slug)}">
+      <div class="toc-row">
         <span class="toc-num">${index + 1}</span>
         <span class="toc-name">${escapeHtml(cat.name)}</span>
-        <span class="toc-count">${cat.productCount} products</span>
-        <span class="toc-arrow">→</span>
-      </a>`
+        <span class="toc-count">${cat.productCount}</span>
+      </div>`
     )
     .join("");
 
@@ -66,49 +78,38 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
               (product) => `
             <article class="card">
               <div class="card-image">
-                ${
-                  product.imageUrl
-                    ? `<img src="${escapeAttr(product.imageUrl)}" alt="${escapeAttr(product.name)}" decoding="sync" fetchpriority="high" />`
-                    : `<div class="card-fallback">${escapeHtml(product.name.charAt(0) || "P")}</div>`
-                }
+                <img src="${escapeAttr(product.imageUrl || "")}" alt="${escapeAttr(product.name)}" />
               </div>
               <div class="card-body">
                 <h3>${escapeHtml(product.name)}</h3>
-                <p class="meta">ID ${escapeHtml(product.productId)}${product.size ? ` · Size ${escapeHtml(product.size)}` : ""}</p>
+                <p class="meta">ID ${escapeHtml(product.productId)}${
+                  product.size ? ` · ${escapeHtml(product.size)}` : ""
+                }</p>
                 <p class="price">${escapeHtml(formatPdfPrice(product.price, product.currency))}</p>
-                <span class="stock ${product.inStock ? "in" : "out"}">${
+                <p class="stock ${product.inStock ? "in" : "out"}">${
                   product.inStock ? "In Stock" : "Check availability"
-                }</span>
-                <a class="wa-btn" href="${escapeAttr(product.whatsappUrl)}" target="_blank" rel="noopener noreferrer">Order on WhatsApp</a>
+                }</p>
+                <p class="wa-label">Order on WhatsApp</p>
               </div>
             </article>`
             )
             .join("");
 
           return `
-          <section class="sheet category-sheet" ${isFirst ? `id="category-${escapeHtml(cat.slug)}"` : ""}>
+          <section class="sheet category-sheet" ${
+            isFirst ? `id="category-${escapeHtml(cat.slug)}"` : ""
+          }>
             <header class="sheet-header">
-              <div class="brand-row">
-                <div class="brand-mark" style="background:${escapeAttr(accent)}20;color:${escapeAttr(accent)}">
-                  ${(catalogue.name.charAt(0) || "C").toUpperCase()}
-                </div>
-                <div>
-                  <p class="brand-name">${escapeHtml(catalogue.name)}</p>
-                  <p class="brand-sub">Product catalogue</p>
-                </div>
-              </div>
-              <div class="jump">
-                <label for="jump-${escapeHtml(cat.slug)}-${pageIndex}">Jump to category</label>
-                <select id="jump-${escapeHtml(cat.slug)}-${pageIndex}" class="jump-select" onchange="if(this.value){location.hash=this.value; this.selectedIndex=0;}">
-                  <option value="">${escapeHtml(cat.name)} ▾</option>
-                  ${categoryOptions}
-                </select>
+              ${brandBlock(catalogue, accent)}
+              <div class="page-meta">
+                <p class="page-cat">${escapeHtml(cat.name)}</p>
+                <p class="page-num">Page ${pageIndex + 1} / ${pages.length}</p>
               </div>
             </header>
 
             <div class="title-block">
-              <h1>${escapeHtml(cat.name)}${continued ? " <span>(continued)</span>" : ""}</h1>
-              <p>${cat.productCount} products · page ${pageIndex + 1} of ${pages.length} in this category</p>
+              <h1>${escapeHtml(cat.name)}${continued ? " <span>continued</span>" : ""}</h1>
+              <p>${cat.productCount} products in this category · ${pageProducts.length} on this page</p>
             </div>
 
             <div class="grid">
@@ -116,8 +117,8 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
             </div>
 
             <footer class="sheet-footer">
-              <a href="#toc">Back to categories</a>
-              <span>${escapeHtml(catalogue.name)} · ${dateLabel}</span>
+              <span>${escapeHtml(catalogue.name)} brochure</span>
+              <span>${dateLabel}</span>
             </footer>
           </section>`;
         })
@@ -129,7 +130,7 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>${escapeHtml(catalogue.name)} Catalogue PDF</title>
+  <title>${escapeHtml(catalogue.name)} Catalogue Brochure</title>
   <style>
     :root {
       --accent: ${escapeAttr(accent)};
@@ -138,11 +139,14 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
       --surface: ${escapeAttr(surface)};
     }
     * { box-sizing: border-box; }
-    body {
+    html, body {
       margin: 0;
-      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      padding: 0;
       color: var(--heading);
-      background: #e8eee9;
+      background: #dfe8e2;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     .toolbar {
       position: sticky;
@@ -153,192 +157,146 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
       align-items: center;
       justify-content: space-between;
       padding: 12px 18px;
-      background: rgba(255,255,255,0.96);
+      background: rgba(255,255,255,0.97);
       border-bottom: 1px solid #d5e3da;
-      backdrop-filter: blur(8px);
     }
     .toolbar p { margin: 0; font-size: 13px; color: var(--muted); }
-    .toolbar button, .toolbar a.button {
-      appearance: none;
+    .toolbar button {
       border: 0;
       border-radius: 999px;
       padding: 10px 18px;
       font-size: 13px;
       font-weight: 700;
       cursor: pointer;
-      text-decoration: none;
       color: #fff;
       background: var(--accent);
     }
-    .toolbar a.ghost {
-      color: var(--heading);
-      background: #edf4ef;
-    }
     .sheet {
       width: 210mm;
-      min-height: 297mm;
-      margin: 18px auto;
-      padding: 14mm 12mm 12mm;
+      height: 297mm;
+      margin: 16px auto;
+      padding: 10mm 10mm 9mm;
       background: #fff;
       box-shadow: 0 18px 50px rgba(15, 41, 34, 0.12);
-      border-radius: 18px;
+      border-radius: 4px;
       page-break-after: always;
       break-after: page;
-      position: relative;
       overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
     }
     .sheet::before {
       content: "";
       position: absolute;
       inset: 0 0 auto 0;
-      height: 8px;
-      background: linear-gradient(90deg, var(--accent), #ffe8d6);
-    }
-    .cover {
-      background:
-        radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 18%, white), transparent 42%),
-        linear-gradient(165deg, #ffffff 0%, var(--surface) 100%);
-    }
-    .cover-hero h1 {
-      margin: 28px 0 8px;
-      font-size: 42px;
-      line-height: 1.05;
-      letter-spacing: -0.03em;
-    }
-    .cover-hero p { margin: 0; color: var(--muted); }
-    .stats {
-      display: flex;
-      gap: 12px;
-      margin: 28px 0 34px;
-    }
-    .stat {
-      flex: 1;
-      border-radius: 16px;
-      padding: 14px 16px;
-      background: rgba(255,255,255,0.8);
-      border: 1px solid color-mix(in srgb, var(--accent) 18%, white);
-    }
-    .stat strong { display: block; font-size: 22px; margin-top: 4px; }
-    .stat span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
-    .toc-title {
-      margin: 0 0 8px;
-      font-size: 22px;
-    }
-    .toc-note { margin: 0 0 14px; color: var(--muted); font-size: 13px; }
-    .toc-row {
-      display: grid;
-      grid-template-columns: 36px 1fr auto 18px;
-      gap: 12px;
-      align-items: center;
-      padding: 12px 14px;
-      margin-bottom: 8px;
-      border-radius: 14px;
-      text-decoration: none;
-      color: inherit;
-      background: #fff;
-      border: 1px solid #e4efe8;
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
-    }
-    .toc-row:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 10px 24px rgba(15,41,34,0.08);
-    }
-    .toc-num {
-      width: 36px;
-      height: 36px;
-      border-radius: 12px;
-      display: grid;
-      place-items: center;
-      font-weight: 700;
-      color: #fff;
+      height: 5px;
       background: var(--accent);
     }
-    .toc-name { font-weight: 700; }
-    .toc-count, .toc-arrow { color: var(--muted); font-size: 13px; }
-    .sheet-header {
+    .brand-row {
       display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      align-items: flex-start;
-      margin-bottom: 18px;
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
     }
-    .brand-row { display: flex; gap: 10px; align-items: center; }
+    .brand-logo {
+      width: 42px;
+      height: 42px;
+      object-fit: contain;
+      background: #fff;
+      border: 1px solid #e5eee8;
+      border-radius: 10px;
+      padding: 3px;
+      flex-shrink: 0;
+    }
     .brand-mark {
       width: 42px;
       height: 42px;
-      border-radius: 14px;
+      border-radius: 10px;
       display: grid;
       place-items: center;
       font-weight: 800;
       font-size: 18px;
+      flex-shrink: 0;
     }
-    .brand-name { margin: 0; font-weight: 800; }
-    .brand-sub { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
-    .jump {
-      min-width: 210px;
-      padding: 10px 12px;
-      border-radius: 14px;
-      background: color-mix(in srgb, var(--accent) 10%, white);
-      border: 1px solid color-mix(in srgb, var(--accent) 22%, white);
+    .brand-name {
+      margin: 0;
+      font-weight: 800;
+      font-size: 15px;
+      line-height: 1.15;
     }
-    .jump label {
-      display: block;
+    .brand-sub {
+      margin: 2px 0 0;
       font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
       color: var(--muted);
-      margin-bottom: 6px;
     }
-    .jump-select {
-      width: 100%;
-      border: 0;
-      background: transparent;
-      font-size: 14px;
+    .sheet-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e7eee9;
+    }
+    .page-meta { text-align: right; }
+    .page-cat {
+      margin: 0;
+      font-size: 12px;
       font-weight: 700;
-      color: var(--heading);
-      outline: none;
+      color: var(--accent);
     }
+    .page-num {
+      margin: 2px 0 0;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .title-block { margin-bottom: 8px; }
     .title-block h1 {
       margin: 0;
-      font-size: 30px;
-      letter-spacing: -0.03em;
+      font-size: 22px;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
     }
     .title-block h1 span {
-      font-size: 16px;
+      font-size: 13px;
       font-weight: 600;
       color: var(--muted);
     }
     .title-block p {
-      margin: 6px 0 16px;
+      margin: 3px 0 0;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 11px;
     }
     .grid {
+      flex: 1;
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      grid-template-rows: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-      align-content: stretch;
+      grid-auto-rows: 1fr;
+      gap: 7px;
+      align-content: start;
+      min-height: 0;
     }
     .card {
-      border: 1px solid #e5eee8;
-      border-radius: 18px;
+      border: 1px solid #dfe8e3;
+      border-radius: 10px;
       overflow: hidden;
       background: #fff;
       display: flex;
       flex-direction: column;
-      min-height: 78mm;
-      box-shadow: 0 8px 20px rgba(15, 41, 34, 0.04);
+      min-height: 0;
+      height: 78mm;
     }
     .card-image {
-      height: 46mm;
-      padding: 8px;
-      background: #fff;
+      height: 42mm;
+      width: 100%;
+      padding: 5px;
+      background: #f7faf8;
       display: flex;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
       border-bottom: 1px solid #eef3ef;
+      flex-shrink: 0;
     }
     .card-image img {
       width: 100%;
@@ -346,86 +304,130 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
       object-fit: contain;
       object-position: center;
       background: #fff;
-    }
-    .card-fallback {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
-      display: grid;
-      place-items: center;
-      font-weight: 800;
-      color: var(--accent);
-      background: color-mix(in srgb, var(--accent) 14%, white);
+      display: block;
     }
     .card-body {
-      padding: 10px 12px 12px;
+      padding: 6px 8px 8px;
       display: flex;
       flex-direction: column;
+      gap: 2px;
+      min-height: 0;
       flex: 1;
     }
     .card-body h3 {
-      margin: 0 0 4px;
-      font-size: 13px;
-      line-height: 1.3;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
+      margin: 0;
+      font-size: 11px;
+      line-height: 1.25;
+      height: 2.5em;
       overflow: hidden;
     }
     .meta {
       margin: 0;
-      font-size: 10.5px;
+      font-size: 9px;
       color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .price {
-      margin: 8px 0 6px;
-      font-size: 13px;
+      margin: 2px 0 0;
+      font-size: 12px;
       font-weight: 800;
       color: var(--accent);
     }
     .stock {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 10px;
+      margin: 0;
+      font-size: 9px;
       font-weight: 700;
-      border-radius: 999px;
-      padding: 3px 8px;
     }
-    .stock.in { color: #166534; background: #dcfce7; }
-    .stock.out { color: #9f1239; background: #ffe4e6; }
-    .stock.in::before, .stock.out::before {
-      content: "";
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: currentColor;
-    }
-    .wa-btn {
+    .stock.in { color: #166534; }
+    .stock.out { color: #9f1239; }
+    .wa-label {
       margin-top: auto;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 28px;
+      display: block;
+      text-align: center;
       border-radius: 999px;
       background: #128c47;
-      color: #fff !important;
-      font-size: 11px;
+      color: #fff;
+      font-size: 9px;
       font-weight: 800;
-      text-decoration: none !important;
-      padding: 6px 10px;
+      padding: 5px 6px;
     }
     .sheet-footer {
       display: flex;
       justify-content: space-between;
       gap: 12px;
-      margin-top: 14px;
-      padding-top: 10px;
+      margin-top: 7px;
+      padding-top: 6px;
       border-top: 1px solid #e7eee9;
-      font-size: 11px;
+      font-size: 10px;
       color: var(--muted);
     }
-    .sheet-footer a { color: var(--accent); font-weight: 700; text-decoration: none; }
+    .cover {
+      background: linear-gradient(165deg, #ffffff 0%, var(--surface) 100%);
+    }
+    .cover-hero h1 {
+      margin: 18px 0 8px;
+      font-size: 34px;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+    }
+    .cover-hero p { margin: 0; color: var(--muted); font-size: 13px; }
+    .stats {
+      display: flex;
+      gap: 10px;
+      margin: 20px 0 18px;
+    }
+    .stat {
+      flex: 1;
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+      border: 1px solid #e4efe8;
+    }
+    .stat strong { display: block; font-size: 20px; margin-top: 4px; }
+    .stat span {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .toc-title { margin: 0 0 8px; font-size: 18px; }
+    .toc-note { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+    .toc-row {
+      display: grid;
+      grid-template-columns: 32px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      border-radius: 10px;
+      background: #fff;
+      border: 1px solid #e4efe8;
+    }
+    .toc-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 12px;
+      color: #fff;
+      background: var(--accent);
+    }
+    .toc-name { font-weight: 700; font-size: 13px; }
+    .toc-count { color: var(--muted); font-size: 12px; }
+    .wa-cover {
+      display: inline-block;
+      margin-top: 14px;
+      border-radius: 999px;
+      background: #128c47;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 10px 16px;
+    }
     @media print {
       body { background: #fff; }
       .toolbar { display: none !important; }
@@ -433,65 +435,51 @@ export function buildCataloguePdfHtml(payload: CataloguePdfPayload, options?: { 
         margin: 0;
         box-shadow: none;
         border-radius: 0;
-        width: auto;
-        min-height: auto;
-        height: auto;
+        width: 210mm;
+        height: 297mm;
       }
       .category-sheet, .cover {
         page-break-after: always;
         break-after: page;
       }
-      .category-sheet:last-child, .cover:last-child {
+      .category-sheet:last-child {
         page-break-after: auto;
         break-after: auto;
       }
-      .toc-row, .sheet-footer a { color: inherit; text-decoration: none; }
-      .wa-btn { color: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .jump-select { border: 0; }
-      .card-image img { break-inside: avoid; }
     }
-    @page { size: A4; margin: 10mm; }
+    @page { size: A4; margin: 0; }
   </style>
 </head>
 <body>
   <div class="toolbar">
-    <p>${escapeHtml(catalogue.name)} · ${totalProducts} products · ${categories.length} categories · Save as PDF from the print dialog</p>
-    <div style="display:flex;gap:8px;">
-      <a class="button ghost" href="#toc">Categories</a>
-      <button type="button" onclick="window.print()">Download / Print PDF</button>
-    </div>
+    <p>${escapeHtml(catalogue.name)} brochure · ${totalProducts} products · ${categories.length} categories</p>
+    <button type="button" onclick="window.print()">Download / Print PDF</button>
   </div>
 
   <section class="sheet cover" id="toc">
     <div class="cover-hero">
-      <div class="brand-row">
-        <div class="brand-mark" style="background:${escapeAttr(accent)};color:#fff;width:56px;height:56px;font-size:24px;border-radius:18px">
-          ${(catalogue.name.charAt(0) || "C").toUpperCase()}
-        </div>
-        <div>
-          <p class="brand-name" style="font-size:18px">${escapeHtml(catalogue.name)}</p>
-          <p class="brand-sub">${escapeHtml(catalogue.tagline || "Generated from Manage Catalogue")}</p>
-        </div>
-      </div>
-      <h1>${escapeHtml(catalogue.name)} Product Catalogue</h1>
-      <p>Every product below is grouped by category. Use the category list or the Jump menu on each page.</p>
-      <p style="margin-top:14px">
-        <a class="wa-btn" href="${escapeAttr(whatsappUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;min-width:220px;min-height:36px">Order on WhatsApp</a>
-      </p>
+      ${brandBlock(catalogue, accent)}
+      <h1>${escapeHtml(catalogue.name)} Product Brochure</h1>
+      <p>Print-ready catalogue booklet. Every category continues until all products are shown.</p>
+      <div class="wa-cover">WhatsApp orders · ${escapeHtml(whatsappUrl.replace(/^https?:\/\/wa\.me\//, "").split("?")[0] || "TFRC")}</div>
       <div class="stats">
         <div class="stat"><span>Products</span><strong>${totalProducts}</strong></div>
         <div class="stat"><span>Categories</span><strong>${categories.length}</strong></div>
-        <div class="stat"><span>Generated</span><strong style="font-size:16px">${escapeHtml(dateLabel)}</strong></div>
+        <div class="stat"><span>Generated</span><strong style="font-size:15px">${escapeHtml(dateLabel)}</strong></div>
       </div>
     </div>
-    <h2 class="toc-title" id="categories">Categories</h2>
-    <p class="toc-note">Click a category to jump to its first page. Large categories continue across pages until every product is included.</p>
+    <h2 class="toc-title">Categories</h2>
+    <p class="toc-note">Use this index when assembling the printed brochure.</p>
     ${coverLinks || "<p>No products found.</p>"}
   </section>
 
   ${categoryPages}
   <script>
-    ${options?.autoPrint ? "window.addEventListener('load', () => setTimeout(() => window.print(), 120));" : ""}
+    ${
+      options?.autoPrint
+        ? "window.addEventListener('load', () => setTimeout(() => window.print(), 250));"
+        : ""
+    }
   </script>
 </body>
 </html>`;

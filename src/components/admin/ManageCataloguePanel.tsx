@@ -309,8 +309,8 @@ export function ManageCataloguePanel({
             </div>
           </div>
           <p className="mb-4 text-xs text-text-muted">
-            PDF shows 9 full-size cards per page. Images are embedded so they appear immediately.
-            Each card and the cover include Order on WhatsApp.
+            Print-ready A4 brochure: 9 equal product cards per page, catalogue logo on every page,
+            and every product image embedded so nothing is missing when you save as PDF.
           </p>
 
           {loading ? (

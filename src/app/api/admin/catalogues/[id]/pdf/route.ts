@@ -3,7 +3,7 @@ import { requireAdminSession } from "@/lib/admin-auth";
 import { getCataloguePdfPayload } from "@/services/catalogue-pdf.service";
 import { buildCataloguePdfHtml } from "@/lib/catalogue-pdf-html";
 import { getSiteUrl } from "@/lib/site-config";
-import { embedCatalogueImages, optimizePdfImageUrl } from "@/lib/catalogue-pdf-images";
+import { embedCatalogueImages, pdfImageOrPlaceholder } from "@/lib/catalogue-pdf-images";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -11,10 +11,11 @@ interface RouteContext {
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 function absolutizeMediaUrl(url: string | null, origin: string): string | null {
   if (!url) return null;
+  if (url.startsWith("data:")) return url;
   if (/^https?:\/\//i.test(url)) return url;
   if (url.startsWith("//")) return `https:${url}`;
   if (url.startsWith("/")) return `${origin}${url}`;
@@ -32,21 +33,27 @@ export async function GET(req: NextRequest, context: RouteContext) {
   }
 
   const origin = (req.nextUrl.origin || getSiteUrl()).replace(/\/$/, "");
-  const absoluteUrls = payload.categories.flatMap((category) =>
+  const logoAbsolute = absolutizeMediaUrl(payload.catalogue.logoUrl, origin);
+  const productUrls = payload.categories.flatMap((category) =>
     category.products.map((product) => absolutizeMediaUrl(product.imageUrl, origin))
   );
-  const embedded = await embedCatalogueImages(absoluteUrls);
+  const embedded = await embedCatalogueImages([logoAbsolute, ...productUrls]);
+
   const withAbsoluteMedia = {
     ...payload,
+    catalogue: {
+      ...payload.catalogue,
+      logoUrl: logoAbsolute
+        ? embedded.get(logoAbsolute) ?? null
+        : null,
+    },
     categories: payload.categories.map((category) => ({
       ...category,
       products: category.products.map((product) => {
         const absolute = absolutizeMediaUrl(product.imageUrl, origin);
         return {
           ...product,
-          imageUrl: absolute
-            ? embedded.get(absolute) ?? optimizePdfImageUrl(absolute, origin)
-            : null,
+          imageUrl: pdfImageOrPlaceholder(absolute, embedded, product.name),
         };
       }),
     })),
@@ -54,7 +61,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
   const autoPrint = req.nextUrl.searchParams.get("print") === "1";
   const html = buildCataloguePdfHtml(withAbsoluteMedia, { autoPrint });
-  const filename = `${payload.catalogue.slug || "catalogue"}-products.pdf.html`;
+  const filename = `${payload.catalogue.slug || "catalogue"}-brochure.pdf.html`;
 
   return new NextResponse(html, {
     status: 200,
