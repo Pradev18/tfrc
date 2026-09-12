@@ -32,7 +32,8 @@ describe("catalogue PDF HTML", () => {
     },
     whatsappUrl: "https://wa.me/97455049229",
     generatedAt: "2026-09-09T00:00:00.000Z",
-    totalProducts: 1,
+    totalProducts: 3,
+    listedCards: 1,
     accent: "#40916c",
     heading: "#141414",
     muted: "#6b6560",
@@ -41,7 +42,7 @@ describe("catalogue PDF HTML", () => {
       {
         slug: "toys",
         name: "Toys",
-        productCount: 1,
+        productCount: 3,
         products: [
           {
             id: "p1",
@@ -71,6 +72,8 @@ describe("catalogue PDF HTML", () => {
     expect(html).toContain(">L</span>");
     expect(html).toContain("From QAR 15.00");
     expect(html).toContain("by TFRC");
+    expect(html).toContain("The Products count matches your Excel");
+    expect(html).toContain("<strong>3</strong>");
   });
 
   it("does not treat item codes as sizes", () => {
@@ -96,5 +99,34 @@ describe("catalogue PDF HTML", () => {
     expect(html).not.toContain("Available sizes");
     expect(html).toContain("Rope Pet Toy");
     expect(html).toContain("Item code 110009578");
+  });
+
+  it("renders a full page of 9 product cards without fixed overflow heights", () => {
+    const nine = Array.from({ length: 9 }, (_, index) => ({
+      ...payload.categories[0]!.products[0]!,
+      id: `p${index + 1}`,
+      displayName: `Product ${index + 1}`,
+      productId: `1100${10000 + index}`,
+    }));
+    const fullPage: CataloguePdfPayload = {
+      ...payload,
+      totalProducts: 9,
+      listedCards: 9,
+      categories: [
+        {
+          slug: "drill",
+          name: "Drill",
+          productCount: 9,
+          products: nine,
+        },
+      ],
+    };
+    const html = buildCataloguePdfHtml(fullPage);
+    expect(html.match(/<article class="card">/g)).toHaveLength(9);
+    expect(html).toContain("grid-template-rows: repeat(3, minmax(0, 1fr))");
+    expect(html).not.toContain("height: 82mm");
+    for (let i = 1; i <= 9; i++) {
+      expect(html).toContain(`Product ${i}`);
+    }
   });
 });

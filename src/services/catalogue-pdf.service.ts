@@ -50,7 +50,10 @@ export interface CataloguePdfPayload {
   };
   whatsappUrl: string;
   generatedAt: string;
+  /** Active product rows (matches Excel / DB import count). */
   totalProducts: number;
+  /** Brochure cards after same-product size variants are grouped. */
+  listedCards: number;
   accent: string;
   heading: string;
   muted: string;
@@ -282,7 +285,7 @@ export async function getCataloguePdfPayload(
     categories.push({
       slug: cat.slug,
       name: cat.name,
-      productCount: collapsed.length,
+      productCount: list.length,
       products: collapsed,
     });
   }
@@ -293,7 +296,7 @@ export async function getCataloguePdfPayload(
     categories.push({
       slug: OTHER_SHOP_CATEGORY.slug,
       name: OTHER_SHOP_CATEGORY.name,
-      productCount: collapsed.length,
+      productCount: other.length,
       products: collapsed,
     });
   }
@@ -305,13 +308,15 @@ export async function getCataloguePdfPayload(
     categories.push({
       slug,
       name: slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      productCount: collapsed.length,
+      productCount: list.length,
       products: collapsed,
     });
   }
 
   const visual = getEnvVisual(catalogue.slug);
-  const totalProducts = categories.reduce((sum, c) => sum + c.productCount, 0);
+  // Cover "Products" matches the Excel / DB active row count (before size-variant collapse).
+  const totalProducts = products.length;
+  const listedCards = categories.reduce((sum, c) => sum + c.products.length, 0);
   // Prefer the uploaded catalogue logo only (not category hero placeholders).
   const logoUrl = normalizeCatalogueImageSrc(catalogue.logoUrl) || null;
 
@@ -329,6 +334,7 @@ export async function getCataloguePdfPayload(
     ),
     generatedAt: new Date().toISOString(),
     totalProducts,
+    listedCards,
     accent: visual.accent,
     heading: visual.heading,
     muted: visual.muted,

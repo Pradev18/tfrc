@@ -85,6 +85,7 @@ export function buildCataloguePdfHtml(
     catalogue,
     categories,
     totalProducts,
+    listedCards,
     accent,
     heading,
     muted,
@@ -133,7 +134,7 @@ export function buildCataloguePdfHtml(
 
             <div class="title-block">
               <h1>${escapeHtml(cat.name)}${continued ? ' <span>continued</span>' : ""}</h1>
-              <p>${cat.productCount} products · ${pageProducts.length} on this page</p>
+              <p>${cat.productCount} catalogue items · ${cat.products.length} cards · ${pageProducts.length} on this page</p>
             </div>
 
             <div class="grid">
@@ -200,8 +201,9 @@ export function buildCataloguePdfHtml(
     .sheet {
       width: 210mm;
       height: 297mm;
+      max-height: 297mm;
       margin: 16px auto;
-      padding: 9mm 9mm 8mm;
+      padding: 7mm 7.5mm 6.5mm;
       background: #fff;
       box-shadow: 0 16px 40px rgba(15, 41, 34, 0.1);
       border-radius: 6px;
@@ -227,13 +229,13 @@ export function buildCataloguePdfHtml(
     }
     .brand-row--lg { gap: 14px; }
     .brand-logo {
-      width: 48px;
-      height: 48px;
+      width: 40px;
+      height: 40px;
       object-fit: contain;
       background: #fff;
       border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 4px;
+      border-radius: 10px;
+      padding: 3px;
       flex-shrink: 0;
     }
     .brand-logo--lg {
@@ -270,9 +272,10 @@ export function buildCataloguePdfHtml(
       justify-content: space-between;
       gap: 12px;
       align-items: center;
-      margin-bottom: 8px;
-      padding-bottom: 8px;
+      margin-bottom: 5px;
+      padding-bottom: 5px;
       border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
     }
     .page-meta { text-align: right; }
     .page-cat {
@@ -286,10 +289,10 @@ export function buildCataloguePdfHtml(
       font-size: 11px;
       color: var(--muted);
     }
-    .title-block { margin-bottom: 8px; }
+    .title-block { margin-bottom: 5px; flex-shrink: 0; }
     .title-block h1 {
       margin: 0;
-      font-size: 20px;
+      font-size: 18px;
       letter-spacing: -0.02em;
       line-height: 1.15;
       font-weight: 800;
@@ -304,36 +307,41 @@ export function buildCataloguePdfHtml(
       color: var(--muted);
       font-size: 11px;
     }
+    /* Fixed 3×3 — cards fill cells so all 9 stay inside A4 (no clipped empty row). */
     .grid {
-      flex: 1;
+      flex: 1 1 auto;
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      grid-auto-rows: 1fr;
-      gap: 8px;
-      align-content: start;
+      grid-template-rows: repeat(3, minmax(0, 1fr));
+      gap: 5px;
+      align-content: stretch;
       min-height: 0;
+      overflow: hidden;
     }
     .card {
       border: 1px solid #dce5e0;
-      border-radius: 14px;
+      border-radius: 10px;
       overflow: hidden;
       background: #fff;
       display: flex;
       flex-direction: column;
       min-height: 0;
-      height: 82mm;
-      box-shadow: 0 2px 8px rgba(20, 40, 30, 0.04);
+      height: 100%;
+      max-height: 100%;
+      box-shadow: 0 1px 4px rgba(20, 40, 30, 0.04);
     }
     .card-image {
-      height: 38mm;
+      flex: 0 0 46%;
       width: 100%;
-      padding: 8px;
+      min-height: 0;
+      max-height: 46%;
+      padding: 4px;
       background: linear-gradient(180deg, #f7faf8 0%, #eef4f0 100%);
       display: flex;
       align-items: center;
       justify-content: center;
       border-bottom: 1px solid #e5eee9;
-      flex-shrink: 0;
+      overflow: hidden;
     }
     .card-image img {
       width: 100%;
@@ -341,24 +349,25 @@ export function buildCataloguePdfHtml(
       object-fit: contain;
       object-position: center;
       background: #fff;
-      border-radius: 8px;
+      border-radius: 6px;
       display: block;
       border: 1px solid #eef3ef;
     }
     .card-body {
-      padding: 8px 9px 9px;
+      padding: 5px 6px 6px;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 2px;
       min-height: 0;
-      flex: 1;
+      flex: 1 1 auto;
+      overflow: hidden;
     }
     .card-body h3 {
       margin: 0;
-      font-size: 11.5px;
-      line-height: 1.3;
+      font-size: 10.5px;
+      line-height: 1.25;
       font-weight: 700;
-      max-height: 2.6em;
+      max-height: 2.5em;
       overflow: hidden;
       color: #141414;
     }
@@ -371,15 +380,18 @@ export function buildCataloguePdfHtml(
       text-overflow: ellipsis;
     }
     .sizes {
-      margin-top: 1px;
-      padding: 5px 6px;
-      border-radius: 8px;
+      margin-top: 0;
+      padding: 3px 4px;
+      border-radius: 6px;
       background: #f3f7f4;
       border: 1px solid #e0ebe4;
+      flex-shrink: 0;
+      max-height: 28px;
+      overflow: hidden;
     }
     .sizes-label {
-      margin: 0 0 3px;
-      font-size: 8px;
+      margin: 0 0 2px;
+      font-size: 7px;
       font-weight: 800;
       letter-spacing: 0.06em;
       text-transform: uppercase;
@@ -388,21 +400,21 @@ export function buildCataloguePdfHtml(
     .size-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 3px;
-      max-height: 22px;
+      gap: 2px;
+      max-height: 16px;
       overflow: hidden;
     }
     .size-chip {
       display: inline-flex;
       align-items: center;
-      border-radius: 6px;
+      border-radius: 5px;
       border: 1px solid #cfe0d6;
       background: #fff;
       color: #14352a;
-      font-size: 9px;
+      font-size: 8px;
       font-weight: 800;
       line-height: 1;
-      padding: 4px 6px;
+      padding: 2px 4px;
       white-space: nowrap;
     }
     .card-foot {
@@ -410,21 +422,22 @@ export function buildCataloguePdfHtml(
       display: flex;
       align-items: flex-end;
       justify-content: space-between;
-      gap: 6px;
-      padding-top: 5px;
+      gap: 4px;
+      padding-top: 3px;
       border-top: 1px solid #eef2ef;
+      flex-shrink: 0;
     }
     .card-price-block { min-width: 0; }
     .price {
       margin: 0;
-      font-size: 12.5px;
+      font-size: 11px;
       font-weight: 800;
       color: var(--accent);
       letter-spacing: -0.01em;
     }
     .stock {
-      margin: 2px 0 0;
-      font-size: 8px;
+      margin: 1px 0 0;
+      font-size: 7.5px;
       font-weight: 700;
     }
     .stock.in { color: #166534; }
@@ -436,9 +449,9 @@ export function buildCataloguePdfHtml(
       border-radius: 999px;
       background: #128c47;
       color: #fff;
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 800;
-      padding: 6px 8px;
+      padding: 4px 6px;
       white-space: nowrap;
       flex-shrink: 0;
     }
@@ -446,11 +459,12 @@ export function buildCataloguePdfHtml(
       display: flex;
       justify-content: space-between;
       gap: 12px;
-      margin-top: 7px;
-      padding-top: 6px;
+      margin-top: 4px;
+      padding-top: 4px;
       border-top: 1px solid var(--line);
-      font-size: 10px;
+      font-size: 9px;
       color: var(--muted);
+      flex-shrink: 0;
     }
     .cover {
       background: linear-gradient(165deg, #ffffff 0%, var(--surface) 55%, #fff 100%);
@@ -486,6 +500,17 @@ export function buildCataloguePdfHtml(
     }
     .toc-title { margin: 0 0 6px; font-size: 16px; font-weight: 800; }
     .toc-note { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+    .variant-note {
+      margin: 0 0 14px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #fff;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .variant-note strong { color: var(--ink); font-weight: 700; }
     .toc-row {
       display: grid;
       grid-template-columns: 32px 1fr auto;
@@ -529,6 +554,16 @@ export function buildCataloguePdfHtml(
         border-radius: 0;
         width: 210mm;
         height: 297mm;
+        max-height: 297mm;
+      }
+      .grid {
+        grid-template-rows: repeat(3, minmax(0, 1fr));
+      }
+      .card {
+        height: 100%;
+        max-height: 100%;
+        break-inside: avoid;
+        page-break-inside: avoid;
       }
       .category-sheet, .cover {
         page-break-after: always;
@@ -544,7 +579,7 @@ export function buildCataloguePdfHtml(
 </head>
 <body>
   <div class="toolbar">
-    <p>${escapeHtml(catalogue.name)} brochure · ${totalProducts} products · ${categories.length} categories · TFRC</p>
+    <p>${escapeHtml(catalogue.name)} brochure · ${totalProducts} catalogue items · ${listedCards} cards · ${categories.length} categories · TFRC</p>
     <button type="button" onclick="window.print()">Download / Print PDF</button>
   </div>
 
@@ -559,9 +594,13 @@ export function buildCataloguePdfHtml(
         <div class="stat"><span>Categories</span><strong>${categories.length}</strong></div>
         <div class="stat"><span>Generated</span><strong style="font-size:15px">${escapeHtml(dateLabel)}</strong></div>
       </div>
+      <p class="variant-note">
+        <strong>Note:</strong> The Products count matches your Excel / catalogue import (${totalProducts} items).
+        Same product in different sizes may not appear as separate cards — those rows are grouped into one card with sizes listed (${listedCards} cards in this brochure).
+      </p>
     </div>
     <h2 class="toc-title">Categories</h2>
-    <p class="toc-note">Index for the printed brochure — products are grouped under each category.</p>
+    <p class="toc-note">Index for the printed brochure — category counts match Excel items; size variants are shown on each card.</p>
     ${coverLinks || "<p>No products found.</p>"}
   </section>
 
