@@ -100,6 +100,9 @@ describe("catalogue PDF HTML", () => {
     expect(html).toContain("https://example.com/pawmart");
     expect(html).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
     expect(html).toContain("grid-template-rows: repeat(3, minmax(0, 1fr))");
+    expect(html).toContain("width: 210mm");
+    expect(html).toContain("height: 297mm");
+    expect(html).toContain("flex: 0 0 58%");
     expect(html).not.toContain("Generated");
     expect(html).not.toContain("height: 82mm");
   });
@@ -224,7 +227,7 @@ describe("catalogue PDF HTML", () => {
         ],
       })
     );
-    expect(html).toContain("max-height: 2.5em");
+    expect(html).toContain("max-height: 2.4em");
     expect(html).toContain("Pet Retractable Leash Cord Mix Color 5M 20Kg Max Extra Long Title");
   });
 });

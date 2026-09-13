@@ -14,6 +14,17 @@ export const TFRC_LOGO_SRC =
   <text x="48" y="66" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#7B2D8E" letter-spacing="2">TFRC</text>
 </svg>`);
 
+const TOC_COLORS = [
+  "#1b4332",
+  "#c2410c",
+  "#1d4ed8",
+  "#7c3aed",
+  "#0f766e",
+  "#b45309",
+  "#be123c",
+  "#334155",
+];
+
 export function chunkProducts<T>(items: T[], size = PDF_PRODUCTS_PER_PAGE): T[][] {
   if (items.length === 0) return [[]];
   const pages: T[][] = [];
@@ -40,7 +51,7 @@ function escapeAttr(value: string): string {
 }
 
 function categoryBlurb(categoryName: string, catalogueName: string): string {
-  return `${categoryName} selected for ${catalogueName} — browse and order on WhatsApp.`;
+  return `${categoryName} curated for ${catalogueName} — order easily on WhatsApp.`;
 }
 
 function sizeChips(product: CataloguePdfProduct): string {
@@ -50,51 +61,58 @@ function sizeChips(product: CataloguePdfProduct): string {
   const chips = product.availableSizes
     .map((size) => `<span class="size-chip">${escapeHtml(size)}</span>`)
     .join("");
-  return `<div class="sizes" aria-label="Available sizes">${chips}</div>`;
+  return `<div class="sizes">${chips}</div>`;
 }
 
-function whatsappIconSvg(): string {
-  return `<svg class="wa-ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20.5 3.5A11 11 0 0 0 2.4 17.3L1.5 22.5l5.3-.9A11 11 0 1 0 20.5 3.5zm-8.6 17a9.1 9.1 0 0 1-4.6-1.3l-.3-.2-3.1.5.5-3-.2-.3a9.1 9.1 0 1 1 7.7 4.3zm5-6.8c-.3-.1-1.6-.8-1.9-.9s-.4-.1-.6.1-.7.9-.8 1-.3.2-.6.1a7.4 7.4 0 0 1-2.2-1.4 8.2 8.2 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5.1-.3a.5.5 0 0 0 0-.5l-.9-2.1c-.2-.6-.5-.5-.6-.5h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.6 11.6 0 0 0 4.5 4 15 15 0 0 0 1.5.5 3.6 3.6 0 0 0 1.6.1 2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .2-1.2c-.1-.1-.3-.2-.6-.3z"/></svg>`;
+function whatsappIconSvg(className = "wa-ico"): string {
+  return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20.5 3.5A11 11 0 0 0 2.4 17.3L1.5 22.5l5.3-.9A11 11 0 1 0 20.5 3.5zm-8.6 17a9.1 9.1 0 0 1-4.6-1.3l-.3-.2-3.1.5.5-3-.2-.3a9.1 9.1 0 1 1 7.7 4.3zm5-6.8c-.3-.1-1.6-.8-1.9-.9s-.4-.1-.6.1-.7.9-.8 1-.3.2-.6.1a7.4 7.4 0 0 1-2.2-1.4 8.2 8.2 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5.1-.3a.5.5 0 0 0 0-.5l-.9-2.1c-.2-.6-.5-.5-.6-.5h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.6 11.6 0 0 0 4.5 4 15 15 0 0 0 1.5.5 3.6 3.6 0 0 0 1.6.1 2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .2-1.2c-.1-.1-.3-.2-.6-.3z"/></svg>`;
 }
 
 function featureIcon(kind: "quality" | "range" | "order" | "trust"): string {
   const paths: Record<typeof kind, string> = {
     quality:
-      '<path fill="none" stroke="currentColor" stroke-width="1.8" d="M12 3l7 3v5c0 5-3.2 8.5-7 10-3.8-1.5-7-5-7-10V6l7-3z"/><path fill="none" stroke="currentColor" stroke-width="1.8" d="M9 12l2 2 4-4"/>',
+      '<path fill="none" stroke="currentColor" stroke-width="1.7" d="M12 3l7 3v5c0 5-3.2 8.5-7 10-3.8-1.5-7-5-7-10V6l7-3z"/><path fill="none" stroke="currentColor" stroke-width="1.7" d="M9 12l2 2 4-4"/>',
     range:
-      '<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" d="M8 12h8M12 8v8"/>',
+      '<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path fill="none" stroke="currentColor" stroke-width="1.7" d="M8 12h8M12 8v8"/>',
     order:
-      '<path fill="none" stroke="currentColor" stroke-width="1.8" d="M4 6h2l2.2 9h9.3l2-6H8"/><circle cx="10" cy="19" r="1.4" fill="currentColor"/><circle cx="17" cy="19" r="1.4" fill="currentColor"/>',
+      '<path fill="none" stroke="currentColor" stroke-width="1.7" d="M4 6h2l2.2 9h9.3l2-6H8"/><circle cx="10" cy="19" r="1.4" fill="currentColor"/><circle cx="17" cy="19" r="1.4" fill="currentColor"/>',
     trust:
-      '<path fill="none" stroke="currentColor" stroke-width="1.8" d="M12 3l2.4 4.8 5.3.8-3.8 3.7.9 5.3L12 15.8 7.2 17.6l.9-5.3L4.3 8.6l5.3-.8z"/>',
+      '<path fill="none" stroke="currentColor" stroke-width="1.7" d="M12 3l2.4 4.8 5.3.8-3.8 3.7.9 5.3L12 15.8 7.2 17.6l.9-5.3L4.3 8.6l5.3-.8z"/>',
   };
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[kind]}</svg>`;
 }
 
 function categoryGlyph(): string {
-  return `<svg class="cat-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" d="M8 12h8M12 8v8"/></svg>`;
+  return `<svg class="cat-glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5c1.4 0 2.5 1.1 2.5 2.5S13.4 7.5 12 7.5 9.5 6.4 9.5 5 10.6 2.5 12 2.5zm-4.8 6.2c1.2 0 2.1.9 2.1 2.1v1.2c0 .6-.5 1.1-1.1 1.1H6.9c-.6 0-1.1-.5-1.1-1.1V10.8c0-1.2.9-2.1 2.1-2.1zm9.6 0c1.2 0 2.1.9 2.1 2.1v1.2c0 .6-.5 1.1-1.1 1.1h-1.3c-.6 0-1.1-.5-1.1-1.1V10.8c0-1.2.9-2.1 2.1-2.1zM12 9.2c2.7 0 4.8 1.5 4.8 4.1v6.1c0 .9-.7 1.6-1.6 1.6H8.8c-.9 0-1.6-.7-1.6-1.6v-6.1c0-2.6 2.1-4.1 4.8-4.1z"/></svg>`;
 }
 
 export function renderCatalogueHeader(payload: CataloguePdfPayload): string {
   const { catalogue } = payload;
   const logo = catalogue.logoUrl
-    ? `<div class="logo-slot logo-slot--catalogue"><img class="catalogue-logo" src="${escapeAttr(
-        catalogue.logoUrl
-      )}" alt="${escapeAttr(catalogue.name)}" /></div>`
+    ? `<div class="logo-slot logo-slot--catalogue">
+        <img class="catalogue-logo" src="${escapeAttr(catalogue.logoUrl)}" alt="${escapeAttr(catalogue.name)}" />
+      </div>`
     : `<div class="logo-slot logo-slot--empty" aria-hidden="true"></div>`;
 
   return `
-    <header class="sheet-brand">
+    <header class="sheet-header">
       <div class="logo-slot logo-slot--tfrc">
         <img class="tfrc-logo" src="${TFRC_LOGO_SRC}" alt="TFRC" />
       </div>
-      <div class="brand-mid">
-        <p class="brand-name">${escapeHtml(catalogue.name)}</p>
-        ${
-          catalogue.tagline
-            ? `<p class="brand-tag">${escapeHtml(catalogue.tagline)}</p>`
-            : ""
-        }
+      <div class="header-identity">
+        <div class="header-rule" aria-hidden="true"></div>
+        <div class="header-copy">
+          <p class="header-name">${escapeHtml(catalogue.name)}</p>
+          ${
+            catalogue.tagline
+              ? `<p class="header-tagline">${escapeHtml(catalogue.tagline)}</p>`
+              : `<p class="header-tagline">Product catalogue by TFRC</p>`
+          }
+        </div>
+        <div class="header-features" aria-hidden="true">
+          <span>${featureIcon("quality")} Quality</span>
+          <span>${featureIcon("order")} Easy order</span>
+        </div>
       </div>
       ${logo}
     </header>`;
@@ -106,10 +124,17 @@ export function renderCatalogueFooter(payload: CataloguePdfPayload): string {
     <footer class="sheet-footer">
       <div class="footer-brand">
         <p class="footer-name">${escapeHtml(payload.catalogue.name)}</p>
-        <p class="footer-values">QUALITY PRODUCTS · WIDE RANGE · TRUSTED BY TFRC</p>
+        <p class="footer-sub">Trusted catalogue by TFRC</p>
+      </div>
+      <div class="footer-values">
+        <span>Quality Products</span>
+        <span class="dot">·</span>
+        <span>Wide Range</span>
+        <span class="dot">·</span>
+        <span>Easy Ordering</span>
       </div>
       <div class="footer-wa">
-        ${whatsappIconSvg()}
+        ${whatsappIconSvg("wa-ico wa-ico--lg")}
         <div>
           <p class="footer-wa-label">WhatsApp Orders</p>
           <p class="footer-wa-phone">${escapeHtml(phone)}</p>
@@ -156,23 +181,21 @@ export function renderCategoryHeader(
   onThisPage: number
 ): string {
   return `
-    <div class="category-head">
-      <div class="category-head-main">
+    <section class="category-band">
+      <div class="category-band-main">
         ${categoryGlyph()}
         <div>
           <h1>${escapeHtml(category.name)}</h1>
-          <p class="category-blurb">${escapeHtml(
-            categoryBlurb(category.name, payload.catalogue.name)
-          )}</p>
+          <p>${escapeHtml(categoryBlurb(category.name, payload.catalogue.name))}</p>
         </div>
       </div>
-      <div class="category-head-meta">
+      <div class="category-band-meta">
         <p class="category-counts">
           ${category.productCount} items · ${category.products.length} cards · ${onThisPage} on this page
         </p>
         <span class="page-pill">Page ${pageIndex + 1} of ${pageCount}</span>
       </div>
-    </div>`;
+    </section>`;
 }
 
 export function renderQrCodePanel(
@@ -183,7 +206,7 @@ export function renderQrCodePanel(
 ): string {
   return `
     <a class="qr-panel" href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">
-      <img class="qr-image" src="${escapeAttr(qrDataUrl)}" alt="${escapeAttr(title)} QR" />
+      <img class="qr-image" src="${escapeAttr(qrDataUrl)}" alt="${escapeAttr(title)} QR code" />
       <div class="qr-copy">
         <p class="qr-title">${escapeHtml(title)}</p>
         <p class="qr-sub">${escapeHtml(subtitle)}</p>
@@ -203,14 +226,23 @@ export function renderCoverPage(payload: CataloguePdfPayload): string {
         )}">${index + 1}</span>
         <span class="toc-name">${escapeHtml(cat.name)}</span>
         <span class="toc-count">${cat.productCount}</span>
-        <span class="toc-chevron" aria-hidden="true">›</span>
       </div>`
     )
     .join("");
 
+  const catalogueLogo = catalogue.logoUrl
+    ? `<img class="cover-catalogue-logo" src="${escapeAttr(catalogue.logoUrl)}" alt="${escapeAttr(
+        catalogue.name
+      )}" />`
+    : `<div class="cover-catalogue-logo cover-catalogue-logo--empty" aria-hidden="true"></div>`;
+
   return `
     <section class="sheet cover" id="toc">
-      ${renderCatalogueHeader(payload)}
+      <header class="cover-top">
+        <img class="cover-tfrc" src="${TFRC_LOGO_SRC}" alt="TFRC" />
+        ${catalogueLogo}
+      </header>
+
       <div class="cover-hero">
         ${
           catalogue.tagline
@@ -219,7 +251,7 @@ export function renderCoverPage(payload: CataloguePdfPayload): string {
               )}<span></span></p>`
             : ""
         }
-        <h1 class="cover-title">${escapeHtml(catalogue.name)}</h1>
+        <h1>${escapeHtml(catalogue.name)}</h1>
         <p class="cover-pill">Product Brochure</p>
         <p class="cover-lead">${escapeHtml(
           catalogue.description ||
@@ -229,21 +261,22 @@ export function renderCoverPage(payload: CataloguePdfPayload): string {
 
       <div class="feature-row">
         <div class="feature">${featureIcon("quality")}<span>Quality &amp; Safe</span></div>
-        <div class="feature">${featureIcon("range")}<span>Wide Range</span></div>
+        <div class="feature">${featureIcon("range")}<span>Wide Range of Products</span></div>
         <div class="feature">${featureIcon("order")}<span>Easy Ordering</span></div>
         <div class="feature">${featureIcon("trust")}<span>Trusted by TFRC</span></div>
       </div>
 
       <div class="stats">
         <div class="stat">
-          <span class="stat-label">Products</span>
+          <span>Products</span>
           <strong>${totalProducts}</strong>
         </div>
         <div class="stat">
-          <span class="stat-label">Categories</span>
+          <span>Categories</span>
           <strong>${categories.length}</strong>
         </div>
       </div>
+
       <p class="variant-note">
         Product count matches your catalogue import (${totalProducts} items).
         Size variants are grouped into one card with sizes listed
@@ -252,16 +285,14 @@ export function renderCoverPage(payload: CataloguePdfPayload): string {
 
       <div class="toc-block">
         <h2>Categories</h2>
-        <p class="toc-note">Index for this brochure — names and counts come from the live catalogue.</p>
-        <div class="toc-grid">
-          ${indexRows || "<p class='toc-empty'>No products found.</p>"}
-        </div>
+        <p class="toc-note">Live index for this brochure — names and counts come from the catalogue.</p>
+        <div class="toc-grid">${indexRows || "<p class='toc-empty'>No products found.</p>"}</div>
       </div>
 
       <div class="qr-row">
         ${renderQrCodePanel(
           "Visit Our Website",
-          "Explore full range of products",
+          "Explore the full range of products",
           payload.websiteQrDataUrl,
           payload.websiteUrl
         )}
@@ -279,17 +310,6 @@ export function renderCoverPage(payload: CataloguePdfPayload): string {
       </div>
     </section>`;
 }
-
-const TOC_COLORS = [
-  "#1b4332",
-  "#c2410c",
-  "#1d4ed8",
-  "#7c3aed",
-  "#0f766e",
-  "#b45309",
-  "#be123c",
-  "#334155",
-];
 
 function renderCategoryPages(payload: CataloguePdfPayload): string {
   return payload.categories
@@ -327,17 +347,17 @@ function templateCss(payload: CataloguePdfPayload): string {
       --muted: ${escapeAttr(payload.muted)};
       --surface: ${escapeAttr(payload.surface)};
       --cta: ${escapeAttr(payload.cta)};
-      --line: color-mix(in srgb, var(--heading) 12%, white);
-      --soft: color-mix(in srgb, var(--accent) 8%, white);
       --wa: #128c47;
-      --ink: #141414;
+      --line: #d7e4dc;
+      --cream: #f4f8f5;
+      --ink: #121212;
     }
     * { box-sizing: border-box; }
     html, body {
       margin: 0;
       padding: 0;
       color: var(--heading);
-      background: #e7eee9;
+      background: #d9e3dc;
       font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
@@ -345,184 +365,222 @@ function templateCss(payload: CataloguePdfPayload): string {
     .toolbar {
       position: sticky;
       top: 0;
-      z-index: 30;
+      z-index: 40;
       display: flex;
       gap: 12px;
       align-items: center;
       justify-content: space-between;
       padding: 12px 18px;
-      background: rgba(255,255,255,0.98);
+      background: #fff;
       border-bottom: 1px solid var(--line);
     }
-    .toolbar p { margin: 0; font-size: 13px; color: var(--muted); }
+    .toolbar p { margin: 0; font-size: 12pt; color: var(--muted); }
     .toolbar button {
       border: 0;
       border-radius: 999px;
       padding: 10px 18px;
-      font-size: 13px;
+      font-size: 11pt;
       font-weight: 700;
       cursor: pointer;
       color: #fff;
       background: var(--cta);
     }
+
+    /* ========== A4 SHEET ========== */
     .sheet {
       width: 210mm;
       height: 297mm;
       max-height: 297mm;
-      margin: 14px auto;
-      padding: 8mm 8mm 7mm;
+      margin: 10mm auto;
+      padding: 7mm 8mm 6mm;
       background: #fff;
-      box-shadow: 0 16px 40px rgba(15, 41, 34, 0.1);
-      border-radius: 6px;
+      box-shadow: 0 10px 30px rgba(15, 41, 34, 0.12);
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      position: relative;
       page-break-after: always;
       break-after: page;
+      position: relative;
     }
-    .sheet-brand {
+
+    /* ========== PRODUCT PAGE HEADER ~22mm ========== */
+    .sheet-header {
+      flex: 0 0 22mm;
+      height: 22mm;
+      max-height: 22mm;
       display: grid;
-      grid-template-columns: 56px 1fr 72px;
-      gap: 10px;
+      grid-template-columns: 28mm 1fr 32mm;
+      gap: 3mm;
       align-items: center;
-      min-height: 46px;
-      max-height: 52px;
-      flex-shrink: 0;
-      padding-bottom: 6px;
-      border-bottom: 1px solid var(--line);
-      margin-bottom: 6px;
+      padding: 0 1mm 2.5mm;
+      margin-bottom: 2mm;
+      border-bottom: 0.4mm solid var(--line);
+      background: linear-gradient(180deg, var(--cream) 0%, #fff 100%);
     }
     .logo-slot {
+      height: 16mm;
       display: flex;
       align-items: center;
-      justify-content: center;
-      height: 44px;
       overflow: hidden;
     }
     .logo-slot--tfrc { justify-content: flex-start; }
     .logo-slot--catalogue { justify-content: flex-end; }
     .logo-slot--empty { visibility: hidden; }
     .tfrc-logo {
-      height: 40px;
+      height: 15mm;
       width: auto;
-      max-width: 56px;
+      max-width: 26mm;
       object-fit: contain;
       display: block;
     }
     .catalogue-logo {
-      max-height: 42px;
-      max-width: 72px;
+      max-height: 15mm;
+      max-width: 30mm;
       width: auto;
       height: auto;
       object-fit: contain;
       object-position: right center;
       display: block;
     }
-    .brand-mid { min-width: 0; text-align: center; }
-    .brand-name {
+    .header-identity {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 1.2mm 1fr auto;
+      gap: 3mm;
+      align-items: center;
+    }
+    .header-rule {
+      width: 1.2mm;
+      height: 12mm;
+      border-radius: 1mm;
+      background: var(--accent);
+    }
+    .header-name {
       margin: 0;
-      font-size: 13px;
+      font-size: 14pt;
+      line-height: 1.1;
       font-weight: 800;
-      letter-spacing: -0.01em;
+      color: var(--cta);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .brand-tag {
-      margin: 1px 0 0;
-      font-size: 9px;
+    .header-tagline {
+      margin: 1mm 0 0;
+      font-size: 8pt;
       color: var(--muted);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .category-head {
+    .header-features {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5mm;
+      color: var(--cta);
+      font-size: 7pt;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .header-features span {
+      display: inline-flex;
+      align-items: center;
+      gap: 1.2mm;
+    }
+    .header-features svg { width: 3.2mm; height: 3.2mm; }
+
+    /* ========== CATEGORY BAND ~16mm ========== */
+    .category-band {
+      flex: 0 0 16mm;
+      height: 16mm;
+      max-height: 16mm;
       display: flex;
       justify-content: space-between;
-      gap: 10px;
-      align-items: flex-start;
-      flex-shrink: 0;
-      margin-bottom: 6px;
+      align-items: center;
+      gap: 4mm;
+      margin-bottom: 2.5mm;
+      padding: 0 1mm;
     }
-    .category-head-main {
+    .category-band-main {
       display: flex;
-      gap: 8px;
+      gap: 2.5mm;
       align-items: flex-start;
       min-width: 0;
     }
     .cat-glyph {
-      width: 22px;
-      height: 22px;
-      color: var(--accent);
+      width: 7mm;
+      height: 7mm;
+      color: var(--cta);
       flex-shrink: 0;
-      margin-top: 2px;
+      margin-top: 0.5mm;
     }
-    .category-head h1 {
+    .category-band h1 {
       margin: 0;
-      font-size: 18px;
-      line-height: 1.15;
+      font-size: 18pt;
+      line-height: 1.05;
       font-weight: 800;
       letter-spacing: -0.02em;
-      color: var(--heading);
+      color: var(--cta);
     }
-    .category-blurb {
-      margin: 2px 0 0;
-      font-size: 9.5px;
+    .category-band p {
+      margin: 1mm 0 0;
+      font-size: 8pt;
       color: var(--muted);
-      max-width: 115mm;
+      max-width: 120mm;
     }
-    .category-head-meta {
-      text-align: right;
-      flex-shrink: 0;
-    }
+    .category-band-meta { text-align: right; flex-shrink: 0; }
     .category-counts {
-      margin: 0 0 4px;
-      font-size: 9px;
+      margin: 0 0 1.5mm;
+      font-size: 8pt;
+      font-weight: 650;
       color: var(--muted);
-      font-weight: 600;
     }
     .page-pill {
       display: inline-block;
       border-radius: 999px;
       background: var(--cta);
       color: #fff;
-      font-size: 9px;
+      font-size: 8pt;
       font-weight: 800;
-      padding: 4px 9px;
+      padding: 1.4mm 3.5mm;
     }
+
+    /* ========== PRODUCT GRID — majority of page ========== */
     .grid {
       flex: 1 1 auto;
       min-height: 0;
+      height: 100%;
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       grid-template-rows: repeat(3, minmax(0, 1fr));
-      gap: 5px;
-      align-content: start;
+      gap: 2.8mm;
+      align-content: stretch;
       overflow: hidden;
     }
     .card {
-      border: 1px solid #e2ebe5;
-      border-radius: 10px;
-      background: #fff;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
       height: 100%;
       max-height: 100%;
-      box-shadow: 0 1px 3px rgba(20, 40, 30, 0.04);
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border: 0.35mm solid #d9e5de;
+      border-radius: 2.2mm;
+      background: #fff;
+      overflow: hidden;
+      box-shadow: 0 0.6mm 1.6mm rgba(20, 40, 30, 0.05);
     }
     .card-image {
-      flex: 0 0 50%;
-      max-height: 50%;
+      flex: 0 0 58%;
+      height: 58%;
+      max-height: 58%;
       min-height: 0;
-      padding: 4px;
-      background: #f4f7f5;
+      padding: 2mm;
+      background: linear-gradient(180deg, #f7faf8 0%, #eef4f0 100%);
       display: flex;
       align-items: center;
       justify-content: center;
       overflow: hidden;
+      border-bottom: 0.3mm solid #e5eee9;
     }
     .card-image img {
       width: 100%;
@@ -531,32 +589,31 @@ function templateCss(payload: CataloguePdfPayload): string {
       object-position: center;
       display: block;
       background: #fff;
-      border-radius: 6px;
+      border-radius: 1.4mm;
     }
     .card-body {
       flex: 1 1 auto;
       min-height: 0;
-      overflow: hidden;
       display: flex;
       flex-direction: column;
-      justify-content: flex-start;
-      gap: 2px;
-      padding: 5px 6px 6px;
+      gap: 0.8mm;
+      padding: 2mm 2.2mm 2.2mm;
+      overflow: hidden;
     }
     .card-title {
       margin: 0;
-      font-size: 9.5px;
-      line-height: 1.25;
+      font-size: 9.5pt;
+      line-height: 1.2;
       font-weight: 800;
-      color: var(--heading);
-      min-height: 2.5em;
-      max-height: 2.5em;
+      color: var(--cta);
+      min-height: 2.4em;
+      max-height: 2.4em;
       overflow: hidden;
       flex-shrink: 0;
     }
     .card-meta {
       margin: 0;
-      font-size: 7.5px;
+      font-size: 7pt;
       color: var(--muted);
       white-space: nowrap;
       overflow: hidden;
@@ -566,31 +623,30 @@ function templateCss(payload: CataloguePdfPayload): string {
     .sizes {
       display: flex;
       flex-wrap: wrap;
-      gap: 2px;
-      min-height: 14px;
-      max-height: 14px;
+      gap: 0.8mm;
+      min-height: 4.2mm;
+      max-height: 4.2mm;
       overflow: hidden;
       flex-shrink: 0;
     }
-    .sizes--empty {
-      visibility: hidden;
-    }
+    .sizes--empty { visibility: hidden; }
     .size-chip {
       display: inline-flex;
       align-items: center;
-      border-radius: 4px;
-      border: 1px solid #d5e3db;
-      background: #f3f7f4;
+      border-radius: 0.9mm;
+      border: 0.25mm solid #c9ddd2;
+      background: #f2f7f4;
       color: #14352a;
-      font-size: 7px;
+      font-size: 7pt;
       font-weight: 800;
       line-height: 1;
-      padding: 2px 4px;
+      padding: 0.7mm 1.3mm;
       white-space: nowrap;
     }
     .card-price {
-      margin: 1px 0 0;
-      font-size: 10.5px;
+      margin: 0.4mm 0 0;
+      font-size: 11.5pt;
+      line-height: 1.1;
       font-weight: 800;
       color: var(--ink);
       letter-spacing: -0.01em;
@@ -600,299 +656,374 @@ function templateCss(payload: CataloguePdfPayload): string {
       margin: 0;
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      font-size: 7.5px;
+      gap: 1.1mm;
+      font-size: 7.5pt;
       font-weight: 700;
       flex-shrink: 0;
     }
     .card-stock.in { color: #166534; }
     .card-stock.out { color: #9f1239; }
     .stock-dot {
-      width: 5px;
-      height: 5px;
+      width: 1.6mm;
+      height: 1.6mm;
       border-radius: 50%;
       background: currentColor;
       flex-shrink: 0;
     }
     .card-wa {
-      margin-top: 4px;
+      margin-top: auto;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 4px;
+      gap: 1.4mm;
       width: 100%;
-      border-radius: 7px;
+      min-height: 6.5mm;
+      border-radius: 1.4mm;
       background: var(--wa);
       color: #fff !important;
       text-decoration: none !important;
-      font-size: 8px;
+      font-size: 8pt;
       font-weight: 800;
-      padding: 5px 6px;
+      padding: 1.4mm 2mm;
       flex-shrink: 0;
     }
-    .wa-ico { width: 11px; height: 11px; flex-shrink: 0; }
+    .wa-ico { width: 3.4mm; height: 3.4mm; flex-shrink: 0; }
+    .wa-ico--lg { width: 6mm; height: 6mm; }
+
+    /* ========== FOOTER ~16mm ========== */
     .sheet-footer {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
+      flex: 0 0 16mm;
+      height: 16mm;
+      max-height: 16mm;
+      display: grid;
+      grid-template-columns: 1.1fr 1.4fr 1fr;
+      gap: 3mm;
       align-items: center;
-      flex-shrink: 0;
-      margin-top: 5px;
-      padding-top: 5px;
-      border-top: 1px solid var(--line);
-      min-height: 28px;
+      margin-top: 2.5mm;
+      padding-top: 2.5mm;
+      border-top: 0.4mm solid var(--line);
     }
     .footer-name {
       margin: 0;
-      font-size: 12px;
+      font-size: 12pt;
       font-weight: 800;
       color: var(--cta);
     }
-    .footer-values {
-      margin: 1px 0 0;
-      font-size: 7.5px;
-      letter-spacing: 0.06em;
+    .footer-sub {
+      margin: 0.6mm 0 0;
+      font-size: 7.5pt;
       color: var(--muted);
-      font-weight: 700;
     }
+    .footer-values {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 1.6mm;
+      flex-wrap: wrap;
+      text-align: center;
+      font-size: 7.5pt;
+      font-weight: 750;
+      letter-spacing: 0.02em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .footer-values .dot { opacity: 0.5; }
     .footer-wa {
       display: flex;
+      justify-content: flex-end;
       align-items: center;
-      gap: 7px;
+      gap: 2mm;
       color: var(--wa);
     }
-    .footer-wa .wa-ico { width: 18px; height: 18px; }
     .footer-wa-label {
       margin: 0;
-      font-size: 8px;
+      font-size: 7.5pt;
       font-weight: 700;
       color: var(--muted);
     }
     .footer-wa-phone {
-      margin: 0;
-      font-size: 12px;
+      margin: 0.3mm 0 0;
+      font-size: 12pt;
       font-weight: 800;
       color: var(--heading);
       letter-spacing: -0.01em;
     }
+
+    /* ========== COVER ========== */
     .cover {
       background:
-        radial-gradient(ellipse at 10% 0%, color-mix(in srgb, var(--accent) 12%, white), transparent 42%),
-        radial-gradient(ellipse at 95% 15%, color-mix(in srgb, var(--accent) 8%, white), transparent 40%),
+        radial-gradient(ellipse at 8% 0%, color-mix(in srgb, var(--accent) 14%, white), transparent 45%),
+        radial-gradient(ellipse at 100% 8%, color-mix(in srgb, var(--accent) 10%, white), transparent 40%),
         #fff;
     }
-    .cover-hero { text-align: center; margin-top: 4px; flex-shrink: 0; }
+    .cover-top {
+      flex: 0 0 22mm;
+      height: 22mm;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 2mm;
+      border-bottom: 0.35mm solid var(--line);
+      margin-bottom: 4mm;
+    }
+    .cover-tfrc {
+      height: 16mm;
+      width: auto;
+      max-width: 34mm;
+      object-fit: contain;
+    }
+    .cover-catalogue-logo {
+      max-height: 16mm;
+      max-width: 42mm;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      object-position: right center;
+    }
+    .cover-catalogue-logo--empty {
+      width: 30mm;
+      height: 16mm;
+      visibility: hidden;
+    }
+    .cover-hero {
+      text-align: center;
+      flex-shrink: 0;
+      margin-bottom: 4mm;
+    }
     .cover-kicker {
-      margin: 0 0 6px;
+      margin: 0 0 3mm;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
-      font-size: 9px;
+      gap: 3mm;
+      font-size: 8.5pt;
       font-weight: 800;
-      letter-spacing: 0.14em;
+      letter-spacing: 0.16em;
       color: var(--cta);
     }
     .cover-kicker span {
-      display: block;
-      width: 28px;
-      height: 1px;
-      background: color-mix(in srgb, var(--accent) 45%, white);
+      width: 10mm;
+      height: 0.35mm;
+      background: color-mix(in srgb, var(--accent) 50%, white);
     }
-    .cover-title {
+    .cover-hero h1 {
       margin: 0;
-      font-size: 34px;
-      line-height: 1.05;
+      font-size: 34pt;
+      line-height: 1.02;
       letter-spacing: -0.03em;
       font-weight: 800;
       color: var(--cta);
     }
     .cover-pill {
       display: inline-block;
-      margin: 8px 0 0;
+      margin: 3.5mm 0 0;
       border-radius: 999px;
       background: color-mix(in srgb, var(--accent) 16%, white);
       color: var(--cta);
-      font-size: 11px;
+      font-size: 11pt;
       font-weight: 800;
-      padding: 5px 12px;
+      padding: 1.6mm 5mm;
     }
     .cover-lead {
-      margin: 8px auto 0;
-      max-width: 145mm;
-      font-size: 11px;
+      margin: 3.5mm auto 0;
+      max-width: 150mm;
+      font-size: 10.5pt;
       line-height: 1.45;
       color: var(--muted);
     }
     .feature-row {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
-      margin: 12px 0 10px;
+      gap: 3mm;
+      margin: 0 0 4mm;
       flex-shrink: 0;
     }
     .feature {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 5px;
+      gap: 2mm;
       text-align: center;
       color: var(--cta);
-      font-size: 8.5px;
-      font-weight: 700;
+      font-size: 8pt;
+      font-weight: 750;
     }
     .feature svg {
-      width: 28px;
-      height: 28px;
-      padding: 5px;
+      width: 10mm;
+      height: 10mm;
+      padding: 2mm;
       border-radius: 999px;
-      border: 1px solid color-mix(in srgb, var(--accent) 28%, white);
+      border: 0.35mm solid color-mix(in srgb, var(--accent) 30%, white);
       background: #fff;
     }
     .stats {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
+      gap: 3.5mm;
       flex-shrink: 0;
+      margin-bottom: 3mm;
     }
     .stat {
-      border: 1px solid var(--line);
-      border-radius: 12px;
+      border: 0.35mm solid var(--line);
+      border-radius: 3mm;
       background: #fff;
-      padding: 10px 12px;
+      padding: 3.5mm 4mm;
       text-align: center;
     }
-    .stat-label {
+    .stat span {
       display: block;
-      font-size: 9px;
+      font-size: 8.5pt;
       font-weight: 800;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--muted);
     }
     .stat strong {
       display: block;
-      margin-top: 2px;
-      font-size: 26px;
+      margin-top: 1mm;
+      font-size: 28pt;
+      line-height: 1;
       font-weight: 800;
       color: var(--heading);
-      line-height: 1.1;
     }
     .variant-note {
-      margin: 7px 0 8px;
-      font-size: 9px;
+      margin: 0 0 3mm;
+      font-size: 8.5pt;
       line-height: 1.4;
       color: var(--muted);
       flex-shrink: 0;
     }
-    .toc-block { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+    .toc-block {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+      margin-bottom: 3mm;
+    }
     .toc-block h2 {
       margin: 0;
-      font-size: 16px;
+      font-size: 15pt;
       font-weight: 800;
       color: var(--cta);
     }
     .toc-note {
-      margin: 2px 0 6px;
-      font-size: 9.5px;
+      margin: 1mm 0 2.5mm;
+      font-size: 8.5pt;
       color: var(--muted);
     }
     .toc-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 5px 8px;
+      gap: 2mm 3mm;
     }
     .toc-row {
       display: grid;
-      grid-template-columns: 22px 1fr auto 10px;
-      gap: 6px;
+      grid-template-columns: 6mm 1fr auto;
+      gap: 2mm;
       align-items: center;
-      padding: 6px 8px;
-      border-radius: 10px;
-      border: 1px solid var(--line);
+      padding: 2mm 2.5mm;
+      border-radius: 2mm;
+      border: 0.3mm solid var(--line);
       background: #fff;
     }
     .toc-num {
-      width: 20px;
-      height: 20px;
-      border-radius: 6px;
+      width: 5.5mm;
+      height: 5.5mm;
+      border-radius: 1.2mm;
       display: grid;
       place-items: center;
       color: #fff;
-      font-size: 9px;
+      font-size: 8pt;
       font-weight: 800;
     }
     .toc-name {
-      font-size: 10px;
-      font-weight: 700;
+      font-size: 9.5pt;
+      font-weight: 750;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .toc-count { font-size: 10px; font-weight: 700; color: var(--muted); }
-    .toc-chevron { color: var(--muted); font-size: 12px; }
-    .toc-empty { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+    .toc-count {
+      font-size: 9.5pt;
+      font-weight: 750;
+      color: var(--muted);
+    }
+    .toc-empty {
+      grid-column: 1 / -1;
+      color: var(--muted);
+      font-size: 10pt;
+    }
     .qr-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-top: 8px;
+      gap: 3.5mm;
       flex-shrink: 0;
+      margin-bottom: 3mm;
     }
     .qr-panel {
       display: grid;
-      grid-template-columns: 54px 1fr;
-      gap: 8px;
+      grid-template-columns: 22mm 1fr;
+      gap: 3mm;
       align-items: center;
-      padding: 8px;
-      border-radius: 12px;
-      border: 1px solid var(--line);
+      min-height: 28mm;
+      padding: 3mm;
+      border-radius: 3mm;
+      border: 0.4mm solid var(--line);
       background: #fff;
       text-decoration: none !important;
       color: inherit !important;
+      box-shadow: 0 0.8mm 2mm rgba(20, 40, 30, 0.05);
     }
     .qr-image {
-      width: 54px;
-      height: 54px;
+      width: 22mm;
+      height: 22mm;
       object-fit: contain;
-      border-radius: 6px;
+      border-radius: 1.4mm;
+      border: 0.3mm solid #e8efe9;
       background: #fff;
-      border: 1px solid #eef3ef;
     }
-    .qr-title { margin: 0; font-size: 11px; font-weight: 800; color: var(--heading); }
-    .qr-sub { margin: 2px 0 4px; font-size: 8.5px; color: var(--muted); }
+    .qr-title {
+      margin: 0;
+      font-size: 11pt;
+      font-weight: 800;
+      color: var(--heading);
+    }
+    .qr-sub {
+      margin: 1mm 0 2mm;
+      font-size: 8.5pt;
+      color: var(--muted);
+    }
     .qr-cta {
       display: inline-block;
       border-radius: 999px;
       background: var(--cta);
       color: #fff;
-      font-size: 8px;
+      font-size: 8pt;
       font-weight: 800;
-      padding: 3px 8px;
+      padding: 1.2mm 3mm;
     }
     .cover-bar {
-      margin-top: 8px;
-      border-radius: 8px;
+      flex-shrink: 0;
+      border-radius: 2mm;
       background: var(--cta);
       color: #fff;
       display: flex;
       justify-content: space-between;
-      gap: 10px;
-      padding: 7px 10px;
-      font-size: 8.5px;
-      font-weight: 700;
-      flex-shrink: 0;
+      gap: 3mm;
+      padding: 2.8mm 3.5mm;
+      font-size: 8pt;
+      font-weight: 750;
     }
+
     @media print {
-      body { background: #fff; }
+      html, body { background: #fff !important; }
       .toolbar { display: none !important; }
       .sheet {
-        margin: 0;
-        box-shadow: none;
-        border-radius: 0;
-        width: 210mm;
-        height: 297mm;
-        max-height: 297mm;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        width: 210mm !important;
+        height: 297mm !important;
+        max-height: 297mm !important;
       }
       .category-sheet, .cover {
         page-break-after: always;
@@ -902,12 +1033,15 @@ function templateCss(payload: CataloguePdfPayload): string {
         page-break-after: auto;
         break-after: auto;
       }
-      .card, .qr-panel, .sheet-brand, .sheet-footer {
+      .card, .qr-panel, .sheet-header, .sheet-footer, .category-band {
         break-inside: avoid;
         page-break-inside: avoid;
       }
     }
-    @page { size: A4 portrait; margin: 0; }
+    @page {
+      size: A4 portrait;
+      margin: 0;
+    }
   `;
 }
 
@@ -915,7 +1049,7 @@ export function buildCataloguePdfHtml(
   payload: CataloguePdfPayload,
   options?: { autoPrint?: boolean }
 ) {
-  const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -940,6 +1074,4 @@ export function buildCataloguePdfHtml(
   </script>
 </body>
 </html>`;
-
-  return html;
 }
