@@ -1,0 +1,102 @@
+import type { CataloguePdfPayload } from "@/services/catalogue-pdf.service";
+import { buildCataloguePdfHtml } from "@/lib/catalogue-pdf-html";
+import { embedCatalogueImages, pdfImageOrPlaceholder } from "@/lib/catalogue-pdf-images";
+import { getSiteUrl } from "@/lib/site-config";
+
+export function absolutizeMediaUrl(url: string | null, origin: string): string | null {
+  if (!url) return null;
+  if (url.startsWith("data:")) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("//")) return `https:${url}`;
+  if (url.startsWith("/")) return `${origin}${url}`;
+  return `${origin}/${url}`;
+}
+
+/**
+ * Shared production PDF assembly:
+ * payload (DB) → absolute media URLs → embed images → HTML.
+ * Used by the admin API route and the local preview script.
+ */
+export async function assembleCataloguePdfHtml(
+  payload: CataloguePdfPayload,
+  options?: { origin?: string; autoPrint?: boolean }
+): Promise<{ html: string; stats: CataloguePdfBuildStats }> {
+  const origin = (options?.origin || getSiteUrl()).replace(/\/$/, "");
+  const logoAbsolute = absolutizeMediaUrl(payload.catalogue.logoUrl, origin);
+  const productUrls = payload.categories.flatMap((category) =>
+    category.products.map((product) => absolutizeMediaUrl(product.imageUrl, origin))
+  );
+
+  const embedded = await embedCatalogueImages([logoAbsolute, ...productUrls]);
+
+  let embeddedProductImages = 0;
+  let fallbackProductImages = 0;
+
+  const withAbsoluteMedia: CataloguePdfPayload = {
+    ...payload,
+    catalogue: {
+      ...payload.catalogue,
+      logoUrl: logoAbsolute ? embedded.get(logoAbsolute) ?? logoAbsolute : null,
+    },
+    categories: payload.categories.map((category) => ({
+      ...category,
+      products: category.products.map((product) => {
+        const absolute = absolutizeMediaUrl(product.imageUrl, origin);
+        const embeddedUri = absolute ? embedded.get(absolute) : undefined;
+        if (embeddedUri?.startsWith("data:image/") && !embeddedUri.includes("svg+xml")) {
+          embeddedProductImages += 1;
+        } else if (!absolute || !embeddedUri) {
+          fallbackProductImages += 1;
+        } else if (embeddedUri.startsWith("data:")) {
+          embeddedProductImages += 1;
+        } else {
+          fallbackProductImages += 1;
+        }
+        return {
+          ...product,
+          imageUrl: pdfImageOrPlaceholder(absolute, embedded, product.displayName),
+        };
+      }),
+    })),
+  };
+
+  const html = buildCataloguePdfHtml(withAbsoluteMedia, {
+    autoPrint: options?.autoPrint,
+  });
+
+  return {
+    html,
+    stats: {
+      origin,
+      catalogueId: payload.catalogue.id,
+      catalogueName: payload.catalogue.name,
+      catalogueSlug: payload.catalogue.slug,
+      websiteUrl: payload.websiteUrl,
+      whatsappPhone: payload.whatsappPhone,
+      totalProducts: payload.totalProducts,
+      listedCards: payload.listedCards,
+      categories: payload.categories.length,
+      embeddedProductImages,
+      fallbackProductImages,
+      sampleNames: payload.categories
+        .flatMap((c) => c.products)
+        .slice(0, 5)
+        .map((p) => p.displayName),
+    },
+  };
+}
+
+export interface CataloguePdfBuildStats {
+  origin: string;
+  catalogueId: string;
+  catalogueName: string;
+  catalogueSlug: string;
+  websiteUrl: string;
+  whatsappPhone: string;
+  totalProducts: number;
+  listedCards: number;
+  categories: number;
+  embeddedProductImages: number;
+  fallbackProductImages: number;
+  sampleNames: string[];
+}

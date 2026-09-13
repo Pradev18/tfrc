@@ -1,84 +1,122 @@
-import { writeFileSync } from "node:fs";
+/**
+ * Generate a local PDF HTML preview from LIVE catalogue data (same path as production).
+ *
+ * Usage:
+ *   npx tsx scripts/generate-pdf-preview.ts
+ *   npx tsx scripts/generate-pdf-preview.ts pawmart
+ *   npx tsx scripts/generate-pdf-preview.ts <catalogueId>
+ *
+ * Never invents Sample Product / example.com data.
+ */
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
-import { buildCataloguePdfHtml } from "../src/lib/catalogue-pdf-html";
-import type { CataloguePdfPayload } from "../src/services/catalogue-pdf.service";
-import { generateQrDataUrl } from "../src/lib/catalogue-pdf-qr";
+import { writeFileSync } from "node:fs";
+import { config as loadEnv } from "dotenv";
 
-function svgData(label: string) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect fill="#f3f6f4" width="100%" height="100%"/><rect x="70" y="50" width="260" height="200" rx="18" fill="#dfe8e2"/><text x="200" y="155" text-anchor="middle" font-family="Segoe UI, Arial" font-size="18" font-weight="700" fill="#2f6b52">${label}</text></svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
+loadEnv({ path: resolve(process.cwd(), ".env") });
+loadEnv({ path: resolve(process.cwd(), ".env.local"), override: true });
+
+// Stub Next.js "server-only" so the shared service can run in a Node script.
+const require = createRequire(import.meta.url);
+const serverOnlyPath = require.resolve("server-only");
+require.cache[serverOnlyPath] = {
+  id: serverOnlyPath,
+  filename: serverOnlyPath,
+  loaded: true,
+  exports: {},
+} as NodeModule;
 
 async function main() {
-  const titles = Array.from({ length: 12 }, (_, i) => `Sample Product ${i + 1}`);
-  const products: CataloguePdfPayload["categories"][number]["products"] = titles.map(
-    (title, i) => ({
-      id: `p${i + 1}`,
-      name: title,
-      displayName: title,
-      productId: String(110012700 + i),
-      size: null,
-      availableSizes: i % 4 === 0 ? ["S", "M", "L"] : [],
-      price: 20 + i * 3,
-      priceFrom: i % 5 === 0,
-      currency: "QAR",
-      inStock: true,
-      imageUrl: svgData(`P${i + 1}`),
-      whatsappUrl: "https://wa.me/97455049229",
-    })
-  );
+  const { default: prisma } = await import("../src/lib/db");
+  const { getCataloguePdfPayload } = await import("../src/services/catalogue-pdf.service");
+  const { assembleCataloguePdfHtml } = await import("../src/lib/catalogue-pdf-build");
+  const { getSiteUrl } = await import("../src/lib/site-config");
 
-  const websiteUrl = "https://example.com/pawmart";
-  const whatsappUrl = "https://wa.me/97455049229";
-  const [websiteQrDataUrl, whatsappQrDataUrl] = await Promise.all([
-    generateQrDataUrl(websiteUrl),
-    generateQrDataUrl(whatsappUrl),
-  ]);
+  async function resolveCatalogueId(arg?: string): Promise<string> {
+    if (arg) {
+      const byId = await prisma.environment.findUnique({
+        where: { id: arg },
+        select: { id: true },
+      });
+      if (byId) return byId.id;
+      const bySlug = await prisma.environment.findUnique({
+        where: { slug: arg },
+        select: { id: true },
+      });
+      if (bySlug) return bySlug.id;
+      throw new Error(`Catalogue not found for id/slug: ${arg}`);
+    }
 
-  const payload: CataloguePdfPayload = {
-    catalogue: {
-      id: "demo",
-      name: "PawMart",
-      slug: "pawmart",
-      logoUrl: null,
-      tagline: "Everything for your pets",
-      description:
-        "Food, grooming, toys and accessories — handpicked for pet lovers in Qatar.",
-    },
-    websiteUrl,
-    whatsappUrl,
-    whatsappPhone: "97455049229",
-    websiteQrDataUrl,
-    whatsappQrDataUrl,
-    totalProducts: 24,
-    listedCards: 24,
-    accent: "#40916c",
-    heading: "#0f2922",
-    muted: "#6b8f82",
-    surface: "#f7fbf9",
-    cta: "#1b4332",
-    categories: [
-      {
-        slug: "leashes-collars",
-        name: "Leashes & Collars",
-        productCount: 24,
-        products: [
-          ...products,
-          ...products.map((p, i) => ({
-            ...p,
-            id: `q${i + 1}`,
-            displayName: `${p.displayName} Pro`,
-            productId: String(110012800 + i),
-          })),
-        ],
+    const withProducts = await prisma.environment.findFirst({
+      where: {
+        status: "ACTIVE",
+        products: { some: { deletedAt: null, status: "ACTIVE" } },
       },
-    ],
-  };
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, slug: true, name: true },
+    });
+    if (!withProducts) {
+      throw new Error("No active catalogue with products found in the database.");
+    }
+    console.log(`Using catalogue: ${withProducts.name} (${withProducts.slug})`);
+    return withProducts.id;
+  }
 
-  const html = buildCataloguePdfHtml(payload, { autoPrint: false });
-  const out = resolve(process.cwd(), "tmp-catalogue-pdf-preview.html");
-  writeFileSync(out, html, "utf8");
-  console.log(out);
+  try {
+    const arg = process.argv[2];
+    const catalogueId = await resolveCatalogueId(arg);
+    const payload = await getCataloguePdfPayload(catalogueId);
+    if (!payload) {
+      throw new Error(`getCataloguePdfPayload returned null for ${catalogueId}`);
+    }
+
+    const { html, stats } = await assembleCataloguePdfHtml(payload, {
+      origin: getSiteUrl(),
+      autoPrint: false,
+    });
+
+    const banned = [
+      "Sample Product",
+      "example.com/pawmart",
+      ">P1</text>",
+      ">P2</text>",
+      ">P3</text>",
+    ];
+    for (const needle of banned) {
+      if (html.includes(needle)) {
+        throw new Error(`Preview HTML still contains forbidden demo content: ${needle}`);
+      }
+    }
+
+    if (!stats.sampleNames.length) {
+      throw new Error("Payload produced zero product cards — check catalogue data.");
+    }
+
+    const out = resolve(process.cwd(), "tmp-catalogue-pdf-preview.html");
+    writeFileSync(out, html, "utf8");
+
+    console.log("Wrote", out);
+    console.log(
+      JSON.stringify(
+        {
+          catalogue: stats.catalogueName,
+          slug: stats.catalogueSlug,
+          websiteUrl: stats.websiteUrl,
+          whatsappPhone: stats.whatsappPhone,
+          totalProducts: stats.totalProducts,
+          listedCards: stats.listedCards,
+          categories: stats.categories,
+          embeddedProductImages: stats.embeddedProductImages,
+          fallbackProductImages: stats.fallbackProductImages,
+          sampleNames: stats.sampleNames,
+        },
+        null,
+        2
+      )
+    );
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
 main().catch((error) => {

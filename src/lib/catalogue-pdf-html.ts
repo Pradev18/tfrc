@@ -576,11 +576,11 @@ function templateCss(payload: CataloguePdfPayload): string {
       box-shadow: 0 0.6mm 1.6mm rgba(20, 40, 30, 0.05);
     }
     .card-image {
-      flex: 0 0 58%;
-      height: 58%;
-      max-height: 58%;
+      flex: 0 0 60%;
+      height: 60%;
+      max-height: 60%;
       min-height: 0;
-      padding: 2mm;
+      padding: 2.2mm;
       background: linear-gradient(180deg, #f7faf8 0%, #eef4f0 100%);
       display: flex;
       align-items: center;

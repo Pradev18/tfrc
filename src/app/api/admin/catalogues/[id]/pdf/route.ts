@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { getCataloguePdfPayload } from "@/services/catalogue-pdf.service";
-import { buildCataloguePdfHtml } from "@/lib/catalogue-pdf-html";
+import { assembleCataloguePdfHtml } from "@/lib/catalogue-pdf-build";
 import { getSiteUrl } from "@/lib/site-config";
-import { embedCatalogueImages, pdfImageOrPlaceholder } from "@/lib/catalogue-pdf-images";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -12,15 +11,6 @@ interface RouteContext {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 120;
-
-function absolutizeMediaUrl(url: string | null, origin: string): string | null {
-  if (!url) return null;
-  if (url.startsWith("data:")) return url;
-  if (/^https?:\/\//i.test(url)) return url;
-  if (url.startsWith("//")) return `https:${url}`;
-  if (url.startsWith("/")) return `${origin}${url}`;
-  return `${origin}/${url}`;
-}
 
 export async function GET(req: NextRequest, context: RouteContext) {
   const { error } = await requireAdminSession();
@@ -33,35 +23,8 @@ export async function GET(req: NextRequest, context: RouteContext) {
   }
 
   const origin = (req.nextUrl.origin || getSiteUrl()).replace(/\/$/, "");
-  const logoAbsolute = absolutizeMediaUrl(payload.catalogue.logoUrl, origin);
-  const productUrls = payload.categories.flatMap((category) =>
-    category.products.map((product) => absolutizeMediaUrl(product.imageUrl, origin))
-  );
-  const embedded = await embedCatalogueImages([logoAbsolute, ...productUrls]);
-
-  const withAbsoluteMedia = {
-    ...payload,
-    catalogue: {
-      ...payload.catalogue,
-      // Keep absolute URL if embed fails so the browser can still load the uploaded logo.
-      logoUrl: logoAbsolute
-        ? embedded.get(logoAbsolute) ?? logoAbsolute
-        : null,
-    },
-    categories: payload.categories.map((category) => ({
-      ...category,
-      products: category.products.map((product) => {
-        const absolute = absolutizeMediaUrl(product.imageUrl, origin);
-        return {
-          ...product,
-          imageUrl: pdfImageOrPlaceholder(absolute, embedded, product.displayName),
-        };
-      }),
-    })),
-  };
-
   const autoPrint = req.nextUrl.searchParams.get("print") === "1";
-  const html = buildCataloguePdfHtml(withAbsoluteMedia, { autoPrint });
+  const { html } = await assembleCataloguePdfHtml(payload, { origin, autoPrint });
   const filename = `${payload.catalogue.slug || "catalogue"}-brochure.pdf.html`;
 
   return new NextResponse(html, {
