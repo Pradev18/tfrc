@@ -1,3 +1,5 @@
+import { readUploadedImage } from "@/lib/upload";
+
 const MAX_EMBED_BYTES = 1_500_000;
 const FETCH_TIMEOUT_MS = 12_000;
 const CONCURRENCY = 8;
@@ -8,15 +10,61 @@ function toDataUri(buffer: Buffer, contentType: string): string {
   return `data:${type};base64,${buffer.toString("base64")}`;
 }
 
+/** Last-resort fallback only — never used as intentional sample content. */
 function placeholderDataUri(label: string): string {
-  const safe = (label || "P").slice(0, 2).toUpperCase().replace(/[<>&"']/g, "");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480"><rect width="480" height="480" fill="#f4f7f5"/><rect x="24" y="24" width="432" height="432" rx="36" fill="#ffffff" stroke="#d7e4dc" stroke-width="4"/><text x="240" y="268" text-anchor="middle" font-family="Arial,sans-serif" font-size="120" font-weight="700" fill="#9bb3a4">${safe}</text></svg>`;
+  const words = (label || "Item").trim().split(/\s+/).filter(Boolean);
+  const safe = (
+    words.length >= 2
+      ? `${words[0]![0] ?? ""}${words[1]![0] ?? ""}`
+      : (words[0] ?? "Item").slice(0, 2)
+  )
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 2) || "·";
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480"><rect width="480" height="480" fill="#f4f7f5"/><rect x="24" y="24" width="432" height="432" rx="36" fill="#ffffff" stroke="#d7e4dc" stroke-width="4"/><text x="240" y="268" text-anchor="middle" font-family="Arial,sans-serif" font-size="96" font-weight="700" fill="#9bb3a4">${safe}</text></svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function mediaFilenameFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url, "http://local.invalid");
+    const path = parsed.pathname;
+    const mediaMatch = path.match(/\/api\/media\/([^/]+)$/);
+    if (mediaMatch?.[1]) return decodeURIComponent(mediaMatch[1]);
+    const uploadsMatch = path.match(/\/uploads\/([^/]+)$/);
+    if (uploadsMatch?.[1]) return decodeURIComponent(uploadsMatch[1]);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function readLocalMediaAsDataUri(url: string): Promise<string | null> {
+  const filename = mediaFilenameFromUrl(url);
+  if (!filename) return null;
+  const file = await readUploadedImage(filename);
+  if (!file || file.buffer.length === 0 || file.buffer.length > MAX_EMBED_BYTES) {
+    return null;
+  }
+  return toDataUri(file.buffer, file.contentType);
 }
 
 async function fetchImageAsDataUri(url: string): Promise<string | null> {
   const cached = cache.get(url);
   if (cached) return cached;
+
+  if (url.startsWith("data:")) {
+    cache.set(url, url);
+    return url;
+  }
+
+  // Prefer local disk for uploaded media (works without a running HTTP server).
+  const local = await readLocalMediaAsDataUri(url);
+  if (local) {
+    cache.set(url, local);
+    return local;
+  }
 
   try {
     const response = await fetch(url, {

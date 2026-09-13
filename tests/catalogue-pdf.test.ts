@@ -102,7 +102,7 @@ describe("catalogue PDF HTML", () => {
     expect(html).toContain("grid-template-rows: repeat(3, minmax(0, 1fr))");
     expect(html).toContain("width: 210mm");
     expect(html).toContain("height: 297mm");
-    expect(html).toContain("flex: 0 0 58%");
+    expect(html).toContain("flex: 0 0 60%");
     expect(html).not.toContain("Generated");
     expect(html).not.toContain("height: 82mm");
   });
