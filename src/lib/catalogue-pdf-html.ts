@@ -356,21 +356,27 @@ function templateCss(payload: CataloguePdfPayload): string {
     html, body {
       margin: 0;
       padding: 0;
+      width: 210mm;
+      max-width: 210mm;
       color: var(--heading);
       background: #d9e3dc;
       font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
+    body {
+      margin-inline: auto;
+    }
     .toolbar {
       position: sticky;
       top: 0;
       z-index: 40;
+      width: 210mm;
       display: flex;
       gap: 12px;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 18px;
+      padding: 3mm 4mm;
       background: #fff;
       border-bottom: 1px solid var(--line);
     }
@@ -391,10 +397,10 @@ function templateCss(payload: CataloguePdfPayload): string {
       width: 210mm;
       height: 297mm;
       max-height: 297mm;
-      margin: 10mm auto;
-      padding: 7mm 8mm 6mm;
+      margin: 0;
+      padding: 6mm 6.5mm 5mm;
       background: #fff;
-      box-shadow: 0 10px 30px rgba(15, 41, 34, 0.12);
+      box-shadow: none;
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -405,15 +411,15 @@ function templateCss(payload: CataloguePdfPayload): string {
 
     /* ========== PRODUCT PAGE HEADER ~22mm ========== */
     .sheet-header {
-      flex: 0 0 22mm;
-      height: 22mm;
-      max-height: 22mm;
+      flex: 0 0 20mm;
+      height: 20mm;
+      max-height: 20mm;
       display: grid;
       grid-template-columns: 28mm 1fr 32mm;
       gap: 3mm;
       align-items: center;
-      padding: 0 1mm 2.5mm;
-      margin-bottom: 2mm;
+      padding: 0 0.5mm 2mm;
+      margin-bottom: 1.5mm;
       border-bottom: 0.4mm solid var(--line);
       background: linear-gradient(180deg, var(--cream) 0%, #fff 100%);
     }
@@ -491,15 +497,15 @@ function templateCss(payload: CataloguePdfPayload): string {
 
     /* ========== CATEGORY BAND ~16mm ========== */
     .category-band {
-      flex: 0 0 16mm;
-      height: 16mm;
-      max-height: 16mm;
+      flex: 0 0 14mm;
+      height: 14mm;
+      max-height: 14mm;
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 4mm;
-      margin-bottom: 2.5mm;
-      padding: 0 1mm;
+      margin-bottom: 2mm;
+      padding: 0 0.5mm;
     }
     .category-band-main {
       display: flex;
@@ -548,12 +554,12 @@ function templateCss(payload: CataloguePdfPayload): string {
     /* ========== PRODUCT GRID — majority of page ========== */
     .grid {
       flex: 1 1 auto;
-      min-height: 0;
+      min-height: 228mm;
       height: 100%;
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       grid-template-rows: repeat(3, minmax(0, 1fr));
-      gap: 2.8mm;
+      gap: 2.4mm;
       align-content: stretch;
       overflow: hidden;
     }
@@ -602,7 +608,7 @@ function templateCss(payload: CataloguePdfPayload): string {
     }
     .card-title {
       margin: 0;
-      font-size: 9.5pt;
+      font-size: 10pt;
       line-height: 1.2;
       font-weight: 800;
       color: var(--cta);
@@ -613,7 +619,7 @@ function templateCss(payload: CataloguePdfPayload): string {
     }
     .card-meta {
       margin: 0;
-      font-size: 7pt;
+      font-size: 7.5pt;
       color: var(--muted);
       white-space: nowrap;
       overflow: hidden;
@@ -645,7 +651,7 @@ function templateCss(payload: CataloguePdfPayload): string {
     }
     .card-price {
       margin: 0.4mm 0 0;
-      font-size: 11.5pt;
+      font-size: 12pt;
       line-height: 1.1;
       font-weight: 800;
       color: var(--ink);
@@ -692,15 +698,15 @@ function templateCss(payload: CataloguePdfPayload): string {
 
     /* ========== FOOTER ~16mm ========== */
     .sheet-footer {
-      flex: 0 0 16mm;
-      height: 16mm;
-      max-height: 16mm;
+      flex: 0 0 15mm;
+      height: 15mm;
+      max-height: 15mm;
       display: grid;
       grid-template-columns: 1.1fr 1.4fr 1fr;
       gap: 3mm;
       align-items: center;
-      margin-top: 2.5mm;
-      padding-top: 2.5mm;
+      margin-top: 2mm;
+      padding-top: 2mm;
       border-top: 0.4mm solid var(--line);
     }
     .footer-name {
@@ -1015,7 +1021,13 @@ function templateCss(payload: CataloguePdfPayload): string {
     }
 
     @media print {
-      html, body { background: #fff !important; }
+      html, body {
+        background: #fff !important;
+        width: 210mm !important;
+        max-width: 210mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
       .toolbar { display: none !important; }
       .sheet {
         margin: 0 !important;
