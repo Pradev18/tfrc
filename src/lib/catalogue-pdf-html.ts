@@ -44,7 +44,9 @@ function categoryBlurb(categoryName: string, catalogueName: string): string {
 }
 
 function sizeChips(product: CataloguePdfProduct): string {
-  if (!product.availableSizes.length) return "";
+  if (!product.availableSizes.length) {
+    return `<div class="sizes sizes--empty" aria-hidden="true"></div>`;
+  }
   const chips = product.availableSizes
     .map((size) => `<span class="size-chip">${escapeHtml(size)}</span>`)
     .join("");
@@ -512,8 +514,8 @@ function templateCss(payload: CataloguePdfPayload): string {
       box-shadow: 0 1px 3px rgba(20, 40, 30, 0.04);
     }
     .card-image {
-      flex: 0 0 42%;
-      max-height: 42%;
+      flex: 0 0 50%;
+      max-height: 50%;
       min-height: 0;
       padding: 4px;
       background: #f4f7f5;
@@ -537,6 +539,7 @@ function templateCss(payload: CataloguePdfPayload): string {
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      justify-content: flex-start;
       gap: 2px;
       padding: 5px 6px 6px;
     }
@@ -549,6 +552,7 @@ function templateCss(payload: CataloguePdfPayload): string {
       min-height: 2.5em;
       max-height: 2.5em;
       overflow: hidden;
+      flex-shrink: 0;
     }
     .card-meta {
       margin: 0;
@@ -557,14 +561,19 @@ function templateCss(payload: CataloguePdfPayload): string {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      flex-shrink: 0;
     }
     .sizes {
       display: flex;
       flex-wrap: wrap;
       gap: 2px;
-      max-height: 16px;
+      min-height: 14px;
+      max-height: 14px;
       overflow: hidden;
       flex-shrink: 0;
+    }
+    .sizes--empty {
+      visibility: hidden;
     }
     .size-chip {
       display: inline-flex;
@@ -585,6 +594,7 @@ function templateCss(payload: CataloguePdfPayload): string {
       font-weight: 800;
       color: var(--ink);
       letter-spacing: -0.01em;
+      flex-shrink: 0;
     }
     .card-stock {
       margin: 0;
@@ -593,6 +603,7 @@ function templateCss(payload: CataloguePdfPayload): string {
       gap: 4px;
       font-size: 7.5px;
       font-weight: 700;
+      flex-shrink: 0;
     }
     .card-stock.in { color: #166534; }
     .card-stock.out { color: #9f1239; }
@@ -604,7 +615,7 @@ function templateCss(payload: CataloguePdfPayload): string {
       flex-shrink: 0;
     }
     .card-wa {
-      margin-top: auto;
+      margin-top: 4px;
       display: inline-flex;
       align-items: center;
       justify-content: center;

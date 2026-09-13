@@ -137,6 +137,7 @@ describe("catalogue PDF HTML", () => {
       })
     );
     expect(html).not.toContain('class="size-chip"');
+    expect(html).toContain("sizes--empty");
     expect(html).toContain("Rope Pet Toy");
     expect(html).toContain("Item code: 110009578");
   });
