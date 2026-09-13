@@ -5,10 +5,12 @@ import { getCatalogueById } from "@/services/catalogue-admin.service";
 import { getShopCategories } from "@/services/shop-category.service";
 import { OTHER_SHOP_CATEGORY } from "@/lib/shop-categories";
 import { getEnvVisual } from "@/lib/env-visuals";
+import { getEnvironmentConfig } from "@/lib/environments";
 import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { buildWhatsAppUrl, generateWhatsAppLinkSync } from "@/lib/whatsapp";
 import { getSiteUrl } from "@/lib/site-config";
 import { normalizeCatalogueImageSrc } from "@/lib/media-url";
+import { generateQrDataUrl } from "@/lib/catalogue-pdf-qr";
 import {
   compareVariantLabels,
   deriveProductVariantIdentity,
@@ -47,9 +49,16 @@ export interface CataloguePdfPayload {
     slug: string;
     logoUrl: string | null;
     tagline: string | null;
+    description: string | null;
   };
+  /** Absolute store URL for this catalogue (QR + cover). */
+  websiteUrl: string;
   whatsappUrl: string;
-  generatedAt: string;
+  /** Digits-only WhatsApp number for display. */
+  whatsappPhone: string;
+  /** Scannable QR data URIs generated for this catalogue. */
+  websiteQrDataUrl: string;
+  whatsappQrDataUrl: string;
   /** Active product rows (matches Excel / DB import count). */
   totalProducts: number;
   /** Brochure cards after same-product size variants are grouped. */
@@ -58,6 +67,7 @@ export interface CataloguePdfPayload {
   heading: string;
   muted: string;
   surface: string;
+  cta: string;
   categories: CataloguePdfCategory[];
 }
 
@@ -314,11 +324,21 @@ export async function getCataloguePdfPayload(
   }
 
   const visual = getEnvVisual(catalogue.slug);
+  const envConfig = getEnvironmentConfig(catalogue.slug);
   // Cover "Products" matches the Excel / DB active row count (before size-variant collapse).
   const totalProducts = products.length;
   const listedCards = categories.reduce((sum, c) => sum + c.products.length, 0);
   // Prefer the uploaded catalogue logo only (not category hero placeholders).
   const logoUrl = normalizeCatalogueImageSrc(catalogue.logoUrl) || null;
+  const websiteUrl = `${siteUrl}/${catalogue.slug}`;
+  const whatsappUrl = buildWhatsAppUrl(
+    whatsappSettings.phoneNumber,
+    `${whatsappSettings.defaultGreeting}\n\nI'd like to order from ${catalogue.name}.`
+  );
+  const [websiteQrDataUrl, whatsappQrDataUrl] = await Promise.all([
+    generateQrDataUrl(websiteUrl),
+    generateQrDataUrl(whatsappUrl),
+  ]);
 
   return {
     catalogue: {
@@ -327,18 +347,24 @@ export async function getCataloguePdfPayload(
       slug: catalogue.slug,
       logoUrl,
       tagline: catalogue.tagline,
+      description:
+        catalogue.description?.trim() ||
+        envConfig?.description ||
+        catalogue.tagline ||
+        null,
     },
-    whatsappUrl: buildWhatsAppUrl(
-      whatsappSettings.phoneNumber,
-      `${whatsappSettings.defaultGreeting}\n\nI'd like to order from ${catalogue.name}.`
-    ),
-    generatedAt: new Date().toISOString(),
+    websiteUrl,
+    whatsappUrl,
+    whatsappPhone: whatsappSettings.phoneNumber.replace(/\D/g, ""),
+    websiteQrDataUrl,
+    whatsappQrDataUrl,
     totalProducts,
     listedCards,
     accent: visual.accent,
     heading: visual.heading,
     muted: visual.muted,
     surface: visual.sectionAlt,
+    cta: visual.cta,
     categories,
   };
 }
