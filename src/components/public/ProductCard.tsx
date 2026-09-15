@@ -19,6 +19,7 @@ import {
   formatAvailableSizes,
   productDisplayTitle,
 } from "@/lib/product-variants";
+import { useT } from "@/context/LanguageContext";
 
 interface ProductCardProps {
   product: (ProductWithRelations | ProductListItem) & {
@@ -45,6 +46,7 @@ export function ProductCard({
   variantPreselected = false,
   eagerPrefetch = false,
 }: ProductCardProps) {
+  const t = useT();
   const router = useRouter();
   const variants = useMemo(() => {
     const list = product.sizeVariants?.length ? product.sizeVariants : [];
@@ -135,19 +137,19 @@ export function ProductCard({
                 className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase text-white"
                 style={{ backgroundColor: v.accent }}
               >
-                Sale
+                {t("product.sale")}
               </span>
             )}
             {hasVideo && (
               <span className="rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-bold uppercase text-white backdrop-blur-sm">
-                Video
+                {t("product.video")}
               </span>
             )}
           </div>
 
           {!inStock && (
             <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] bg-black/60 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur-sm">
-              Check availability
+              {t("product.checkAvailability")}
             </div>
           )}
         </div>
@@ -194,15 +196,12 @@ export function ProductCard({
             </p>
             {itemCode ? (
               <p className="mt-1 font-sans text-[11px] tabular-nums" style={{ color: v.muted }}>
-                Item code: {itemCode}
+                {t("product.itemCode", { code: itemCode })}
               </p>
             ) : null}
             {availableSizesLabel ? (
               <p className="mt-1.5 text-[11px] font-semibold leading-snug" style={{ color: v.body }}>
-                <span className="font-medium" style={{ color: v.muted }}>
-                  Sizes available:{" "}
-                </span>
-                {availableSizesLabel}
+                {t("product.sizesAvailable", { sizes: availableSizesLabel })}
               </p>
             ) : null}
           </div>

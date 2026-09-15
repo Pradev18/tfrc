@@ -6,6 +6,7 @@ import { WhatsAppOrderGate } from "@/components/public/WhatsAppOrderGate";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { useCartWhatsApp } from "@/hooks/useCartWhatsApp";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
+import { useT } from "@/context/LanguageContext";
 
 interface MobileStickyBarProps {
   slug: string;
@@ -20,6 +21,7 @@ export function MobileStickyBar({
   whatsappSettings,
   siteUrl = "",
 }: MobileStickyBarProps) {
+  const t = useT();
   const v = getEnvVisual(slug);
   const { hasItems, itemCount, waHref, checkoutInquiry, clearCart } = useCartWhatsApp(
     whatsappSettings,
@@ -46,7 +48,7 @@ export function MobileStickyBar({
             style={{ backgroundColor: v.cta, color: v.ctaText }}
           >
             <ShoppingBag className="h-4 w-4" strokeWidth={1.75} />
-            Shop
+            {t("store.shop")}
           </a>
           <WhatsAppOrderGate
             href={waHref}
@@ -68,7 +70,7 @@ export function MobileStickyBar({
             style={{ backgroundColor: "#128c47" }}
           >
             <WhatsAppIcon className="h-4 w-4" />
-            {hasItems ? `Order (${itemCount})` : "WhatsApp"}
+            {hasItems ? t("cart.orderCount", { count: itemCount }) : t("nav.orderWhatsApp")}
           </WhatsAppOrderGate>
         </div>
       </div>

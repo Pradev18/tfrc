@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Menu, ShoppingBag, X } from "lucide-react";
 import { TfrcBrand } from "@/components/brand/TfrcBrand";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { EnvIcon } from "@/components/public/EnvIcon";
 import { CartDrawer } from "@/components/public/CartDrawer";
+import { useT } from "@/context/LanguageContext";
 import type { LandingPortal } from "@/lib/platform-images";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
 
@@ -17,6 +19,7 @@ interface LandingHeaderProps {
 }
 
 export function LandingHeader({ portals, whatsappSettings, siteUrl }: LandingHeaderProps) {
+  const t = useT();
   const [catalogueOpen, setCatalogueOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -60,13 +63,14 @@ export function LandingHeader({ portals, whatsappSettings, siteUrl }: LandingHea
           </Link>
 
           <nav className="flex items-center gap-1 sm:gap-1.5" ref={menuRef}>
+            <LanguageSwitcher compact />
             <div className="relative hidden md:block">
               <button
                 type="button"
                 onClick={() => setCatalogueOpen(!catalogueOpen)}
                 className="glass-btn flex min-h-[44px] items-center gap-1.5 rounded-full border border-white/60 bg-white/50 px-4 py-2.5 text-sm font-medium text-[#141414] backdrop-blur-md hover:bg-white/80"
               >
-                Catalogues
+                {t("nav.catalogues")}
                 <ChevronDown
                   className={`h-3.5 w-3.5 text-[#9c9690] transition-transform duration-300 ${catalogueOpen ? "rotate-180" : ""}`}
                 />
@@ -104,7 +108,7 @@ export function LandingHeader({ portals, whatsappSettings, siteUrl }: LandingHea
               type="button"
               onClick={() => setMobileOpen(true)}
               className="glass-btn touch-target flex items-center justify-center rounded-full border border-white/60 bg-white/50 text-[#141414] backdrop-blur-md hover:bg-white/80 md:hidden"
-              aria-label="Open catalogues menu"
+              aria-label={t("nav.openMenu")}
             >
               <Menu className="h-5 w-5" strokeWidth={1.5} />
             </button>
@@ -113,7 +117,7 @@ export function LandingHeader({ portals, whatsappSettings, siteUrl }: LandingHea
               type="button"
               onClick={() => setCartOpen(true)}
               className="glass-btn touch-target flex items-center justify-center rounded-full border border-white/60 bg-white/50 text-[#141414] backdrop-blur-md hover:bg-white/80"
-              aria-label="Open cart"
+              aria-label={t("nav.openCart")}
             >
               <ShoppingBag className="h-5 w-5" strokeWidth={1.5} />
             </button>
@@ -130,15 +134,18 @@ export function LandingHeader({ portals, whatsappSettings, siteUrl }: LandingHea
           />
           <div className="absolute inset-y-0 right-0 flex w-[min(100%,320px)] flex-col bg-[#faf9f7] shadow-xl">
             <div className="flex items-center justify-between border-b border-[#ebe8e3] p-4">
-              <span className="text-base font-semibold text-[#141414]">Catalogues</span>
+              <span className="text-base font-semibold text-[#141414]">{t("nav.catalogues")}</span>
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
                 className="touch-target flex items-center justify-center rounded-full"
-                aria-label="Close menu"
+                aria-label={t("nav.closeMenu")}
               >
                 <X className="h-5 w-5" />
               </button>
+            </div>
+            <div className="border-b border-[#ebe8e3] px-4 py-3">
+              <LanguageSwitcher />
             </div>
             <nav className="flex-1 overflow-y-auto p-3">
               {portals.map((portal) => {

@@ -1,9 +1,8 @@
-import Link from "next/link";
-import { TfrcBrand } from "@/components/brand/TfrcBrand";
 import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { getActiveEnvironments } from "@/services/environment.service";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { TfrcStaffLink } from "@/components/public/TfrcStaffLink";
+import { StoreFooterI18n } from "@/components/store/StoreFooterI18n";
 import type { ParsedEnvironment } from "@/services/environment.service";
 
 interface StoreFooterProps {
@@ -24,65 +23,17 @@ export async function StoreFooter({ environment }: StoreFooterProps) {
       style={{ borderColor: v.border, backgroundColor: v.heading, color: v.surface }}
     >
       <div className="container-pawmart py-8 md:py-10">
-        <div className="grid gap-8 md:grid-cols-3">
-          <div>
-            <TfrcBrand
-              className="gap-2"
-              iconClassName="h-4 brightness-0 invert"
-              textClassName="text-lg font-semibold text-white"
-            />
-            <p className="mt-2 text-sm font-semibold opacity-95">{environment.config.displayName}</p>
-            <p className="mt-1 text-xs opacity-60">Catalogue shopping · WhatsApp orders · Qatar</p>
-            <a
-              href={waHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-flex rounded-full border border-white/25 px-4 py-2 text-xs font-semibold transition-colors hover:bg-white/10"
-            >
-              Order on WhatsApp
-            </a>
-          </div>
-
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-50">Shop</p>
-            <ul className="mt-3 space-y-2 text-sm opacity-80">
-              <li>
-                <Link href={`/${environment.slug}#catalog`} className="hover:opacity-100">
-                  Browse categories
-                </Link>
-              </li>
-              <li>
-                <Link href={`/${environment.slug}#catalog`} className="hover:opacity-100">
-                  All products
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-50">Catalogues</p>
-            <ul className="mt-3 space-y-2 text-sm opacity-80">
-              <li>
-                <Link href="/" className="hover:opacity-100">
-                  All catalogues
-                </Link>
-              </li>
-              {allEnvs
-                .filter((e) => e.slug !== environment.slug)
-                .map((env) => (
-                  <li key={env.slug}>
-                    <Link href={`/${env.slug}`} className="hover:opacity-100">
-                      {env.config.displayName}
-                    </Link>
-                  </li>
-                ))}
-            </ul>
-          </div>
-        </div>
-
-        <p className="mt-8 text-center text-[11px] opacity-40">
-          © {new Date().getFullYear()} TFRC · WhatsApp ordering · Qatar
-        </p>
+        <StoreFooterI18n
+          environmentSlug={environment.slug}
+          displayName={environment.config.displayName}
+          waHref={waHref}
+          otherCatalogues={allEnvs
+            .filter((e) => e.slug !== environment.slug)
+            .map((env) => ({
+              slug: env.slug,
+              displayName: env.config.displayName,
+            }))}
+        />
         <div className="mt-3 text-center">
           <TfrcStaffLink className="opacity-40 hover:opacity-70" />
         </div>

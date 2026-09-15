@@ -232,6 +232,24 @@ export function buildWhatsAppUrl(phoneNumber: string, message: string): string {
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 }
 
+/**
+ * Official WhatsApp “click to chat” URL (same payload shape as WhatsApp Business QR codes).
+ * Prefer this for printable cover QRs — short, reliable, and matches Meta’s QR format.
+ */
+export function buildWhatsAppOfficialChatUrl(
+  phoneNumber: string,
+  message?: string | null
+): string {
+  const cleanPhone = phoneNumber.replace(/\D/g, "");
+  const params = new URLSearchParams();
+  params.set("phone", cleanPhone);
+  const text = message?.trim();
+  if (text) params.set("text", text);
+  params.set("type", "phone_number");
+  params.set("app_absent", "0");
+  return `https://api.whatsapp.com/send/?${params.toString()}`;
+}
+
 export function buildProductWhatsAppCatalogUrl(
   settings: WhatsAppSettings,
   product: WhatsAppProductInput

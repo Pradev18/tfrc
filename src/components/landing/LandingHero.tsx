@@ -1,9 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import { TfrcBrand } from "@/components/brand/TfrcBrand";
 import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
 import { LANDING_PORTALS } from "@/lib/platform-images";
 import type { LandingPortal } from "@/lib/platform-images";
 import { normalizeCatalogueImageSrc } from "@/lib/media-url";
+import { useT } from "@/context/LanguageContext";
 
 interface CataloguePortalCardProps {
   portal: LandingPortal;
@@ -50,6 +53,8 @@ interface LandingHeroProps {
 }
 
 export function LandingHero({ waHref, portals = LANDING_PORTALS }: LandingHeroProps) {
+  const t = useT();
+
   return (
     <section className="landing-hero relative flex w-full flex-1 items-center justify-center overflow-hidden">
       <div className="landing-hero-bg pointer-events-none absolute inset-0" aria-hidden />
@@ -63,9 +68,7 @@ export function LandingHero({ waHref, portals = LANDING_PORTALS }: LandingHeroPr
               textClassName="text-2xl md:text-3xl"
             />
           </div>
-          <p className="mt-2 text-sm text-[#6b6560]">
-            Choose your world — browse freely, order on WhatsApp
-          </p>
+          <p className="mt-2 text-sm text-[#6b6560]">{t("landing.chooseWorld")}</p>
         </div>
 
         <div id="catalogues" className="landing-portal-grid mx-auto mt-8 md:mt-10">
@@ -82,7 +85,7 @@ export function LandingHero({ waHref, portals = LANDING_PORTALS }: LandingHeroPr
             className="glass-btn inline-flex items-center gap-2 rounded-full border border-[#128c47]/20 bg-[#128c47]/90 px-4 py-2 text-sm font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-[#0f7340]"
           >
             <WhatsAppIcon className="h-4 w-4" />
-            Order on WhatsApp
+            {t("nav.orderOnWhatsApp")}
           </a>
         </div>
       </div>

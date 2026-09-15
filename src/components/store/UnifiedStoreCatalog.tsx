@@ -28,6 +28,7 @@ import {
   STORE_SHOW_ALL_EVENT,
   syncStoreStickyOffsets,
 } from "@/lib/store-category-navigation";
+import { useT } from "@/context/LanguageContext";
 
 interface Brand {
   id: string;
@@ -54,6 +55,7 @@ export function UnifiedStoreCatalog({
   siteUrl,
   totalProducts,
 }: UnifiedStoreCatalogProps) {
+  const t = useT();
   const v = getEnvVisual(environmentSlug);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -257,13 +259,13 @@ export function UnifiedStoreCatalog({
       <div className="container-pawmart">
         <div className="mb-3 md:mb-5">
           <p className="text-xs font-semibold uppercase tracking-[0.16em]" style={{ color: v.muted }}>
-            TFRC · {environmentName}
+            {t("store.fullCatalogue", { name: environmentName })}
           </p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight md:text-3xl" style={{ color: v.heading }}>
-            {environmentName} catalogue
+            {t("store.catalogueTitle", { name: environmentName })}
           </h1>
           <p className="mt-1.5 max-w-2xl text-sm leading-relaxed md:text-[15px]" style={{ color: v.body }}>
-            Browse by category below. Select a product, choose options, and order on WhatsApp.
+            {t("store.browseHint")}
           </p>
         </div>
 
@@ -281,7 +283,10 @@ export function UnifiedStoreCatalog({
           onShowAllCategories={() => showAllStoreCategories()}
           onAllProductsSelect={selectAllProducts}
           totalProducts={totalProducts}
-          totalLabel={`${totalProducts.toLocaleString()} products · ${shopCategories.length} categories`}
+          totalLabel={t("store.productsCategories", {
+            products: totalProducts.toLocaleString(),
+            categories: shopCategories.length,
+          })}
           showCategories={!isFilteredView}
         />
 
@@ -293,7 +298,7 @@ export function UnifiedStoreCatalog({
               filters={apiFilters}
               whatsappSettings={whatsappSettings}
               siteUrl={siteUrl}
-              emptyMessage="No products match your search or filters"
+              emptyMessage={t("store.noMatch")}
             />
           </div>
         ) : (

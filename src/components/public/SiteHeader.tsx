@@ -12,6 +12,8 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { WhatsAppButton } from "@/components/public/WhatsAppButton";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { useT } from "@/context/LanguageContext";
 import { shortLabel } from "@/lib/nav-labels";
 import type { NavCategory } from "@/services/category.service";
 
@@ -21,6 +23,7 @@ interface SiteHeaderProps {
 }
 
 export function SiteHeader({ categories, waHref }: SiteHeaderProps) {
+  const t = useT();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -190,17 +193,18 @@ export function SiteHeader({ categories, waHref }: SiteHeaderProps) {
             </nav>
 
             <div className="flex items-center gap-2">
+              <LanguageSwitcher compact />
               <button
                 type="button"
                 onClick={() => setSearchOpen(true)}
                 className="flex h-9 w-9 items-center justify-center border border-border bg-background text-text-muted hover:border-primary hover:text-primary"
-                aria-label="Search"
+                aria-label={t("nav.search")}
               >
                 <Search className="h-4 w-4" strokeWidth={1.75} />
               </button>
               <WhatsAppButton
                 href={waHref}
-                label="WhatsApp"
+                label={t("nav.orderWhatsApp")}
                 size="sm"
                 className="hidden sm:inline-flex !px-4 !py-2.5"
               />
@@ -208,7 +212,7 @@ export function SiteHeader({ categories, waHref }: SiteHeaderProps) {
                 type="button"
                 onClick={() => setMobileOpen(true)}
                 className="flex h-9 w-9 items-center justify-center border border-border lg:hidden"
-                aria-label="Open menu"
+                aria-label={t("nav.openMenu")}
               >
                 <Menu className="h-4 w-4" />
               </button>

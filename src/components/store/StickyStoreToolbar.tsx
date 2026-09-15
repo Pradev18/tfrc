@@ -6,6 +6,7 @@ import { CategoryScroll, type ShopCategoryItem } from "@/components/store/Catego
 import type { StoreFilters } from "@/lib/store-catalog-filter";
 import { UiSelect } from "@/components/ui/UiSelect";
 import { scrollToStoreCategory, ALL_PRODUCTS_CATEGORY_SLUG } from "@/lib/store-category-navigation";
+import { useT } from "@/context/LanguageContext";
 
 interface Brand {
   id: string;
@@ -51,6 +52,7 @@ export function StickyStoreToolbar({
   totalLabel,
   showCategories = true,
 }: StickyStoreToolbarProps) {
+  const t = useT();
   const v = getEnvVisual(environmentSlug);
   const hasActiveFilters = Boolean(
     filters.q ||
@@ -75,9 +77,9 @@ export function StickyStoreToolbar({
               type="search"
               value={searchInput}
               onChange={(e) => onSearchInputChange(e.target.value)}
-              placeholder="Search products, brands, item codes..."
+              placeholder={t("store.searchPlaceholder")}
               className="w-full min-h-[44px] rounded-full border border-black/[0.08] bg-white py-2.5 pl-10 pr-4 text-base sm:text-sm focus:border-[#141414]/25 focus:outline-none focus:ring-2 focus:ring-[#141414]/10"
-              aria-label="Search products"
+              aria-label={t("nav.search")}
             />
           </div>
 
@@ -90,7 +92,7 @@ export function StickyStoreToolbar({
                 style={{ color: v.heading }}
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
-                All categories
+                {t("store.allCategories")}
               </button>
             )}
 
@@ -102,15 +104,15 @@ export function StickyStoreToolbar({
               }`}
               style={filters.inStock ? { backgroundColor: v.cta } : { color: v.heading }}
             >
-              In stock
+              {t("store.inStock")}
             </button>
 
             <UiSelect
               value={filters.brand ?? ""}
               onValueChange={(value) => onFiltersChange({ brand: value || null })}
-              ariaLabel="Filter by brand"
+              ariaLabel={t("store.filterByBrand")}
               options={[
-                { value: "", label: "All brands" },
+                { value: "", label: t("store.allBrands") },
                 ...brands.map((brand) => ({ value: brand.slug, label: brand.name })),
               ]}
               className={`${chipClass} !w-auto min-w-[7rem] border-black/[0.08] bg-white sm:max-w-[9rem]`}
@@ -121,13 +123,13 @@ export function StickyStoreToolbar({
               onValueChange={(value) =>
                 onFiltersChange({ sort: value as StoreFilters["sort"] })
               }
-              ariaLabel="Sort products"
+              ariaLabel={t("store.sortProducts")}
               options={[
-                { value: "newest", label: "Newest" },
-                { value: "featured", label: "Featured" },
-                { value: "price_asc", label: "Price ↑" },
-                { value: "price_desc", label: "Price ↓" },
-                { value: "name", label: "A–Z" },
+                { value: "newest", label: t("store.newest") },
+                { value: "featured", label: t("store.featured") },
+                { value: "price_asc", label: t("store.priceAsc") },
+                { value: "price_desc", label: t("store.priceDesc") },
+                { value: "name", label: t("store.sortAZ") },
               ]}
               className={`${chipClass} !w-auto min-w-[6.5rem] border-black/[0.08] bg-white`}
             />
@@ -139,7 +141,7 @@ export function StickyStoreToolbar({
                 className={`${chipClass} gap-1 text-[#9c9690] hover:text-[#141414]`}
               >
                 <X className="h-3.5 w-3.5" />
-                Clear
+                {t("store.clear")}
               </button>
             )}
           </div>

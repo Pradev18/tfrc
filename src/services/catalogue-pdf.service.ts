@@ -7,8 +7,8 @@ import { OTHER_SHOP_CATEGORY } from "@/lib/shop-categories";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { getEnvironmentConfig } from "@/lib/environments";
 import { getWhatsAppSettings } from "@/lib/whatsapp.server";
-import { buildWhatsAppUrl, generateWhatsAppLinkSync } from "@/lib/whatsapp";
-import { getSiteUrl } from "@/lib/site-config";
+import { buildWhatsAppOfficialChatUrl, generateWhatsAppLinkSync } from "@/lib/whatsapp";
+import { getPublicCatalogueSiteUrl } from "@/lib/site-config";
 import { normalizeCatalogueImageSrc } from "@/lib/media-url";
 import { generateQrDataUrl } from "@/lib/catalogue-pdf-qr";
 import {
@@ -247,9 +247,15 @@ function collapseVariantGroups(
 export async function getCataloguePdfPayload(
   catalogueId: string
 ): Promise<CataloguePdfPayload | null> {
+  /**
+   * Builds a PDF payload for whichever catalogueId is requested.
+   * Visual tokens come from getEnvVisual(slug) with DEFAULT_ENV_VISUAL fallback
+   * for unknown/future catalogues — never a PawMart-only code path.
+   */
   const catalogue = await getCatalogueById(catalogueId);
   if (!catalogue) return null;
 
+  const siteUrl = getPublicCatalogueSiteUrl();
   const [shopCategories, products, whatsappSettings] = await Promise.all([
     getShopCategories(catalogue.slug),
     prisma.product.findMany({
@@ -267,8 +273,6 @@ export async function getCataloguePdfPayload(
     }),
     getWhatsAppSettings(),
   ]);
-  const siteUrl = getSiteUrl();
-
   const buckets = new Map<string, ProductRow[]>();
   for (const cat of shopCategories) buckets.set(cat.slug, []);
   buckets.set(OTHER_SHOP_CATEGORY.slug, []);
@@ -331,9 +335,10 @@ export async function getCataloguePdfPayload(
   // Prefer the uploaded catalogue logo only (not category hero placeholders).
   const logoUrl = normalizeCatalogueImageSrc(catalogue.logoUrl) || null;
   const websiteUrl = `${siteUrl}/${catalogue.slug}`;
-  const whatsappUrl = buildWhatsAppUrl(
+  // Cover WhatsApp QR matches official WA Business QR shape (phone + default greeting from settings).
+  const whatsappUrl = buildWhatsAppOfficialChatUrl(
     whatsappSettings.phoneNumber,
-    `${whatsappSettings.defaultGreeting}\n\nI'd like to order from ${catalogue.name}.`
+    whatsappSettings.defaultGreeting
   );
   const [websiteQrDataUrl, whatsappQrDataUrl] = await Promise.all([
     generateQrDataUrl(websiteUrl),

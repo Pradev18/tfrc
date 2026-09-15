@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Menu, X, Search, ChevronDown, ArrowRight } from "lucide-react";
 import { TfrcBrand } from "@/components/brand/TfrcBrand";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { WhatsAppButton } from "@/components/public/WhatsAppButton";
 import { CartButton } from "@/components/public/CartButton";
 import { CartDrawer } from "@/components/public/CartDrawer";
@@ -13,6 +14,7 @@ import { EnvIcon } from "@/components/public/EnvIcon";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
 import type { ParsedEnvironment } from "@/services/environment.service";
 import { focusStoreCategory, showAllStoreCategories } from "@/lib/store-category-navigation";
+import { useT } from "@/context/LanguageContext";
 
 interface ShopNavCategory {
   slug: string;
@@ -39,6 +41,7 @@ export function EnvironmentHeader({
   siteUrl,
   activeEnvironments,
 }: EnvironmentHeaderProps) {
+  const t = useT();
   const router = useRouter();
   const envSlug = environment.slug;
   const v = getEnvVisual(envSlug);
@@ -89,20 +92,20 @@ export function EnvironmentHeader({
             className="px-3 text-[10px] font-semibold uppercase tracking-[0.14em]"
             style={{ color: v.badgeText }}
           >
-            {environment.config.tagline} · WhatsApp orders · Qatar
+            {environment.config.tagline} · {t("store.whatsappQatar")}
           </p>
         </div>
 
         <header className="glass-nav">
           <div className="container-pawmart" ref={menuRef}>
-            <div className="flex h-14 min-w-0 items-center justify-between gap-2 sm:h-16 sm:gap-3">
+            <div className="flex h-[4.5rem] min-w-0 items-center justify-between gap-2 sm:h-20 sm:gap-3">
               <Link
                 href={`/${envSlug}`}
                 prefetch
-                className="group flex min-w-0 max-w-[58%] flex-1 items-center gap-2 sm:max-w-none sm:flex-none sm:gap-2.5"
+                className="group flex min-w-0 max-w-[68%] flex-1 items-center gap-3 sm:max-w-none sm:flex-none sm:gap-3.5"
               >
                 {brandImage ? (
-                  <span className="catalogue-logo relative h-9 w-9 shrink-0 sm:h-10 sm:w-10">
+                  <span className="catalogue-logo catalogue-logo--header relative h-14 w-14 shrink-0 sm:h-16 sm:w-16">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={brandImage}
@@ -111,17 +114,17 @@ export function EnvironmentHeader({
                     />
                   </span>
                 ) : (
-                  <TfrcBrand showText={false} iconClassName="h-4 w-auto sm:h-5" />
+                  <TfrcBrand showText={false} iconClassName="h-7 w-auto sm:h-8" />
                 )}
-                <span className="flex min-w-0 flex-col justify-center leading-tight">
+                <span className="flex min-w-0 flex-col justify-center gap-0.5 leading-none">
                   <span
-                    className="truncate text-sm font-semibold tracking-tight sm:text-base md:text-lg"
+                    className="truncate text-lg font-bold tracking-tight sm:text-xl md:text-2xl"
                     style={{ color: v.heading }}
                   >
                     {environment.config.displayName}
                   </span>
-                  <span className="mt-0.5 inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#7B2D8E]">
-                    <svg viewBox="0 0 36 24" className="h-2 w-auto shrink-0" aria-hidden>
+                  <span className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-[0.14em] text-[#7B2D8E] sm:text-base">
+                    <svg viewBox="0 0 36 24" className="h-3.5 w-auto shrink-0 sm:h-4" aria-hidden>
                       <rect x="0" y="0" width="8" height="24" rx="1" fill="#7B2D8E" />
                       <rect x="14" y="0" width="8" height="24" rx="1" fill="#7B2D8E" />
                       <rect x="28" y="0" width="8" height="24" rx="1" fill="#7B2D8E" />
@@ -138,7 +141,7 @@ export function EnvironmentHeader({
                   className="nav-link px-3 py-5 text-[13px] font-medium"
                   style={navLinkStyle}
                 >
-                  Home
+                  {t("nav.home")}
                 </Link>
                 <Link
                   href={`/${envSlug}#catalog`}
@@ -149,7 +152,7 @@ export function EnvironmentHeader({
                     showAllStoreCategories();
                   }}
                 >
-                  Shop all
+                  {t("nav.shopAll")}
                 </Link>
 
                 {shopCategories.length > 0 && (
@@ -163,7 +166,7 @@ export function EnvironmentHeader({
                       className="nav-link flex items-center gap-1 px-3 py-5 text-[13px] font-medium"
                       style={navLinkStyle}
                     >
-                      Categories
+                      {t("nav.categories")}
                       <ChevronDown className="h-3.5 w-3.5 opacity-50" />
                     </button>
                     {categoriesOpen && (
@@ -201,7 +204,7 @@ export function EnvironmentHeader({
                     className="nav-link flex items-center gap-1 px-3 py-5 text-[13px] font-medium"
                     style={navLinkStyle}
                   >
-                    All Catalogues
+                    {t("nav.allCatalogues")}
                     <ChevronDown className="h-3.5 w-3.5 opacity-50" />
                   </button>
                   {catalogueOpen && (
@@ -212,7 +215,7 @@ export function EnvironmentHeader({
                         style={{ color: v.muted }}
                         onClick={() => setCatalogueOpen(false)}
                       >
-                        ← TFRC Vita Nova Home
+                        ← {t("nav.backHome")}
                       </Link>
                       {activeEnvironments.map((env) => {
                         const ev = getEnvVisual(env.slug);
@@ -244,12 +247,13 @@ export function EnvironmentHeader({
               </nav>
 
               <div className="flex shrink-0 items-center gap-0.5 sm:gap-1.5">
+                <LanguageSwitcher compact />
                 <button
                   type="button"
                   onClick={() => setSearchOpen(true)}
                   className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-black/[0.04]"
                   style={{ color: v.heading }}
-                  aria-label="Search"
+                  aria-label={t("nav.search")}
                 >
                   <Search className="h-5 w-5" strokeWidth={1.5} />
                 </button>
@@ -258,7 +262,7 @@ export function EnvironmentHeader({
                 <WhatsAppButton
                   href={waHref}
                   size="sm"
-                  label="WhatsApp"
+                  label={t("nav.orderWhatsApp")}
                   className="hidden lg:inline-flex"
                 />
                 <button
@@ -266,7 +270,7 @@ export function EnvironmentHeader({
                   onClick={() => setMobileOpen(true)}
                   className="flex h-9 w-9 items-center justify-center rounded-full lg:hidden"
                   style={{ color: v.heading }}
-                  aria-label="Open menu"
+                  aria-label={t("nav.openMenu")}
                 >
                   <Menu className="h-5 w-5" />
                 </button>
@@ -285,7 +289,7 @@ export function EnvironmentHeader({
                   type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={`Search ${environment.config.displayName}...`}
+                  placeholder={`${t("nav.search")} ${environment.config.displayName}...`}
                   className="flex-1 bg-transparent px-5 py-4 text-base outline-none"
                   style={{ color: v.heading }}
                   autoFocus
@@ -304,7 +308,7 @@ export function EnvironmentHeader({
                 className="mt-4 text-sm font-medium"
                 style={{ color: v.muted }}
               >
-                Cancel
+                {t("nav.cancel")}
               </button>
             </form>
           </div>
@@ -325,11 +329,14 @@ export function EnvironmentHeader({
               <span className="font-semibold" style={{ color: v.heading }}>
                 {environment.config.displayName}
               </span>
-              <button type="button" onClick={() => setMobileOpen(false)} aria-label="Close">
+              <button type="button" onClick={() => setMobileOpen(false)} aria-label={t("nav.closeMenu")}>
                 <X className="h-5 w-5" style={{ color: v.heading }} />
               </button>
             </div>
             <nav className="flex-1 overflow-y-auto p-4">
+              <div className="mb-3">
+                <LanguageSwitcher />
+              </div>
               <Link
                 href="/"
                 prefetch
@@ -337,7 +344,7 @@ export function EnvironmentHeader({
                 style={{ color: v.heading }}
                 onClick={() => setMobileOpen(false)}
               >
-                Home
+                {t("nav.home")}
               </Link>
               <Link
                 href={`/${envSlug}#catalog`}
@@ -349,7 +356,7 @@ export function EnvironmentHeader({
                   showAllStoreCategories();
                 }}
               >
-                Shop All
+                {t("nav.shopAll")}
               </Link>
               {shopCategories.length > 0 && (
                 <div className="py-2" style={{ borderTop: `1px solid ${v.border}` }}>
@@ -357,7 +364,7 @@ export function EnvironmentHeader({
                     className="py-2 text-xs font-semibold uppercase tracking-wider"
                     style={{ color: v.muted }}
                   >
-                    Categories
+                    {t("nav.categories")}
                   </p>
                   {shopCategories.map((cat) => (
                     <Link
@@ -385,11 +392,11 @@ export function EnvironmentHeader({
                 style={{ color: v.accent }}
                 onClick={() => setMobileOpen(false)}
               >
-                <ArrowRight className="h-4 w-4 rotate-180" /> All Catalogues
+                <ArrowRight className="h-4 w-4 rotate-180" /> {t("nav.allCatalogues")}
               </Link>
             </nav>
             <div className="p-4" style={{ borderTop: `1px solid ${v.border}` }}>
-              <WhatsAppButton href={waHref} fullWidth />
+              <WhatsAppButton href={waHref} label={t("nav.orderOnWhatsApp")} fullWidth />
             </div>
           </div>
         </div>

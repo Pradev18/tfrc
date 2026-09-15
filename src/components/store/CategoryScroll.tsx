@@ -4,6 +4,7 @@ import Image from "next/image";
 import { LayoutGrid } from "lucide-react";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { MEDIA_BLUR_DATA_URL } from "@/components/public/MediaFallback";
+import { useT } from "@/context/LanguageContext";
 import {
   ALL_PRODUCTS_CATEGORY_SLUG,
   scrollToStoreCategory,
@@ -37,6 +38,7 @@ export function CategoryScroll({
   showAllProducts = false,
   allProductsCount,
 }: CategoryScrollProps) {
+  const t = useT();
   const v = getEnvVisual(environmentSlug);
 
   if (categories.length === 0 && !showAllProducts) return null;
@@ -90,7 +92,7 @@ export function CategoryScroll({
                 color: activeSlug === ALL_PRODUCTS_CATEGORY_SLUG ? v.cta : v.heading,
               }}
             >
-              All products
+              {t("store.allProducts")}
             </span>
           </button>
         )}

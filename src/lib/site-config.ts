@@ -6,6 +6,35 @@ export function getSiteUrl(): string {
 }
 
 /**
+ * Customer-facing HTTPS origin for printable assets (PDF website QR / cover link).
+ * Never emit localhost in a brochure — phones cannot open that URL.
+ * Prefer PDF_SITE_URL, then NEXT_PUBLIC_SITE_URL when it is a public host,
+ * then the known production catalogue domain.
+ */
+export function getPublicCatalogueSiteUrl(): string {
+  const candidates = [
+    process.env.PDF_SITE_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+  ];
+
+  for (const candidate of candidates) {
+    const url = candidate?.trim().replace(/\/$/, "");
+    if (url && !isLocalSiteUrl(url)) return url;
+  }
+
+  return "https://www.vitanovaservices.com";
+}
+
+function isLocalSiteUrl(url: string): boolean {
+  try {
+    const { hostname } = new URL(url);
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Resolve site URL for WhatsApp product links.
  * Server: env → localhost default.
  * Client: explicit prop → env → window.origin (works on any catalogue domain/path).

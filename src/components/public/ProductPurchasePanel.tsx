@@ -16,6 +16,7 @@ import { useCart } from "@/context/CartContext";
 import { trackCustomerInquiry } from "@/lib/track-inquiry";
 import { calculateLineTotal } from "@/lib/money";
 import { variantOptionLabel } from "@/lib/product-variants";
+import { useT } from "@/context/LanguageContext";
 
 export interface ProductDetailSpec {
   label: string;
@@ -76,6 +77,7 @@ export function ProductPurchasePanel({
   sizeVariants = [],
   initialSizeSelected = false,
 }: ProductPurchasePanelProps) {
+  const t = useT();
   const router = useRouter();
   const { addItem } = useCart();
   const [quantity, setQuantity] = useState(1);
@@ -132,7 +134,7 @@ export function ProductPurchasePanel({
     );
     if (selected.length === 0) {
       setMultiSizeAdded(false);
-      setMultiSizeError("Select a quantity for at least one size.");
+      setMultiSizeError(t("product.selectQtyAtLeastOne"));
       return;
     }
 
@@ -195,12 +197,12 @@ export function ProductPurchasePanel({
             style={{ backgroundColor: inStock ? "#128c47" : "#c0392b" }}
           />
           <span style={{ color: inStock ? "#128c47" : "#c0392b" }}>
-            {inStock ? "In stock" : "Check availability on WhatsApp"}
+            {inStock ? t("product.inStock") : t("product.checkAvailabilityWhatsApp")}
           </span>
         </span>
         {itemCode ? (
           <span className="font-sans text-xs tabular-nums text-[#9c9690]">
-            Item code: {itemCode}
+            {t("product.itemCode", { code: itemCode })}
           </span>
         ) : null}
       </div>
@@ -208,16 +210,16 @@ export function ProductPurchasePanel({
       {requiresSize && (
         <div className="mt-4">
           <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#6b6560]">
-            Size / option
+            {t("product.sizeOption")}
           </span>
           <UiSelect
             value={selectedSizeSlug}
             options={[
-              { value: "", label: "Select an option" },
+              { value: "", label: t("product.selectOption") },
               ...sizeVariants.map((variant) => ({
                 value: variant.slug,
                 label: `${variantOptionLabel(variant, sizeVariants)}${
-                  variant.inStock ? "" : " — unavailable"
+                  variant.inStock ? "" : ` — ${t("common.unavailable")}`
                 }`,
                 disabled: !variant.inStock,
               })),
@@ -231,24 +233,24 @@ export function ProductPurchasePanel({
                 );
               }
             }}
-            ariaLabel={`Option for ${name}`}
+            ariaLabel={`${t("product.sizeOption")} ${name}`}
             className="min-h-[44px] border-[#ebe8e3] bg-[#faf9f7]"
           />
           {!sizeSelectionReady && (
             <p className="mt-1.5 text-sm font-semibold text-red-600">
-              Please select an option before adding this item.
+              {t("product.selectOptionFirst")}
             </p>
           )}
         </div>
       )}
 
       <div className="mt-4 flex items-center gap-2.5">
-        <span className="shrink-0 text-[11px] font-medium text-[#6b6560]">Qty</span>
+        <span className="shrink-0 text-[11px] font-medium text-[#6b6560]">{t("product.qty")}</span>
         <UiSelect
           value={quantity}
           options={QTY_OPTIONS}
           onValueChange={(next) => setQuantity(Number(next))}
-          ariaLabel={`Quantity for ${name}`}
+          ariaLabel={`${t("product.qty")} ${name}`}
           className="min-h-[42px] border-[#ebe8e3] bg-[#faf9f7]"
         />
       </div>
@@ -256,10 +258,10 @@ export function ProductPurchasePanel({
       {requiresSize && sizeVariants.length > 1 && (
         <details className="mt-4 rounded-xl border border-[#ebe8e3] bg-[#faf9f7] p-3.5">
           <summary className="cursor-pointer text-sm font-semibold text-[#141414]">
-            Order multiple sizes
+            {t("product.orderMultiple")}
           </summary>
           <p className="mt-1 text-xs leading-relaxed text-[#6b6560]">
-            Choose a separate quantity for every size you need.
+            {t("product.orderMultipleHint")}
           </p>
           <div className="mt-3 space-y-2">
             {sizeVariants.map((variant) => (
@@ -274,13 +276,13 @@ export function ProductPurchasePanel({
                   <p className="text-xs text-[#6b6560]">
                     {variant.inStock
                       ? `${variant.currency} ${variant.price.toFixed(2)}`
-                      : "Unavailable"}
+                      : t("common.unavailable")}
                   </p>
                 </div>
                 <UiSelect
                   value={multiSizeQuantities[variant.id] ?? 0}
                   options={[
-                    { value: "0", label: "None" },
+                    { value: "0", label: t("product.none") },
                     ...QTY_OPTIONS,
                   ]}
                   onValueChange={(value) => {
@@ -291,7 +293,7 @@ export function ProductPurchasePanel({
                     setMultiSizeError("");
                     setMultiSizeAdded(false);
                   }}
-                  ariaLabel={`Quantity for size ${variant.label}`}
+                  ariaLabel={`${t("product.qty")} ${variant.label}`}
                   disabled={!variant.inStock}
                   className="min-h-[38px] bg-white text-xs"
                 />
@@ -303,7 +305,7 @@ export function ProductPurchasePanel({
           )}
           {multiSizeAdded && (
             <p className="mt-2 text-sm font-semibold text-[#128c47]">
-              Selected sizes added separately to your cart.
+              {t("product.sizesAddedToCart")}
             </p>
           )}
           <button
@@ -312,7 +314,7 @@ export function ProductPurchasePanel({
             className="mt-3 min-h-[44px] w-full rounded-full font-semibold text-white"
             style={{ backgroundColor: accentColor }}
           >
-            Add selected sizes to cart
+            {t("product.addSelectedSizes")}
           </button>
         </details>
       )}
@@ -357,7 +359,7 @@ export function ProductPurchasePanel({
               href={whatsappHref}
               size="lg"
               fullWidth
-              label="Order on WhatsApp"
+              label={t("nav.orderOnWhatsApp")}
               inquiry={{
                 eventType: "PRODUCT_WHATSAPP",
                 environmentSlug,
@@ -389,14 +391,13 @@ export function ProductPurchasePanel({
             disabled
             className="min-h-[48px] w-full rounded-full bg-[#9c9690]/25 text-sm font-semibold text-[#6b6560]"
           >
-            Select a size to continue
+            {t("product.selectSizeToContinue")}
           </button>
         )}
       </div>
 
       <p className="mt-4 text-xs leading-relaxed text-[#6b6560]">
-        No online payment. Add to cart and send your order on WhatsApp — we confirm delivery
-        personally.
+        {t("product.noOnlinePayment")}
       </p>
     </div>
   );

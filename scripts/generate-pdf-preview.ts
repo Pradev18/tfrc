@@ -3,10 +3,10 @@
  *
  * Usage:
  *   npx tsx scripts/generate-pdf-preview.ts
- *   npx tsx scripts/generate-pdf-preview.ts pawmart
- *   npx tsx scripts/generate-pdf-preview.ts <catalogueId>
+ *   npx tsx scripts/generate-pdf-preview.ts <slug-or-id>
  *
- * Never invents Sample Product / example.com data.
+ * Resolves any active catalogue by id/slug. Never invents Sample Product data.
+ * The same renderer is used for every catalogue — only DB-driven content changes.
  */
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -77,15 +77,27 @@ async function main() {
 
     const banned = [
       "Sample Product",
-      "example.com/pawmart",
+      "example.com/",
       ">P1</text>",
       ">P2</text>",
       ">P3</text>",
+      "http://localhost",
+      "https://localhost",
     ];
     for (const needle of banned) {
       if (html.includes(needle)) {
         throw new Error(`Preview HTML still contains forbidden demo content: ${needle}`);
       }
+    }
+
+    if (!stats.websiteUrl.startsWith("https://www.vitanovaservices.com/")) {
+      throw new Error(
+        `Website QR must use the public catalogue host, got: ${stats.websiteUrl}`
+      );
+    }
+
+    if (!html.includes("api.whatsapp.com/send/")) {
+      throw new Error("WhatsApp cover QR must use the official WhatsApp chat URL.");
     }
 
     if (!stats.sampleNames.length) {

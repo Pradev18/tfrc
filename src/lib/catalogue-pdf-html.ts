@@ -1,5 +1,14 @@
 import type { CataloguePdfPayload, CataloguePdfProduct } from "@/services/catalogue-pdf.service";
 
+/**
+ * MULTI-CATALOGUE PDF TEMPLATE (single renderer for every catalogue)
+ * -----------------------------------------------------------------
+ * This module must NEVER branch on catalogue id/slug/name (no PawMart-only design).
+ * The same HTML/CSS template is used for any catalogue selected by catalogueId.
+ * Only payload fields change: name, logo, colours, products, categories,
+ * website URL, WhatsApp destination, and related content from the database.
+ */
+
 export const PDF_PRODUCTS_PER_PAGE = 12;
 export const PDF_COLS = 4;
 export const PDF_ROWS = 3;
@@ -149,7 +158,7 @@ export function renderProductCard(product: CataloguePdfProduct): string {
     product.currency
   )}`;
   return `
-    <article class="card">
+    <article class="grid-cell card">
       <div class="card-image">
         <img src="${escapeAttr(product.imageUrl || "")}" alt="${escapeAttr(product.displayName)}" />
       </div>
@@ -169,8 +178,16 @@ export function renderProductCard(product: CataloguePdfProduct): string {
     </article>`;
 }
 
+/** Always render a full 4×3 stage (12 slots). Unused slots stay empty — never stretch cards. */
 export function renderProductGrid(products: CataloguePdfProduct[]): string {
-  return `<div class="grid">${products.map(renderProductCard).join("")}</div>`;
+  const cells: string[] = products.slice(0, PDF_PRODUCTS_PER_PAGE).map(renderProductCard);
+  while (cells.length < PDF_PRODUCTS_PER_PAGE) {
+    cells.push(`<div class="grid-cell grid-cell--empty" aria-hidden="true"></div>`);
+  }
+  return `
+    <div class="product-stage">
+      <div class="grid" role="list">${cells.join("")}</div>
+    </div>`;
 }
 
 export function renderCategoryHeader(
@@ -398,7 +415,7 @@ function templateCss(payload: CataloguePdfPayload): string {
       height: 297mm;
       max-height: 297mm;
       margin: 0;
-      padding: 6mm 6.5mm 5mm;
+      padding: 5mm 5.5mm 4.5mm;
       background: #fff;
       box-shadow: none;
       overflow: hidden;
@@ -409,22 +426,22 @@ function templateCss(payload: CataloguePdfPayload): string {
       position: relative;
     }
 
-    /* ========== PRODUCT PAGE HEADER ~22mm ========== */
+    /* ========== PRODUCT PAGE HEADER ========== */
     .sheet-header {
-      flex: 0 0 20mm;
-      height: 20mm;
-      max-height: 20mm;
+      flex: 0 0 18mm;
+      height: 18mm;
+      max-height: 18mm;
       display: grid;
       grid-template-columns: 28mm 1fr 32mm;
       gap: 3mm;
       align-items: center;
-      padding: 0 0.5mm 2mm;
+      padding: 0 0.5mm 1.5mm;
       margin-bottom: 1.5mm;
       border-bottom: 0.4mm solid var(--line);
       background: linear-gradient(180deg, var(--cream) 0%, #fff 100%);
     }
     .logo-slot {
-      height: 16mm;
+      height: 14.5mm;
       display: flex;
       align-items: center;
       overflow: hidden;
@@ -433,14 +450,14 @@ function templateCss(payload: CataloguePdfPayload): string {
     .logo-slot--catalogue { justify-content: flex-end; }
     .logo-slot--empty { visibility: hidden; }
     .tfrc-logo {
-      height: 15mm;
+      height: 14mm;
       width: auto;
       max-width: 26mm;
       object-fit: contain;
       display: block;
     }
     .catalogue-logo {
-      max-height: 15mm;
+      max-height: 14mm;
       max-width: 30mm;
       width: auto;
       height: auto;
@@ -457,13 +474,13 @@ function templateCss(payload: CataloguePdfPayload): string {
     }
     .header-rule {
       width: 1.2mm;
-      height: 12mm;
+      height: 11mm;
       border-radius: 1mm;
       background: var(--accent);
     }
     .header-name {
       margin: 0;
-      font-size: 14pt;
+      font-size: 13.5pt;
       line-height: 1.1;
       font-weight: 800;
       color: var(--cta);
@@ -472,8 +489,8 @@ function templateCss(payload: CataloguePdfPayload): string {
       text-overflow: ellipsis;
     }
     .header-tagline {
-      margin: 1mm 0 0;
-      font-size: 8pt;
+      margin: 0.8mm 0 0;
+      font-size: 7.5pt;
       color: var(--muted);
       white-space: nowrap;
       overflow: hidden;
@@ -482,9 +499,9 @@ function templateCss(payload: CataloguePdfPayload): string {
     .header-features {
       display: flex;
       flex-direction: column;
-      gap: 1.5mm;
+      gap: 1.2mm;
       color: var(--cta);
-      font-size: 7pt;
+      font-size: 6.5pt;
       font-weight: 700;
       white-space: nowrap;
     }
@@ -493,19 +510,20 @@ function templateCss(payload: CataloguePdfPayload): string {
       align-items: center;
       gap: 1.2mm;
     }
-    .header-features svg { width: 3.2mm; height: 3.2mm; }
+    .header-features svg { width: 3mm; height: 3mm; }
 
-    /* ========== CATEGORY BAND ~16mm ========== */
+    /* ========== CATEGORY BAND ========== */
     .category-band {
-      flex: 0 0 14mm;
-      height: 14mm;
-      max-height: 14mm;
+      flex: 0 0 13mm;
+      height: 13mm;
+      max-height: 13mm;
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 4mm;
       margin-bottom: 2mm;
-      padding: 0 0.5mm;
+      padding: 0 0.5mm 1.5mm;
+      border-bottom: 0.25mm solid color-mix(in srgb, var(--line) 70%, white);
     }
     .category-band-main {
       display: flex;
@@ -514,30 +532,30 @@ function templateCss(payload: CataloguePdfPayload): string {
       min-width: 0;
     }
     .cat-glyph {
-      width: 7mm;
-      height: 7mm;
+      width: 6.5mm;
+      height: 6.5mm;
       color: var(--cta);
       flex-shrink: 0;
       margin-top: 0.5mm;
     }
     .category-band h1 {
       margin: 0;
-      font-size: 18pt;
+      font-size: 17pt;
       line-height: 1.05;
       font-weight: 800;
       letter-spacing: -0.02em;
       color: var(--cta);
     }
     .category-band p {
-      margin: 1mm 0 0;
-      font-size: 8pt;
+      margin: 0.8mm 0 0;
+      font-size: 7.5pt;
       color: var(--muted);
       max-width: 120mm;
     }
     .category-band-meta { text-align: right; flex-shrink: 0; }
     .category-counts {
-      margin: 0 0 1.5mm;
-      font-size: 8pt;
+      margin: 0 0 1.2mm;
+      font-size: 7.5pt;
       font-weight: 650;
       color: var(--muted);
     }
@@ -546,41 +564,73 @@ function templateCss(payload: CataloguePdfPayload): string {
       border-radius: 999px;
       background: var(--cta);
       color: #fff;
-      font-size: 8pt;
+      font-size: 7.5pt;
       font-weight: 800;
-      padding: 1.4mm 3.5mm;
+      padding: 1.2mm 3.2mm;
     }
 
-    /* ========== PRODUCT GRID — majority of page ========== */
+    /* ========== PRODUCT STAGE — fixed A4 composition ========== */
+    .product-stage {
+      flex: 1 1 auto;
+      min-height: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: 1.5mm;
+      border-radius: 2.5mm;
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, #f7faf8) 0%, #f3f7f4 100%);
+      border: 0.35mm solid color-mix(in srgb, var(--line) 85%, white);
+      overflow: hidden;
+    }
     .grid {
       flex: 1 1 auto;
-      min-height: 228mm;
+      width: 100%;
       height: 100%;
+      min-height: 0;
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       grid-template-rows: repeat(3, minmax(0, 1fr));
-      gap: 2.4mm;
+      gap: 2.2mm;
       align-content: stretch;
+      justify-content: stretch;
       overflow: hidden;
     }
-    .card {
+    .grid-cell {
+      min-width: 0;
+      min-height: 0;
       height: 100%;
       max-height: 100%;
-      min-height: 0;
+    }
+    .grid-cell--empty {
+      border-radius: 2.2mm;
+      border: 0.35mm dashed color-mix(in srgb, var(--line) 90%, #9bb3a4);
+      background:
+        repeating-linear-gradient(
+          -45deg,
+          transparent,
+          transparent 2.4mm,
+          color-mix(in srgb, var(--accent) 4%, transparent) 2.4mm,
+          color-mix(in srgb, var(--accent) 4%, transparent) 4.8mm
+        ),
+        #fff;
+      box-shadow: inset 0 0 0 0.2mm rgba(255, 255, 255, 0.8);
+    }
+    .card {
       display: flex;
       flex-direction: column;
-      border: 0.35mm solid #d9e5de;
+      border: 0.35mm solid #d3e2da;
       border-radius: 2.2mm;
       background: #fff;
       overflow: hidden;
-      box-shadow: 0 0.6mm 1.6mm rgba(20, 40, 30, 0.05);
+      box-shadow: 0 0.5mm 1.4mm rgba(20, 40, 30, 0.06);
     }
     .card-image {
-      flex: 0 0 60%;
-      height: 60%;
-      max-height: 60%;
+      flex: 0 0 50%;
+      height: 50%;
+      max-height: 50%;
       min-height: 0;
-      padding: 2.2mm;
+      padding: 1.6mm;
       background: linear-gradient(180deg, #f7faf8 0%, #eef4f0 100%);
       display: flex;
       align-items: center;
@@ -602,40 +652,40 @@ function templateCss(payload: CataloguePdfPayload): string {
       min-height: 0;
       display: flex;
       flex-direction: column;
-      gap: 0.8mm;
-      padding: 2mm 2.2mm 2.2mm;
+      gap: 0.5mm;
+      padding: 1.5mm 1.8mm 1.6mm;
       overflow: hidden;
     }
     .card-title {
       margin: 0;
-      font-size: 10pt;
-      line-height: 1.2;
+      font-size: 8.5pt;
+      line-height: 1.15;
       font-weight: 800;
       color: var(--cta);
-      min-height: 2.4em;
-      max-height: 2.4em;
+      min-height: 2.3em;
+      max-height: 2.3em;
       overflow: hidden;
-      flex-shrink: 0;
+      flex: 0 0 auto;
     }
     .card-meta {
       margin: 0;
-      font-size: 7.5pt;
+      font-size: 6.5pt;
       color: var(--muted);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      flex-shrink: 0;
+      flex: 0 0 auto;
     }
     .sizes {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.8mm;
-      min-height: 4.2mm;
-      max-height: 4.2mm;
+      gap: 0.6mm;
+      min-height: 3.6mm;
+      max-height: 3.6mm;
       overflow: hidden;
-      flex-shrink: 0;
+      flex: 0 0 auto;
     }
-    .sizes--empty { visibility: hidden; }
+    .sizes--empty { visibility: hidden; min-height: 3.6mm; }
     .size-chip {
       display: inline-flex;
       align-items: center;
@@ -643,35 +693,35 @@ function templateCss(payload: CataloguePdfPayload): string {
       border: 0.25mm solid #c9ddd2;
       background: #f2f7f4;
       color: #14352a;
-      font-size: 7pt;
+      font-size: 6pt;
       font-weight: 800;
       line-height: 1;
-      padding: 0.7mm 1.3mm;
+      padding: 0.55mm 1mm;
       white-space: nowrap;
     }
     .card-price {
-      margin: 0.4mm 0 0;
-      font-size: 12pt;
-      line-height: 1.1;
+      margin: 0;
+      font-size: 10.5pt;
+      line-height: 1.05;
       font-weight: 800;
       color: var(--ink);
       letter-spacing: -0.01em;
-      flex-shrink: 0;
+      flex: 0 0 auto;
     }
     .card-stock {
       margin: 0;
       display: inline-flex;
       align-items: center;
-      gap: 1.1mm;
-      font-size: 7.5pt;
+      gap: 1mm;
+      font-size: 6.5pt;
       font-weight: 700;
-      flex-shrink: 0;
+      flex: 0 0 auto;
     }
     .card-stock.in { color: #166534; }
     .card-stock.out { color: #9f1239; }
     .stock-dot {
-      width: 1.6mm;
-      height: 1.6mm;
+      width: 1.4mm;
+      height: 1.4mm;
       border-radius: 50%;
       background: currentColor;
       flex-shrink: 0;
@@ -681,53 +731,56 @@ function templateCss(payload: CataloguePdfPayload): string {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 1.4mm;
+      gap: 1.2mm;
       width: 100%;
-      min-height: 6.5mm;
-      border-radius: 1.4mm;
+      height: 6.2mm;
+      min-height: 6.2mm;
+      max-height: 6.2mm;
+      border-radius: 1.2mm;
       background: var(--wa);
       color: #fff !important;
       text-decoration: none !important;
-      font-size: 8pt;
+      font-size: 7pt;
       font-weight: 800;
-      padding: 1.4mm 2mm;
-      flex-shrink: 0;
+      padding: 0 1.5mm;
+      flex: 0 0 6.2mm;
+      box-sizing: border-box;
     }
-    .wa-ico { width: 3.4mm; height: 3.4mm; flex-shrink: 0; }
-    .wa-ico--lg { width: 6mm; height: 6mm; }
+    .wa-ico { width: 3.2mm; height: 3.2mm; flex-shrink: 0; }
+    .wa-ico--lg { width: 5.5mm; height: 5.5mm; }
 
-    /* ========== FOOTER ~16mm ========== */
+    /* ========== FOOTER ========== */
     .sheet-footer {
-      flex: 0 0 15mm;
-      height: 15mm;
-      max-height: 15mm;
+      flex: 0 0 14mm;
+      height: 14mm;
+      max-height: 14mm;
       display: grid;
       grid-template-columns: 1.1fr 1.4fr 1fr;
       gap: 3mm;
       align-items: center;
       margin-top: 2mm;
-      padding-top: 2mm;
+      padding-top: 1.8mm;
       border-top: 0.4mm solid var(--line);
     }
     .footer-name {
       margin: 0;
-      font-size: 12pt;
+      font-size: 11pt;
       font-weight: 800;
       color: var(--cta);
     }
     .footer-sub {
-      margin: 0.6mm 0 0;
-      font-size: 7.5pt;
+      margin: 0.5mm 0 0;
+      font-size: 7pt;
       color: var(--muted);
     }
     .footer-values {
       display: flex;
       justify-content: center;
       align-items: center;
-      gap: 1.6mm;
+      gap: 1.5mm;
       flex-wrap: wrap;
       text-align: center;
-      font-size: 7.5pt;
+      font-size: 7pt;
       font-weight: 750;
       letter-spacing: 0.02em;
       color: var(--muted);
@@ -743,13 +796,13 @@ function templateCss(payload: CataloguePdfPayload): string {
     }
     .footer-wa-label {
       margin: 0;
-      font-size: 7.5pt;
+      font-size: 7pt;
       font-weight: 700;
       color: var(--muted);
     }
     .footer-wa-phone {
-      margin: 0.3mm 0 0;
-      font-size: 12pt;
+      margin: 0.2mm 0 0;
+      font-size: 11pt;
       font-weight: 800;
       color: var(--heading);
       letter-spacing: -0.01em;
@@ -1045,7 +1098,7 @@ function templateCss(payload: CataloguePdfPayload): string {
         page-break-after: auto;
         break-after: auto;
       }
-      .card, .qr-panel, .sheet-header, .sheet-footer, .category-band {
+      .card, .grid-cell, .qr-panel, .sheet-header, .sheet-footer, .category-band, .product-stage {
         break-inside: avoid;
         page-break-inside: avoid;
       }

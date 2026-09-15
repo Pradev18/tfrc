@@ -25,17 +25,18 @@ function baseProduct(overrides: Partial<CataloguePdfPayload["categories"][number
   };
 }
 
+/** Generic fixture — not a real catalogue. Override per-test for multi-store cases. */
 function basePayload(overrides: Partial<CataloguePdfPayload> = {}): CataloguePdfPayload {
   return {
     catalogue: {
       id: "1",
-      name: "PawMart",
-      slug: "pawmart",
-      logoUrl: "/api/media/pawmart-logo.png",
-      tagline: "Everything for your pets",
-      description: "Food, grooming, toys and accessories for Qatar.",
+      name: "Fixture Store",
+      slug: "fixture-store",
+      logoUrl: "/api/media/fixture-logo.png",
+      tagline: "Sample tagline from payload",
+      description: "Sample description from payload.",
     },
-    websiteUrl: "https://example.com/pawmart",
+    websiteUrl: "https://example.com/fixture-store",
     whatsappUrl: "https://wa.me/97455049229",
     whatsappPhone: "97455049229",
     websiteQrDataUrl: "data:image/png;base64,AAA",
@@ -87,7 +88,7 @@ describe("catalogue PDF pagination", () => {
 describe("catalogue PDF HTML", () => {
   it("embeds catalogue logo, TFRC mark, sizes, and real QR panels", () => {
     const html = buildCataloguePdfHtml(basePayload());
-    expect(html).toContain('src="/api/media/pawmart-logo.png"');
+    expect(html).toContain('src="/api/media/fixture-logo.png"');
     expect(html).toContain(TFRC_LOGO_SRC);
     expect(html).toContain(">S</span>");
     expect(html).toContain(">M</span>");
@@ -97,12 +98,17 @@ describe("catalogue PDF HTML", () => {
     expect(html).toContain("WhatsApp Orders");
     expect(html).toContain('src="data:image/png;base64,AAA"');
     expect(html).toContain('src="data:image/png;base64,BBB"');
-    expect(html).toContain("https://example.com/pawmart");
+    expect(html).toContain("https://example.com/fixture-store");
     expect(html).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
     expect(html).toContain("grid-template-rows: repeat(3, minmax(0, 1fr))");
     expect(html).toContain("width: 210mm");
     expect(html).toContain("height: 297mm");
-    expect(html).toContain("flex: 0 0 60%");
+    expect(html).toContain("flex: 0 0 50%");
+    expect(html).toContain("product-stage");
+    expect(html).toContain("grid-cell--empty");
+    expect(html).toContain("class=\"card-wa\"");
+    expect(html).toContain("WhatsApp Order");
+    expect(html).toContain("flex: 0 0 6.2mm");
     expect(html).not.toContain("Generated");
     expect(html).not.toContain("height: 82mm");
   });
@@ -169,12 +175,43 @@ describe("catalogue PDF HTML", () => {
         ],
       })
     );
-    expect(html.match(/<article class="card">/g)).toHaveLength(12);
+    expect(html.match(/<article class="grid-cell card">/g)).toHaveLength(12);
     expect(html).toContain("12 on this page");
     expect(html).toContain("Page 1 of 1");
+    expect(html.match(/class="grid-cell grid-cell--empty"/g)).toBeNull();
     for (let i = 1; i <= 12; i++) {
       expect(html).toContain(`Product ${i}`);
     }
+  });
+
+  it("pads partial pages to a full 4×3 stage without stretching cards", () => {
+    const three = Array.from({ length: 3 }, (_, index) =>
+      baseProduct({
+        id: `p${index + 1}`,
+        displayName: `Partial ${index + 1}`,
+        productId: `P${index}`,
+        availableSizes: [],
+        priceFrom: false,
+      })
+    );
+    const html = buildCataloguePdfHtml(
+      basePayload({
+        totalProducts: 3,
+        listedCards: 3,
+        categories: [
+          {
+            slug: "carriers-travel",
+            name: "Carriers & Travel",
+            productCount: 3,
+            products: three,
+          },
+        ],
+      })
+    );
+    expect(html.match(/<article class="grid-cell card">/g)).toHaveLength(3);
+    expect(html.match(/class="grid-cell grid-cell--empty"/g)).toHaveLength(9);
+    expect(html).toContain("3 on this page");
+    expect(html).toContain("product-stage");
   });
 
   it("paginates 13 cards into two pages without stretching language", () => {
@@ -201,11 +238,13 @@ describe("catalogue PDF HTML", () => {
         ],
       })
     );
-    expect(html.match(/<article class="card">/g)).toHaveLength(13);
+    expect(html.match(/<article class="grid-cell card">/g)).toHaveLength(13);
     expect(html).toContain("Page 1 of 2");
     expect(html).toContain("Page 2 of 2");
     expect(html).toContain("12 on this page");
     expect(html).toContain("1 on this page");
+    // Page 2 has 1 card + 11 reserved empty slots
+    expect(html.match(/class="grid-cell grid-cell--empty"/g)).toHaveLength(11);
   });
 
   it("handles long product names safely inside cards", () => {
@@ -227,7 +266,113 @@ describe("catalogue PDF HTML", () => {
         ],
       })
     );
-    expect(html).toContain("max-height: 2.4em");
+    expect(html).toContain("max-height: 2.3em");
     expect(html).toContain("Pet Retractable Leash Cord Mix Color 5M 20Kg Max Extra Long Title");
+  });
+
+  it("uses the same template for different catalogues with only payload data changing", () => {
+    const tools = buildCataloguePdfHtml(
+      basePayload({
+        catalogue: {
+          id: "tools-1",
+          name: "Pro Tools",
+          slug: "hardware",
+          logoUrl: "/api/media/tools-wide-logo.png",
+          tagline: "Built for the Job",
+          description: "Professional tools for Qatar.",
+        },
+        websiteUrl: "https://shop.example.org/hardware",
+        whatsappUrl: "https://wa.me/97450001111",
+        whatsappPhone: "97450001111",
+        websiteQrDataUrl: "data:image/png;base64,TOOLSWEB",
+        whatsappQrDataUrl: "data:image/png;base64,TOOLSWA",
+        accent: "#d97706",
+        cta: "#0f172a",
+        categories: [
+          {
+            slug: "drills",
+            name: "Drills",
+            productCount: 1,
+            products: [
+              baseProduct({
+                displayName: "Impact Drill 750W",
+                productId: "HW-100",
+                availableSizes: [],
+                priceFrom: false,
+                price: 199,
+                whatsappUrl: "https://wa.me/97450001111?text=Impact",
+              }),
+            ],
+          },
+        ],
+      })
+    );
+
+    const home = buildCataloguePdfHtml(
+      basePayload({
+        catalogue: {
+          id: "home-1",
+          name: "Kitchen & Home",
+          slug: "household",
+          logoUrl: null,
+          tagline: "Elevate Your Space",
+          description: "Home essentials for Qatar.",
+        },
+        websiteUrl: "https://shop.example.org/household",
+        whatsappUrl: "https://wa.me/97450002222",
+        whatsappPhone: "97450002222",
+        websiteQrDataUrl: "data:image/png;base64,HOMEWEB",
+        whatsappQrDataUrl: "data:image/png;base64,HOMEWA",
+        accent: "#ca8a04",
+        cta: "#9a3412",
+        categories: [
+          {
+            slug: "tableware",
+            name: "Tableware",
+            productCount: 1,
+            products: [
+              baseProduct({
+                displayName: "Ceramic Bowl Set",
+                productId: "HH-200",
+                availableSizes: ["S", "M"],
+                priceFrom: true,
+                price: 45,
+                whatsappUrl: "https://wa.me/97450002222?text=Bowl",
+              }),
+            ],
+          },
+        ],
+      })
+    );
+
+    // Same visual system for both catalogues
+    expect(tools).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
+    expect(home).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
+    expect(tools).toContain(TFRC_LOGO_SRC);
+    expect(home).toContain(TFRC_LOGO_SRC);
+    expect(tools).toContain("width: 210mm");
+    expect(home).toContain("width: 210mm");
+
+    // Data-driven differences only
+    expect(tools).toContain("Pro Tools");
+    expect(tools).toContain("Impact Drill 750W");
+    expect(tools).toContain("https://shop.example.org/hardware");
+    expect(tools).toContain("97450001111");
+    expect(tools).toContain('class="catalogue-logo"');
+    expect(tools).toContain('class="logo-slot logo-slot--catalogue"');
+    expect(tools).not.toContain('class="logo-slot logo-slot--empty"');
+
+    expect(home).toContain("Kitchen &amp; Home");
+    expect(home).toContain("Ceramic Bowl Set");
+    expect(home).toContain("https://shop.example.org/household");
+    expect(home).toContain("97450002222");
+    expect(home).toContain('class="logo-slot logo-slot--empty"');
+    expect(home).not.toContain('class="catalogue-logo"');
+
+    // No cross-catalogue name bleed
+    expect(tools).not.toContain("Kitchen &amp; Home");
+    expect(home).not.toContain("Pro Tools");
+    expect(tools).not.toContain("Fixture Store");
+    expect(home).not.toContain("Fixture Store");
   });
 });

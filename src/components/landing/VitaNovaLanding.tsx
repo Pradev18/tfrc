@@ -4,6 +4,7 @@ import { LandingHeader } from "@/components/landing/LandingHeader";
 import { LandingHero } from "@/components/landing/LandingHero";
 import { TfrcBrand } from "@/components/brand/TfrcBrand";
 import { TfrcStaffLink } from "@/components/public/TfrcStaffLink";
+import { useT } from "@/context/LanguageContext";
 import type { LandingPortal } from "@/lib/platform-images";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
 
@@ -20,6 +21,8 @@ export function VitaNovaLanding({
   whatsappSettings,
   siteUrl,
 }: VitaNovaLandingProps) {
+  const t = useT();
+
   return (
     <div className="flex min-h-dvh flex-col bg-[#faf9f7]">
       <LandingHeader portals={portals} whatsappSettings={whatsappSettings} siteUrl={siteUrl} />
@@ -32,11 +35,9 @@ export function VitaNovaLanding({
         <div className="flex justify-center">
           <TfrcBrand className="gap-2" iconClassName="h-4" textClassName="text-base font-semibold" />
         </div>
-        <p className="mt-2 text-[11px] text-[#6b6560]">
-          Online catalogues · WhatsApp ordering · Qatar
-        </p>
+        <p className="mt-2 text-[11px] text-[#6b6560]">{t("landing.onlineCatalogues")}</p>
         <p className="mt-1 text-[10px] uppercase tracking-[0.16em] text-[#9c9690]">
-          © {new Date().getFullYear()} TFRC
+          {t("store.copyright", { year: new Date().getFullYear() })}
         </p>
         <div className="mt-3">
           <TfrcStaffLink />

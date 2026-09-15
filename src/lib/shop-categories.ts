@@ -321,6 +321,91 @@ export function getShopCategoryDefs(environmentSlug: string): ShopCategoryDef[] 
   return SHOP_CATEGORIES[environmentSlug] ?? [];
 }
 
+/**
+ * Pick the best keyword pack for ANY catalogue (including newly created ones).
+ * Never requires the catalogue slug to be pawmart/hardware/household.
+ */
+export function resolveCatalogueShopCategoryPack(input: {
+  slug?: string | null;
+  name?: string | null;
+  tagline?: string | null;
+  departmentSource?: string | null;
+  productNames?: string[];
+}): ShopCategoryDef[] {
+  const slug = (input.slug ?? "").toLowerCase().trim();
+  if (slug && SHOP_CATEGORIES[slug]?.length) {
+    return SHOP_CATEGORIES[slug]!;
+  }
+
+  const haystack = [
+    slug,
+    input.name,
+    input.tagline,
+    input.departmentSource,
+    ...(input.productNames ?? []).slice(0, 80),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const scorePack = (signals: string[]) =>
+    signals.reduce((score, signal) => (haystack.includes(signal) ? score + 1 : score), 0);
+
+  const petScore = scorePack([
+    "pet",
+    "paw",
+    "dog",
+    "cat",
+    "leash",
+    "collar",
+    "harness",
+    "litter",
+    "groom",
+    "animal",
+    "puppy",
+    "kitten",
+    "accessories",
+  ]);
+  const toolScore = scorePack([
+    "tool",
+    "hardware",
+    "drill",
+    "wrench",
+    "spanner",
+    "plier",
+    "screwdriver",
+    "socket",
+  ]);
+  const homeScore = scorePack([
+    "home",
+    "house",
+    "kitchen",
+    "household",
+    "dinner",
+    "plate",
+    "cup",
+    "teapot",
+    "glassware",
+    "cutlery",
+  ]);
+
+  if (petScore > 0 && petScore >= toolScore && petScore >= homeScore) {
+    return SHOP_CATEGORIES.pawmart ?? [];
+  }
+  if (toolScore > 0 && toolScore >= homeScore) {
+    return SHOP_CATEGORIES.hardware ?? [];
+  }
+  if (homeScore > 0) {
+    return SHOP_CATEGORIES.household ?? [];
+  }
+
+  if ((input.productNames?.length ?? 0) > 0) {
+    return discoverShopCategoriesFromProducts(input.productNames!);
+  }
+
+  return [];
+}
+
 export function getShopCategoryDef(
   environmentSlug: string,
   shopSlug: string
@@ -438,10 +523,10 @@ export function getEffectiveShopCategoryDefs(
   environmentSlug: string,
   productNames: string[] = []
 ): ShopCategoryDef[] {
-  const manual = getShopCategoryDefs(environmentSlug);
-  if (manual.length > 0) return manual;
-  if (productNames.length === 0) return [];
-  return discoverShopCategoriesFromProducts(productNames);
+  return resolveCatalogueShopCategoryPack({
+    slug: environmentSlug,
+    productNames,
+  });
 }
 
 export function buildShopCategoryNameFilter(

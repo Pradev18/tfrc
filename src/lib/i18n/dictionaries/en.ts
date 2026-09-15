@@ -1,0 +1,131 @@
+export const en = {
+  langName: "English",
+  langNative: "English",
+  switchTo: "العربية",
+  switchLabel: "Language",
+
+  nav: {
+    home: "Home",
+    shopAll: "Shop all",
+    categories: "Categories",
+    allCatalogues: "All catalogues",
+    catalogues: "Catalogues",
+    search: "Search",
+    openMenu: "Open menu",
+    closeMenu: "Close menu",
+    openCart: "Open cart",
+    viewSite: "View site",
+    orderWhatsApp: "WhatsApp",
+    orderOnWhatsApp: "Order on WhatsApp",
+    cancel: "Cancel",
+    backHome: "TFRC Vita Nova Home",
+  },
+
+  landing: {
+    chooseWorld: "Choose your world — browse freely, order on WhatsApp",
+    onlineCatalogues: "Online catalogues · WhatsApp ordering · Qatar",
+  },
+
+  store: {
+    whatsappQatar: "WhatsApp orders · Qatar",
+    catalogueTitle: "{name} catalogue",
+    browseHint:
+      "Browse by category below. Select a product, choose options, and order on WhatsApp.",
+    fullCatalogue: "TFRC · {name}",
+    productsCategories: "{products} products · {categories} categories",
+    searchPlaceholder: "Search products, brands, item codes...",
+    allCategories: "All categories",
+    allProducts: "All products",
+    inStock: "In stock",
+    allBrands: "All brands",
+    newest: "Newest",
+    featured: "Featured",
+    priceAsc: "Price ↑",
+    priceDesc: "Price ↓",
+    sortAZ: "A–Z",
+    clear: "Clear",
+    noMatch: "No products match your search or filters",
+    continued: "continued",
+    productsInCategory: "{count} products",
+    productSingular: "product",
+    productPlural: "products",
+    allInCategory: "All products in this category",
+    shop: "Shop",
+    browseCategories: "Browse categories",
+    footerTagline: "Catalogue shopping · WhatsApp orders · Qatar",
+    filterByBrand: "Filter by brand",
+    sortProducts: "Sort products",
+    copyright: "© {year} TFRC · WhatsApp ordering · Qatar",
+  },
+
+  product: {
+    itemCode: "Item code: {code}",
+    sizesAvailable: "Sizes available: {sizes}",
+    selectSize: "Select size",
+    selectSizeFirst: "Select a size first",
+    qty: "Qty",
+    whatsApp: "WhatsApp",
+    addToCart: "Add to Cart",
+    checkAvailability: "Check availability",
+    sale: "Sale",
+    video: "Video",
+    was: "Was {price}",
+    from: "From {price}",
+    inStock: "In stock",
+    outOfStock: "Check availability",
+    sizeOption: "Size / option",
+    selectOption: "Select an option",
+    selectOptionFirst: "Please select an option before adding this item.",
+    orderMultiple: "Order multiple sizes",
+    orderMultipleHint: "Choose a separate quantity for every size you need.",
+    none: "None",
+    suggested: "Suggested for you",
+    added: "Added",
+    checkAvailabilityWhatsApp: "Check availability on WhatsApp",
+    selectQtyAtLeastOne: "Select a quantity for at least one size.",
+    sizesAddedToCart: "Selected sizes added separately to your cart.",
+    addSelectedSizes: "Add selected sizes to cart",
+    selectSizeToContinue: "Select a size to continue",
+    noOnlinePayment:
+      "No online payment. Add to cart and send your order on WhatsApp — we confirm delivery personally.",
+  },
+
+  cart: {
+    title: "Your Cart",
+    empty: "No products selected yet",
+    emptyHint: "Browse a catalogue and tap",
+    emptyHint2: '"Add to Cart"',
+    emptyHint3:
+      "Select products, add them to WhatsApp Business Catalog, then send your order message with one tap.",
+    itemsSelected: "{units} item(s) selected · {variants} size variant(s)",
+    clear: "Clear cart",
+    clearAll: "Clear all",
+    remove: "Remove",
+    checkoutWhatsApp: "Order on WhatsApp",
+    close: "Close cart",
+    estimatedTotal: "Estimated total",
+    lineTotal: "Line total:",
+    size: "Size: {size}",
+    code: "Code: {code}",
+    sendOrder: "Send order on WhatsApp",
+    sendOrderItems: "Send order for {count} items",
+    addProductsFirst: "Add products first",
+    orderHintSingular:
+      "Sends your order on WhatsApp with product details and a link your team can open.",
+    orderHintPlural:
+      "Sends a clear order summary on WhatsApp with all {units} items across {variants} size variants.",
+    orderCount: "Order ({count})",
+  },
+
+  common: {
+    byTfrc: "by TFRC",
+    loading: "Loading…",
+    unavailable: "unavailable",
+  },
+} as const;
+
+type DeepStringRecord<T> = {
+  [K in keyof T]: T[K] extends string ? string : DeepStringRecord<T[K]>;
+};
+
+export type Dictionary = DeepStringRecord<typeof en>;

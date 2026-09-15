@@ -1,8 +1,7 @@
 import prisma from "@/lib/db";
 import { slugify } from "@/lib/slugify";
 import { buildConfigFromEnvironment, getEnvironmentCardImage } from "@/lib/environment-config";
-import { discoverShopCategoriesFromProducts, type ShopCategoryDef } from "@/lib/shop-categories";
-import { SHOP_CATEGORIES } from "@/lib/shop-categories";
+import { type ShopCategoryDef } from "@/lib/shop-categories";
 import { removeCachedEnvironment } from "@/lib/catalog-cache";
 import type { EnvironmentStatus } from "@prisma/client";
 
@@ -235,30 +234,35 @@ function defsToDbRows(environmentId: string, defs: ShopCategoryDef[]) {
   }));
 }
 
-/** Seed shop categories from hardcoded defs or auto-discover from product names */
+/** Seed shop categories from keyword packs (or discovery) and assign every product. */
 export async function generateShopCategories(environmentId: string, slug: string) {
   const { syncEnvironmentShopCategories } = await import("@/lib/shop-category-sync");
+  const { resolveCatalogueShopCategoryPack } = await import("@/lib/shop-categories");
 
-  const hardcoded = SHOP_CATEGORIES[slug];
-  if (hardcoded?.length) {
-    await prisma.shopCategory.deleteMany({ where: { environmentId } });
-    await prisma.shopCategory.createMany({ data: defsToDbRows(environmentId, hardcoded) });
-    await syncEnvironmentShopCategories(environmentId, hardcoded);
-    return hardcoded.length;
-  }
+  const env = await prisma.environment.findUnique({
+    where: { id: environmentId },
+    select: { name: true, slug: true, tagline: true, departmentSource: true },
+  });
 
   const products = await prisma.product.findMany({
     where: { environmentId, status: "ACTIVE", deletedAt: null },
     select: { name: true },
   });
 
-  const discovered = discoverShopCategoriesFromProducts(products.map((p) => p.name));
-  if (discovered.length === 0) return 0;
+  const pack = resolveCatalogueShopCategoryPack({
+    slug: env?.slug ?? slug,
+    name: env?.name,
+    tagline: env?.tagline,
+    departmentSource: env?.departmentSource,
+    productNames: products.map((p) => p.name),
+  });
+
+  if (pack.length === 0) return 0;
 
   await prisma.shopCategory.deleteMany({ where: { environmentId } });
-  await prisma.shopCategory.createMany({ data: defsToDbRows(environmentId, discovered) });
-  await syncEnvironmentShopCategories(environmentId, discovered);
-  return discovered.length;
+  await prisma.shopCategory.createMany({ data: defsToDbRows(environmentId, pack) });
+  await syncEnvironmentShopCategories(environmentId, pack);
+  return pack.length;
 }
 
 export async function getLandingPortalsFromDb() {

@@ -3,6 +3,12 @@ import { buildCataloguePdfHtml } from "@/lib/catalogue-pdf-html";
 import { embedCatalogueImages, pdfImageOrPlaceholder } from "@/lib/catalogue-pdf-images";
 import { getSiteUrl } from "@/lib/site-config";
 
+/**
+ * Shared production PDF assembly for ANY catalogue selected by id.
+ * Do not special-case catalogue names/slugs — branding and content come
+ * exclusively from the payload built for that catalogueId.
+ */
+
 export function absolutizeMediaUrl(url: string | null, origin: string): string | null {
   if (!url) return null;
   if (url.startsWith("data:")) return url;
@@ -13,9 +19,10 @@ export function absolutizeMediaUrl(url: string | null, origin: string): string |
 }
 
 /**
- * Shared production PDF assembly:
+ * Shared production PDF assembly for any catalogueId:
  * payload (DB) → absolute media URLs → embed images → HTML.
  * Used by the admin API route and the local preview script.
+ * No catalogue-specific branches — only the payload differs.
  */
 export async function assembleCataloguePdfHtml(
   payload: CataloguePdfPayload,

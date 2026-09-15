@@ -119,9 +119,35 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
     isVariantPrimary: true,
   };
 
+  const env = await prisma.environment.findUnique({
+    where: { id: environmentId },
+    select: { name: true, slug: true, tagline: true, departmentSource: true },
+  });
+
   let defs = await getDbShopCategoryDefs(environmentId);
   if (defs.length === 0) {
     defs = getShopCategoryDefs(environmentSlug);
+  }
+
+  const totalActive = await prisma.product.count({ where: baseWhere });
+  const uncategorized = await prisma.product.count({
+    where: {
+      ...baseWhere,
+      OR: [{ shopCategorySlug: null }, { shopCategorySlug: OTHER_SHOP_CATEGORY.slug }],
+    },
+  });
+
+  // Auto-heal when products are mostly uncategorized (common for new catalogues
+  // and Excel imports without shop category columns).
+  const mostlyUncategorized =
+    totalActive > 0 && uncategorized / totalActive >= 0.45;
+
+  if (mostlyUncategorized || defs.length === 0) {
+    const { generateShopCategories } = await import("@/services/catalogue-admin.service");
+    const { removeCachedEnvironment } = await import("@/lib/catalog-cache");
+    await generateShopCategories(environmentId, environmentSlug);
+    removeCachedEnvironment(environmentSlug);
+    defs = await getDbShopCategoryDefs(environmentId);
   }
 
   if (defs.length === 0) {
@@ -135,6 +161,21 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
       environmentSlug,
       sample.map((p) => p.name)
     );
+    if (defs.length > 0) {
+      const { syncEnvironmentShopCategories } = await import("@/lib/shop-category-sync");
+      const { resolveCatalogueShopCategoryPack } = await import("@/lib/shop-categories");
+      const pack = resolveCatalogueShopCategoryPack({
+        slug: env?.slug ?? environmentSlug,
+        name: env?.name,
+        tagline: env?.tagline,
+        departmentSource: env?.departmentSource,
+        productNames: sample.map((p) => p.name),
+      });
+      if (pack.length > 0) {
+        await syncEnvironmentShopCategories(environmentId, pack);
+        defs = pack;
+      }
+    }
   }
 
   if (defs.length === 0) return [];
@@ -206,6 +247,19 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
       name: def.name,
       productCount,
       imageUrl: imageBySlug.get(def.slug) ?? thumbBySlug.get(def.slug) ?? null,
+    });
+  }
+
+  // Include orphan slugs (assigned but not in current defs) so storefront matches PDF.
+  for (const [slug, productCount] of countBySlug) {
+    if (slug === OTHER_SHOP_CATEGORY.slug) continue;
+    if (defs.some((def) => def.slug === slug)) continue;
+    if (productCount <= 0) continue;
+    items.push({
+      slug,
+      name: slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      productCount,
+      imageUrl: imageBySlug.get(slug) ?? thumbBySlug.get(slug) ?? null,
     });
   }
 

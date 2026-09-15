@@ -6,6 +6,7 @@ import { trackMetaAddToCart } from "@/components/analytics/MetaPixel";
 import { trackCustomerInquiry } from "@/lib/track-inquiry";
 import { cn } from "@/lib/utils";
 import { calculateLineTotal } from "@/lib/money";
+import { useT } from "@/context/LanguageContext";
 
 interface AddToCartButtonProps {
   productId: string;
@@ -42,6 +43,7 @@ export function AddToCartButton({
   accentColor,
   variant = "solid",
 }: AddToCartButtonProps) {
+  const t = useT();
   const { isInCart, addItem, removeItem } = useCart();
   const inCart = isInCart(productId);
   const qty = Math.max(1, quantity);
@@ -141,12 +143,12 @@ export function AddToCartButton({
       {inCart ? (
         <>
           <Check className="h-3.5 w-3.5" strokeWidth={2} />
-          Added
+          {t("product.added")}
         </>
       ) : (
         <>
           <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-          Add to Cart
+          {t("product.addToCart")}
         </>
       )}
     </button>

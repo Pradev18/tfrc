@@ -25,6 +25,7 @@ import { UiSelect } from "@/components/ui/UiSelect";
 import { MEDIA_BLUR_DATA_URL, MediaFallback } from "@/components/public/MediaFallback";
 import { flushSync } from "react-dom";
 import { calculateLineTotal } from "@/lib/money";
+import { useT } from "@/context/LanguageContext";
 
 const CART_QTY_OPTIONS = Array.from({ length: 20 }, (_, index) => ({
   value: String(index + 1),
@@ -44,6 +45,7 @@ export function CartDrawer({
   whatsappSettings,
   siteUrl = "",
 }: CartDrawerProps) {
+  const t = useT();
   const { items, removeItem, clearCart, setItemQuantity } = useCart();
 
   const settings: WhatsAppSettings = whatsappSettings ?? {
@@ -95,22 +97,25 @@ export function CartDrawer({
       <aside
         className="fixed inset-y-0 right-0 z-[70] flex w-full max-w-md flex-col bg-surface shadow-2xl"
         role="dialog"
-        aria-label="Shopping cart"
+        aria-label={t("cart.title")}
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
-            <h2 className="text-lg font-semibold text-text">Your Cart</h2>
+            <h2 className="text-lg font-semibold text-text">{t("cart.title")}</h2>
             <p className="text-xs text-text-muted">
               {items.length === 0
-                ? "No products selected yet"
-                : `${totalUnits} item${totalUnits === 1 ? "" : "s"} selected · ${items.length} size variant${items.length === 1 ? "" : "s"}`}
+                ? t("cart.empty")
+                : t("cart.itemsSelected", {
+                    units: totalUnits,
+                    variants: items.length,
+                  })}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-surface-muted"
-            aria-label="Close cart"
+            aria-label={t("cart.close")}
           >
             <X className="h-5 w-5" />
           </button>
@@ -119,12 +124,9 @@ export function CartDrawer({
         <div className="flex-1 overflow-y-auto p-5">
           {items.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center">
-              <p className="text-text-muted">Browse a catalogue and tap</p>
-              <p className="mt-1 font-semibold text-primary">&quot;Add to Cart&quot;</p>
-              <p className="mt-4 text-sm text-text-subtle">
-                Select products, add them to WhatsApp Business Catalog, then send your order
-                message with one tap.
-              </p>
+              <p className="text-text-muted">{t("cart.emptyHint")}</p>
+              <p className="mt-1 font-semibold text-primary">{t("cart.emptyHint2")}</p>
+              <p className="mt-4 text-sm text-text-subtle">{t("cart.emptyHint3")}</p>
             </div>
           ) : (
             <ul className="space-y-4">
@@ -154,19 +156,19 @@ export function CartDrawer({
                     </p>
                     <p className="line-clamp-2 font-sans text-sm font-medium text-text">{item.name}</p>
                     <p className="mt-0.5 text-[11px] text-text-muted">
-                      {item.size ? `Size: ${item.size}` : ""}
+                      {item.size ? t("cart.size", { size: item.size }) : ""}
                       {item.size && item.productId ? " · " : ""}
-                      {item.productId ? `Code: ${item.productId}` : ""}
+                      {item.productId ? t("cart.code", { code: item.productId }) : ""}
                     </p>
                     <div className="mt-2 flex max-w-28 items-center gap-2">
-                      <span className="text-[11px] text-text-muted">Qty</span>
+                      <span className="text-[11px] text-text-muted">{t("product.qty")}</span>
                       <UiSelect
                         value={item.quantity}
                         options={CART_QTY_OPTIONS}
                         onValueChange={(value) =>
                           setItemQuantity(item.productId, Number(value))
                         }
-                        ariaLabel={`Quantity for ${item.name}${item.size ? ` size ${item.size}` : ""}`}
+                        ariaLabel={`${t("product.qty")} ${item.name}${item.size ? ` ${item.size}` : ""}`}
                         className="min-h-[34px] px-3 text-xs"
                       />
                     </div>
@@ -174,7 +176,7 @@ export function CartDrawer({
                       {formatCurrency(item.price, item.currency)} × {Math.max(1, item.quantity ?? 1)}
                     </p>
                     <p className="text-sm font-semibold text-primary">
-                      Line total:{" "}
+                      {t("cart.lineTotal")}{" "}
                       {formatCurrency(
                         calculateLineTotal(item.price, item.quantity),
                         item.currency
@@ -185,7 +187,7 @@ export function CartDrawer({
                     type="button"
                     onClick={() => handleRemoveItem(item.id)}
                     className="shrink-0 self-start p-1 text-text-subtle hover:text-error"
-                    aria-label={`Remove ${item.name}`}
+                    aria-label={`${t("cart.remove")} ${item.name}`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -202,7 +204,7 @@ export function CartDrawer({
           {items.length > 0 && (
             <>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-text-muted">Estimated total</span>
+                <span className="text-text-muted">{t("cart.estimatedTotal")}</span>
                 <span className="text-lg font-semibold text-primary">
                   {formatCurrency(estimatedTotal, items[0]?.currency ?? "QAR")}
                 </span>
@@ -212,12 +214,15 @@ export function CartDrawer({
                 onClick={handleClearCart}
                 className="w-full py-2 text-xs font-medium text-text-subtle hover:text-error"
               >
-                Clear all
+                {t("cart.clearAll")}
               </button>
               <p className="text-center text-[11px] text-text-muted">
                 {totalUnits === 1
-                  ? "Sends your order on WhatsApp with product details and a link your team can open."
-                  : `Sends a clear order summary on WhatsApp with all ${totalUnits} items across ${items.length} size variants.`}
+                  ? t("cart.orderHintSingular")
+                  : t("cart.orderHintPlural", {
+                      units: totalUnits,
+                      variants: items.length,
+                    })}
               </p>
               <CartContactFields />
             </>
@@ -248,13 +253,13 @@ export function CartDrawer({
             >
               <WhatsAppIcon className="h-5 w-5" />
               {totalUnits === 1
-                ? "Send order on WhatsApp"
-                : `Send order for ${totalUnits} items`}
+                ? t("cart.sendOrder")
+                : t("cart.sendOrderItems", { count: totalUnits })}
             </WhatsAppOrderGate>
           ) : (
             <span className="flex w-full min-h-[48px] cursor-not-allowed items-center justify-center gap-2 rounded-md bg-text-subtle py-3.5 text-sm font-semibold text-white opacity-60">
               <WhatsAppIcon className="h-5 w-5" />
-              Add products first
+              {t("cart.addProductsFirst")}
             </span>
           )}
         </div>
