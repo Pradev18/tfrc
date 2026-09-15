@@ -31,13 +31,12 @@ type ReportLine = {
   wholesalePriceApproval: string;
 };
 
-/** With images on: keep sections small so print doesn't create blank overflow pages. */
-const SECTION_ROWS_WITH_IMAGES = 100; // 10 A4 pages
-const SECTION_ROWS_LITE = 500;
+/** Hostinger-safe batch size: 10 A4 pages with images. */
+const SECTION_ROWS = 100;
 const FETCH_PAGE_SIZE = 100;
 
 async function waitForImages(root: ParentNode, timeoutMs = 12000) {
-  const imgs = Array.from(root.querySelectorAll("img"));
+  const imgs = Array.from(root.querySelectorAll("img.product-img")) as HTMLImageElement[];
   await Promise.all(
     imgs.map(
       (img) =>
@@ -68,13 +67,11 @@ export function ReportPrintClient({
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** Default OFF so product images print. Lite = links only (faster, no photos). */
-  const [liteImages, setLiteImages] = useState(false);
 
-  const sectionRows = liteImages ? SECTION_ROWS_LITE : SECTION_ROWS_WITH_IMAGES;
-  const sectionCount = Math.max(1, Math.ceil(meta.lineCount / sectionRows));
-  const sectionStart = sectionIndex * sectionRows;
-  const sectionEnd = Math.min(sectionStart + sectionRows, meta.lineCount);
+  const sectionCount = Math.max(1, Math.ceil(meta.lineCount / SECTION_ROWS));
+  const sectionStart = sectionIndex * SECTION_ROWS;
+  const sectionEnd = Math.min(sectionStart + SECTION_ROWS, meta.lineCount);
+  const totalPdfPages = Math.max(1, Math.ceil(meta.lineCount / REPORT_ROWS_PER_PAGE));
 
   const pages = useMemo(() => {
     if (lines.length === 0) return [];
@@ -86,24 +83,21 @@ export function ReportPrintClient({
   }, [lines]);
 
   const loadSection = useCallback(
-    async (index: number, rowsPerSection: number) => {
+    async (index: number) => {
       setLoading(true);
       setError(null);
       try {
-        const startRow = index * rowsPerSection;
-        const endRow = Math.min(startRow + rowsPerSection, meta.lineCount);
+        const startRow = index * SECTION_ROWS;
+        const endRow = Math.min(startRow + SECTION_ROWS, meta.lineCount);
         const needed = endRow - startRow;
         if (needed <= 0) {
           setLines([]);
           setSectionIndex(index);
           return;
         }
-
-        // API pages are 1-based over sortOrder order.
         const startPage = Math.floor(startRow / FETCH_PAGE_SIZE) + 1;
         const pageCount = Math.ceil(needed / FETCH_PAGE_SIZE);
         const collected: ReportLine[] = [];
-
         for (let p = 0; p < pageCount; p++) {
           const page = startPage + p;
           const res = await fetch(
@@ -120,7 +114,6 @@ export function ReportPrintClient({
             }
           }
         }
-
         collected.sort((a, b) => a.sortOrder - b.sortOrder);
         setLines(collected);
         setSectionIndex(index);
@@ -134,398 +127,669 @@ export function ReportPrintClient({
   );
 
   useEffect(() => {
-    void loadSection(0, sectionRows);
-  }, [loadSection, sectionRows]);
+    void loadSection(0);
+  }, [loadSection]);
 
   async function handlePrint() {
     if (printing || lines.length === 0) return;
     setPrinting(true);
     try {
-      const root = document.querySelector(".print-root");
+      const root = document.querySelector(".report-print-root");
       if (root) await waitForImages(root);
-      // Let layout settle before Chrome paginates.
-      await new Promise((r) => window.setTimeout(r, 200));
+      await new Promise((r) => window.setTimeout(r, 250));
       window.print();
     } finally {
       setPrinting(false);
     }
   }
 
-  const totalPdfPages = Math.ceil(meta.lineCount / REPORT_ROWS_PER_PAGE) || 1;
-
   return (
-    <div className="print-root bg-[#d8d0e4] text-[#1f1630]">
-      <div className="print-toolbar sticky top-0 z-20 mx-auto flex w-[210mm] flex-wrap items-center justify-between gap-3 border-b border-[#cfc3dd] bg-white px-3 py-2">
-        <div className="text-sm">
-          <p className="font-semibold">{meta.title}</p>
-          <p className="text-xs text-[#6b6280]">
+    <div className="report-print-root">
+      <div className="admin-toolbar no-print">
+        <div>
+          <p className="toolbar-title">{meta.title}</p>
+          <p className="toolbar-meta">
             Section {sectionIndex + 1}/{sectionCount} · rows {sectionStart + 1}–
-            {sectionEnd} of {meta.lineCount} · ~{totalPdfPages} PDF pages total
+            {sectionEnd} of {meta.lineCount} · {totalPdfPages} A4 page(s)
           </p>
-          <label className="mt-1 flex items-center gap-2 text-xs text-[#6b6280]">
-            <input
-              type="checkbox"
-              checked={liteImages}
-              onChange={(e) => {
-                setLiteImages(e.target.checked);
-                setSectionIndex(0);
-              }}
-            />
-            Lite mode (hide product photos — only if print is too heavy)
-          </label>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={`/admin/reports/${reportId}`}
-            className="rounded border border-[#cfc3dd] px-3 py-1.5 text-sm"
-          >
+        <div className="toolbar-actions">
+          <Link href={`/admin/reports/${reportId}`} className="btn-secondary">
             ← Editor
           </Link>
           <button
             type="button"
-            className="rounded border border-[#cfc3dd] px-3 py-1.5 text-sm disabled:opacity-50"
+            className="btn-secondary"
             disabled={loading || sectionIndex <= 0}
-            onClick={() => void loadSection(sectionIndex - 1, sectionRows)}
+            onClick={() => void loadSection(sectionIndex - 1)}
           >
             Prev section
           </button>
           <button
             type="button"
-            className="rounded border border-[#cfc3dd] px-3 py-1.5 text-sm disabled:opacity-50"
+            className="btn-secondary"
             disabled={loading || sectionIndex >= sectionCount - 1}
-            onClick={() => void loadSection(sectionIndex + 1, sectionRows)}
+            onClick={() => void loadSection(sectionIndex + 1)}
           >
             Next section
           </button>
           <button
             type="button"
-            className="rounded bg-[#5B2C8B] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="btn-primary"
             disabled={loading || printing || lines.length === 0}
             onClick={() => void handlePrint()}
           >
-            {printing ? "Preparing images…" : "Print / Save PDF"}
+            {printing ? "Preparing…" : "Print / Save PDF"}
           </button>
         </div>
       </div>
 
-      {error && (
-        <p className="mx-auto mt-3 w-[210mm] text-sm text-red-700 print-hide">{error}</p>
-      )}
-      {loading && (
-        <p className="mx-auto mt-3 w-[210mm] text-sm text-[#6b6280] print-hide">
-          Loading section…
-        </p>
-      )}
+      {error && <p className="status-error no-print">{error}</p>}
+      {loading && <p className="status-muted no-print">Loading section…</p>}
 
-      {!loading &&
-        pages.map((pageLines, pageIndex) => {
-          const globalPage =
-            Math.floor(sectionStart / REPORT_ROWS_PER_PAGE) + pageIndex + 1;
-          const isLastSheetOfReport =
-            sectionIndex === sectionCount - 1 && pageIndex === pages.length - 1;
-          return (
-            <section key={`sheet-${sectionIndex}-${pageIndex}`} className="sheet">
-              <header className="doc-header">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  className="logo"
-                  src={TFRC_REPORT_LOGO_SRC}
-                  alt="TFRC"
-                  width={80}
-                  height={48}
-                />
-                <div className="brand">
-                  <p className="ar">الشركة الأولى لبيع التجزئة (ذ.م.م)</p>
-                  <h1>THE FIRST RETAIL COMPANY (W.L.L)</h1>
-                  <p className="tag">Quality Products for a Better Tomorrow</p>
-                  <h2>INVENTORY AVAILABILITY &amp; PRICE CHECK</h2>
-                </div>
-                <div className="date-box">
-                  <span>DATE</span>
-                  <div>{meta.reportDate || "—"}</div>
-                </div>
-              </header>
+      <div className="preview-stage">
+        {!loading &&
+          pages.map((pageLines, pageIndex) => {
+            const globalPage =
+              Math.floor(sectionStart / REPORT_ROWS_PER_PAGE) + pageIndex + 1;
+            const isLastPageOfReport =
+              sectionIndex === sectionCount - 1 && pageIndex === pages.length - 1;
 
-              <div className="meta-grid">
-                <MetaField label="CUSTOMER NAME" value={meta.customerName} />
-                <MetaField label="REQUESTED BY" value={meta.requestedBy} />
-                <MetaField label="SHOP / BRANCH" value={meta.shopBranch} />
-                <MetaField label="TFRC" value="TFRC" />
-              </div>
-              {meta.notes ? (
-                <div className="notes-field">
-                  <span className="field-label">NOTES</span>
-                  <div className="field-value">{meta.notes}</div>
-                </div>
-              ) : null}
+            return (
+              <article
+                key={`page-${sectionIndex}-${pageIndex}`}
+                className={`report-page${isLastPageOfReport ? " report-page--final" : ""}`}
+              >
+                <header className="rp-header">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    className="rp-logo"
+                    src={TFRC_REPORT_LOGO_SRC}
+                    alt="TFRC"
+                    width={120}
+                    height={72}
+                  />
+                  <div className="rp-brand">
+                    <p className="rp-ar">الشركة الأولى لبيع التجزئة (ذ.م.م)</p>
+                    <h1>THE FIRST RETAIL COMPANY (W.L.L)</h1>
+                    <p className="rp-tag">Quality Products for a Better Tomorrow</p>
+                    <h2>INVENTORY AVAILABILITY &amp; PRICE CHECK</h2>
+                  </div>
+                  <div className="rp-date">
+                    <span className="rp-label">DATE</span>
+                    <div className="rp-field">{meta.reportDate || ""}</div>
+                  </div>
+                </header>
 
-              <table className="grid">
-                <thead>
-                  <tr>
-                    <th className="c-num">#</th>
-                    <th className="c-code">Item code</th>
-                    <th className="c-link">Image link</th>
-                    <th className="c-img">Image</th>
-                    <th className="c-name">Item Name</th>
-                    <th className="c-supplier">Supplier</th>
-                    <th className="c-onhand">On Hand</th>
-                    <th className="c-cost">Item Cost</th>
-                    <th className="c-sell">Selling</th>
-                    <th className="c-ws">Wholesale</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Array.from({ length: REPORT_ROWS_PER_PAGE }).map((_, idx) => {
-                    const line = pageLines[idx];
-                    const n =
-                      sectionStart + pageIndex * REPORT_ROWS_PER_PAGE + idx + 1;
-                    if (!line) {
-                      return (
-                        <tr key={`empty-${n}`} className="empty-row">
-                          <td className="c-num">{n}</td>
-                          <td colSpan={9} />
-                        </tr>
-                      );
-                    }
-                    return (
-                      <tr key={line.id}>
-                        <td className="c-num">{line.sortOrder}</td>
-                        <td className="c-code">{line.itemCode}</td>
-                        <td className="c-link">
-                          {line.imageLink ? (
-                            <a
-                              className="img-link"
-                              href={line.imageLink}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {line.imageLink}
-                            </a>
-                          ) : null}
-                        </td>
-                        <td className="c-img">
-                          {line.imageLink && !liteImages ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={line.imageLink}
-                              alt=""
-                              loading="eager"
-                              decoding="sync"
-                              referrerPolicy="no-referrer"
-                              onError={(e) => {
-                                e.currentTarget.style.visibility = "hidden";
-                              }}
-                            />
-                          ) : (
-                            <div className="img-fallback" />
-                          )}
-                        </td>
-                        <td className="c-name">{line.itemName}</td>
-                        <td className="c-supplier">{line.supplierName}</td>
-                        <td className="c-onhand">{line.onHand}</td>
-                        <td className="c-cost">{line.itemCost}</td>
-                        <td className="c-sell">{line.sellingPrice}</td>
-                        <td className="c-ws">{line.wholesalePriceApproval}</td>
+                <section className="rp-meta">
+                  <div className="rp-meta-cell">
+                    <span className="rp-label">CUSTOMER NAME</span>
+                    <div className="rp-field">{meta.customerName || ""}</div>
+                  </div>
+                  <div className="rp-meta-cell">
+                    <span className="rp-label">REQUESTED BY</span>
+                    <div className="rp-field">{meta.requestedBy || ""}</div>
+                  </div>
+                  <div className="rp-meta-cell">
+                    <span className="rp-label">SHOP / BRANCH</span>
+                    <div className="rp-field">{meta.shopBranch || ""}</div>
+                  </div>
+                  <div className="rp-meta-cell rp-meta-cell--narrow">
+                    <span className="rp-label">TFRC</span>
+                    <div className="rp-field">TFRC</div>
+                  </div>
+                </section>
+
+                <section className="rp-notes">
+                  <span className="rp-label">NOTES</span>
+                  <div className="rp-field rp-field--notes">{meta.notes || ""}</div>
+                </section>
+
+                <div className="rp-table-wrap">
+                  <table className="rp-table">
+                    <colgroup>
+                      <col className="col-num" />
+                      <col className="col-code" />
+                      <col className="col-link" />
+                      <col className="col-img" />
+                      <col className="col-name" />
+                      <col className="col-supplier" />
+                      <col className="col-onhand" />
+                      <col className="col-cost" />
+                      <col className="col-sell" />
+                      <col className="col-ws" />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Item code</th>
+                        <th>Image link</th>
+                        <th>Image</th>
+                        <th>Item Name</th>
+                        <th>Supplier Name</th>
+                        <th>On Hand</th>
+                        <th>Item Cost</th>
+                        <th>Selling Price</th>
+                        <th>
+                          Whole Sale
+                          <br />
+                          Price Approval
+                        </th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-
-              {isLastSheetOfReport ? (
-                <div className="approval">
-                  <ApprovalBox title="PREPARED BY" />
-                  <ApprovalBox title="CHECKED BY" />
+                    </thead>
+                    <tbody>
+                      {Array.from({ length: REPORT_ROWS_PER_PAGE }).map((_, idx) => {
+                        const line = pageLines[idx];
+                        if (!line) {
+                          return (
+                            <tr key={`empty-${idx}`} className="rp-row rp-row--empty">
+                              <td className="c-num">
+                                {sectionStart + pageIndex * REPORT_ROWS_PER_PAGE + idx + 1}
+                              </td>
+                              <td />
+                              <td />
+                              <td />
+                              <td />
+                              <td />
+                              <td className="c-onhand" />
+                              <td className="c-cost" />
+                              <td className="c-sell" />
+                              <td className="c-ws" />
+                            </tr>
+                          );
+                        }
+                        return (
+                          <tr key={line.id} className="rp-row">
+                            <td className="c-num">{line.sortOrder}</td>
+                            <td className="c-code">{line.itemCode}</td>
+                            <td className="c-link">
+                              {line.imageLink ? (
+                                <a
+                                  href={line.imageLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {line.imageLink}
+                                </a>
+                              ) : null}
+                            </td>
+                            <td className="c-img">
+                              {line.imageLink ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  className="product-img"
+                                  src={line.imageLink}
+                                  alt=""
+                                  loading="eager"
+                                  decoding="sync"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    e.currentTarget.style.visibility = "hidden";
+                                  }}
+                                />
+                              ) : (
+                                <div className="img-empty" />
+                              )}
+                            </td>
+                            <td className="c-name">{line.itemName}</td>
+                            <td className="c-supplier">{line.supplierName}</td>
+                            <td className="c-onhand">{line.onHand}</td>
+                            <td className="c-cost">{line.itemCost}</td>
+                            <td className="c-sell">{line.sellingPrice}</td>
+                            <td className="c-ws">{line.wholesalePriceApproval}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-              ) : (
-                <div className="spacer" />
-              )}
 
-              <footer className="doc-footer">
-                <span>
-                  THE FIRST RETAIL COMPANY (W.L.L.) | Quality Products | Trusted
-                  Partners
-                </span>
-                <span>
-                  Page {globalPage} of {totalPdfPages}
-                </span>
-              </footer>
-            </section>
-          );
-        })}
+                {isLastPageOfReport ? (
+                  <section className="rp-approval">
+                    <div className="rp-approval-card">
+                      <div className="rp-approval-head">PREPARED BY</div>
+                      <div className="rp-approval-body">
+                        <p>Name:</p>
+                        <p>Signature / date:</p>
+                        <div className="rp-stamp" />
+                      </div>
+                    </div>
+                    <div className="rp-approval-card">
+                      <div className="rp-approval-head">CHECKED BY</div>
+                      <div className="rp-approval-body">
+                        <p>Name:</p>
+                        <p>Signature / date:</p>
+                        <div className="rp-stamp" />
+                      </div>
+                    </div>
+                  </section>
+                ) : null}
 
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-        :root {
-          --purple: #5B2C8B;
-          --lavender: #efe8f7;
-          --onhand: #dceefb;
-          --cost: #f5ecd8;
-          --sell: #f8dce8;
-          --ws: #fff3bf;
-          --line: #cfc3dd;
-        }
-        * { box-sizing: border-box; }
-        html, body {
-          margin: 0; padding: 0;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-        .sheet {
-          width: 210mm;
-          height: 297mm;
-          max-height: 297mm;
-          margin: 8px auto;
-          background: #fff;
-          overflow: hidden;
-          padding: 6mm 6mm 5mm;
-          display: flex;
-          flex-direction: column;
-          box-shadow: 0 2px 12px rgba(0,0,0,.08);
-          break-inside: avoid;
-          page-break-inside: avoid;
-          page-break-after: always;
-          break-after: page;
-        }
-        .sheet:last-of-type {
-          page-break-after: auto;
-          break-after: auto;
-        }
-        .doc-header {
-          display: grid;
-          grid-template-columns: 22mm 1fr 28mm;
-          gap: 3mm;
-          align-items: center;
-          margin-bottom: 2mm;
-          flex: 0 0 auto;
-        }
-        .logo { width: 20mm; height: 12mm; object-fit: contain; display: block; }
-        .brand { text-align: center; }
-        .brand .ar { margin: 0; font-size: 9pt; color: var(--purple); font-weight: 700; }
-        .brand h1 { margin: 1mm 0 0; font-size: 12pt; color: var(--purple); }
-        .brand .tag { margin: 0.6mm 0 0; font-size: 7pt; color: #6b6280; }
-        .brand h2 {
-          margin: 1.5mm 0 0; font-size: 11pt; color: var(--purple);
-          border-bottom: 0.4mm solid var(--purple); display: inline-block; padding-bottom: 0.6mm;
-        }
-        .date-box {
-          border: 0.35mm solid var(--purple); border-radius: 1.5mm; padding: 1.5mm;
-          min-height: 12mm; background: #fff;
-        }
-        .date-box span {
-          display: block; font-size: 7pt; font-weight: 800; color: var(--purple); letter-spacing: 0.08em;
-        }
-        .date-box div { margin-top: 1mm; font-size: 10pt; font-weight: 700; }
-        .meta-grid {
-          display: grid; grid-template-columns: 1.3fr 1fr 1fr 0.55fr; gap: 2mm; margin-bottom: 2mm;
-          flex: 0 0 auto;
-        }
-        .meta-field, .notes-field {
-          border: 0.3mm solid var(--line); border-radius: 1.4mm; background: var(--lavender);
-          min-height: 10mm; padding: 1.2mm 2mm;
-        }
-        .notes-field { margin-bottom: 2mm; }
-        .field-label {
-          display: block; font-size: 6.5pt; font-weight: 800; color: var(--purple); letter-spacing: 0.06em;
-        }
-        .field-value { margin-top: 1mm; min-height: 4mm; font-size: 8.5pt; font-weight: 600; white-space: pre-wrap; }
-        .grid {
-          width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 6.2pt;
-          flex: 1 1 auto;
-        }
-        .grid th, .grid td {
-          border: 0.28mm solid #b9accb; padding: 0.8mm 0.6mm; vertical-align: middle; overflow: hidden;
-        }
-        .grid th {
-          background: var(--purple); color: #fff; font-weight: 800; text-align: center; font-size: 5.8pt;
-        }
-        .c-num { width: 5mm; text-align: center; }
-        .c-code { width: 16mm; word-break: break-all; font-family: ui-monospace, monospace; }
-        .c-link { width: 20mm; }
-        .c-img { width: 12mm; text-align: center; }
-        .c-name { width: 34mm; }
-        .c-supplier { width: 24mm; }
-        .c-onhand { width: 11mm; text-align: center; background: var(--onhand) !important; }
-        .c-cost { width: 14mm; text-align: right; background: var(--cost) !important; }
-        .c-sell { width: 14mm; text-align: right; background: var(--sell) !important; }
-        .c-ws { width: 16mm; background: var(--ws) !important; }
-        .c-img img {
-          width: 10mm; height: 10mm; object-fit: contain; display: inline-block; background: #fff;
-        }
-        .img-fallback {
-          width: 10mm; height: 10mm; margin: 0 auto; border: 0.25mm dashed #ccc; border-radius: 1mm;
-        }
-        .img-link {
-          color: #1d4ed8; text-decoration: underline; word-break: break-all; font-size: 5pt;
-          line-height: 1.1; max-height: 11mm; overflow: hidden; display: block;
-        }
-        .empty-row td { height: 11mm; }
-        .approval {
-          display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-top: 2mm; flex: 0 0 auto;
-        }
-        .approval-card { border: 0.35mm solid var(--purple); border-radius: 1.5mm; overflow: hidden; }
-        .approval-head {
-          background: var(--purple); color: #fff; font-size: 8pt; font-weight: 800;
-          padding: 1.4mm 2mm; letter-spacing: 0.06em;
-        }
-        .approval-body { padding: 2mm; min-height: 20mm; font-size: 8pt; }
-        .approval-body p { margin: 0 0 2mm; }
-        .stamp-box {
-          margin-top: 1mm; height: 10mm; border: 0.3mm dashed #c4b7d6; border-radius: 1mm; background: #faf7fd;
-        }
-        .spacer { flex: 1 1 auto; min-height: 0; }
-        .doc-footer {
-          margin-top: 1.5mm; background: var(--purple); color: #fff;
-          display: flex; justify-content: space-between; gap: 3mm;
-          padding: 1.5mm 2mm; font-size: 6pt; border-radius: 1mm; flex: 0 0 auto;
-        }
-        @media print {
-          html, body { background: #fff !important; }
-          .print-toolbar, .print-hide { display: none !important; }
-          .print-root { background: #fff !important; }
-          .sheet {
-            margin: 0 !important;
-            box-shadow: none !important;
-            height: 297mm !important;
-            max-height: 297mm !important;
-            overflow: hidden !important;
-            page-break-after: always !important;
-            break-after: page !important;
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
-          .sheet:last-of-type {
-            page-break-after: auto !important;
-            break-after: auto !important;
-          }
-        }
-        @page { size: A4 portrait; margin: 0; }
-      `,
-        }}
-      />
-    </div>
-  );
-}
-
-function MetaField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="meta-field">
-      <span className="field-label">{label}</span>
-      <div className="field-value">{value || "—"}</div>
-    </div>
-  );
-}
-
-function ApprovalBox({ title }: { title: string }) {
-  return (
-    <div className="approval-card">
-      <div className="approval-head">{title}</div>
-      <div className="approval-body">
-        <p>Name:</p>
-        <p>Signature / date:</p>
-        <div className="stamp-box" />
+                <footer className="rp-footer">
+                  <span>
+                    THE FIRST RETAIL COMPANY (W.L.L.) | Quality Products | Trusted Partners |
+                    Sustainable Growth
+                  </span>
+                  <span>
+                    Page {globalPage} of {totalPdfPages}
+                  </span>
+                </footer>
+              </article>
+            );
+          })}
       </div>
+
+      <style dangerouslySetInnerHTML={{ __html: REPORT_A4_CSS }} />
     </div>
   );
 }
+
+/**
+ * Full-page A4 geometry in physical units only (mm / pt).
+ * Screen preview shows true 210×297mm sheets; print is 1:1 with no transform.
+ */
+const REPORT_A4_CSS = `
+  :root {
+    --rp-purple: #5B2C8B;
+    --rp-lavender: #efe8f7;
+    --rp-onhand: #dceefb;
+    --rp-cost: #f5ecd8;
+    --rp-sell: #f8dce8;
+    --rp-ws: #fff3bf;
+    --rp-line: #b9accb;
+    --rp-ink: #1f1630;
+    --rp-muted: #6b6280;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #cfc3dd;
+    color: var(--rp-ink);
+    font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .report-print-root { min-height: 100vh; }
+
+  .admin-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    background: #fff;
+    border-bottom: 1px solid #d5cce0;
+  }
+  .toolbar-title { margin: 0; font-size: 14px; font-weight: 700; }
+  .toolbar-meta { margin: 2px 0 0; font-size: 12px; color: var(--rp-muted); }
+  .toolbar-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .btn-primary, .btn-secondary {
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    border: 1px solid #cfc3dd;
+    background: #fff;
+    color: var(--rp-ink);
+  }
+  .btn-primary {
+    background: var(--rp-purple);
+    border-color: var(--rp-purple);
+    color: #fff;
+  }
+  .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .status-error { margin: 12px 16px; color: #b91c1c; font-size: 13px; }
+  .status-muted { margin: 12px 16px; color: var(--rp-muted); font-size: 13px; }
+
+  /* Screen: show true A4 sheets centered (no transform scale on the page itself). */
+  .preview-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 12px 40px;
+    background: #cfc3dd;
+  }
+
+  /* ===== TRUE A4 PAGE ===== */
+  .report-page {
+    box-sizing: border-box;
+    width: 210mm;
+    height: 297mm;
+    max-width: 210mm;
+    max-height: 297mm;
+    margin: 0;
+    padding: 6mm 7mm 5mm;
+    background: #fff;
+    color: var(--rp-ink);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 6px 28px rgba(40, 20, 60, 0.18);
+    page-break-after: always;
+    break-after: page;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .report-page:last-of-type {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  .rp-label {
+    display: block;
+    font-size: 7pt;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: var(--rp-purple);
+    line-height: 1.15;
+  }
+  .rp-field {
+    margin-top: 1.2mm;
+    min-height: 7mm;
+    font-size: 10pt;
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .rp-field--notes { min-height: 10mm; }
+
+  /* Header ~30mm */
+  .rp-header {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: 28mm 1fr 36mm;
+    gap: 3mm;
+    align-items: center;
+    margin-bottom: 3mm;
+    min-height: 28mm;
+  }
+  .rp-logo {
+    width: 26mm;
+    height: 16mm;
+    object-fit: contain;
+    display: block;
+  }
+  .rp-brand { text-align: center; }
+  .rp-brand .rp-ar {
+    margin: 0;
+    font-size: 9pt;
+    font-weight: 700;
+    color: var(--rp-purple);
+  }
+  .rp-brand h1 {
+    margin: 1mm 0 0;
+    font-size: 13pt;
+    font-weight: 800;
+    color: var(--rp-purple);
+    letter-spacing: 0.01em;
+    line-height: 1.15;
+  }
+  .rp-brand .rp-tag {
+    margin: 0.8mm 0 0;
+    font-size: 7.5pt;
+    color: var(--rp-muted);
+  }
+  .rp-brand h2 {
+    margin: 2mm 0 0;
+    font-size: 11.5pt;
+    font-weight: 800;
+    color: var(--rp-purple);
+    border-bottom: 0.45mm solid var(--rp-purple);
+    display: inline-block;
+    padding-bottom: 0.8mm;
+    line-height: 1.2;
+  }
+  .rp-date {
+    border: 0.4mm solid var(--rp-purple);
+    border-radius: 1.5mm;
+    padding: 2mm 2.2mm;
+    min-height: 18mm;
+    background: #fff;
+  }
+
+  /* Request meta ~22mm */
+  .rp-meta {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: 1.35fr 1fr 1fr 0.55fr;
+    gap: 2.2mm;
+    margin-bottom: 2.2mm;
+  }
+  .rp-meta-cell {
+    border: 0.35mm solid var(--rp-line);
+    border-radius: 1.4mm;
+    background: var(--rp-lavender);
+    padding: 1.8mm 2.2mm;
+    min-height: 16mm;
+  }
+
+  /* Notes ~16mm */
+  .rp-notes {
+    flex: 0 0 auto;
+    border: 0.35mm solid var(--rp-line);
+    border-radius: 1.4mm;
+    background: var(--rp-lavender);
+    padding: 1.8mm 2.2mm;
+    margin-bottom: 2.5mm;
+    min-height: 14mm;
+  }
+
+  /* Table fills remaining height between notes and footer/approval */
+  .rp-table-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    display: block;
+  }
+  .rp-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 8pt;
+  }
+  .rp-table col.col-num { width: 7mm; }
+  .rp-table col.col-code { width: 18mm; }
+  .rp-table col.col-link { width: 24mm; }
+  .rp-table col.col-img { width: 18mm; }
+  .rp-table col.col-name { width: 38mm; }
+  .rp-table col.col-supplier { width: 28mm; }
+  .rp-table col.col-onhand { width: 13mm; }
+  .rp-table col.col-cost { width: 16mm; }
+  .rp-table col.col-sell { width: 16mm; }
+  .rp-table col.col-ws { width: 18mm; }
+
+  .rp-table th {
+    background: var(--rp-purple);
+    color: #fff;
+    font-weight: 800;
+    font-size: 7.2pt;
+    line-height: 1.2;
+    text-align: center;
+    vertical-align: middle;
+    border: 0.3mm solid #9b87b5;
+    padding: 1.6mm 0.9mm;
+    height: 13mm;
+  }
+  .rp-table td {
+    border: 0.3mm solid var(--rp-line);
+    padding: 1.4mm 1.1mm;
+    vertical-align: middle;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  /*
+   * Explicit physical row heights so 10 rows consume the A4 body.
+   * Continuation pages (no approval): ~19mm × 10 ≈ 190mm body.
+   * Final page (with approval): ~15mm × 10 ≈ 150mm body.
+   */
+  .report-page:not(.report-page--final) .rp-table tbody tr.rp-row {
+    height: 19mm;
+  }
+  .report-page--final .rp-table tbody tr.rp-row {
+    height: 15mm;
+  }
+
+  .c-num { text-align: center; font-weight: 700; font-size: 8pt; }
+  .c-code {
+    font-family: ui-monospace, "Consolas", monospace;
+    font-size: 7.5pt;
+    word-break: break-all;
+  }
+  .c-link a {
+    color: #1d4ed8;
+    text-decoration: underline;
+    word-break: break-all;
+    font-size: 6pt;
+    line-height: 1.15;
+    display: block;
+    max-height: 14mm;
+    overflow: hidden;
+  }
+  .c-img { text-align: center; }
+  .c-img .product-img {
+    width: 15mm;
+    height: 15mm;
+    object-fit: contain;
+    display: inline-block;
+    background: #fff;
+  }
+  .report-page--final .c-img .product-img {
+    width: 12mm;
+    height: 12mm;
+  }
+  .img-empty {
+    width: 15mm;
+    height: 15mm;
+    margin: 0 auto;
+    border: 0.3mm dashed #ccc;
+    border-radius: 1mm;
+  }
+  .report-page--final .img-empty {
+    width: 12mm;
+    height: 12mm;
+  }
+  .c-name, .c-supplier {
+    font-size: 8pt;
+    line-height: 1.2;
+    word-break: break-word;
+  }
+  .c-onhand {
+    text-align: center;
+    background: var(--rp-onhand) !important;
+    font-weight: 700;
+  }
+  .c-cost {
+    text-align: right;
+    background: var(--rp-cost) !important;
+    font-variant-numeric: tabular-nums;
+  }
+  .c-sell {
+    text-align: right;
+    background: var(--rp-sell) !important;
+    font-variant-numeric: tabular-nums;
+  }
+  .c-ws {
+    background: var(--rp-ws) !important;
+    font-size: 8pt;
+  }
+
+  /* Approval ~36mm — final page only */
+  .rp-approval {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3.5mm;
+    margin-top: 3mm;
+    min-height: 34mm;
+  }
+  .rp-approval-card {
+    border: 0.4mm solid var(--rp-purple);
+    border-radius: 1.5mm;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .rp-approval-head {
+    background: var(--rp-purple);
+    color: #fff;
+    font-size: 8.5pt;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    padding: 1.8mm 2.5mm;
+  }
+  .rp-approval-body {
+    flex: 1;
+    padding: 2.5mm;
+    font-size: 9pt;
+    min-height: 24mm;
+  }
+  .rp-approval-body p { margin: 0 0 3mm; }
+  .rp-stamp {
+    margin-top: 1mm;
+    height: 12mm;
+    border: 0.3mm dashed #c4b7d6;
+    border-radius: 1mm;
+    background: #faf7fd;
+  }
+
+  /* Footer ~8mm */
+  .rp-footer {
+    flex: 0 0 auto;
+    margin-top: auto;
+    background: var(--rp-purple);
+    color: #fff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 3mm;
+    padding: 1.8mm 2.5mm;
+    font-size: 7pt;
+    border-radius: 1mm;
+    min-height: 7mm;
+  }
+
+  @media print {
+    html, body {
+      background: #fff !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    .no-print, .admin-toolbar { display: none !important; }
+    .preview-stage {
+      display: block !important;
+      padding: 0 !important;
+      gap: 0 !important;
+      background: #fff !important;
+    }
+    .report-page {
+      box-shadow: none !important;
+      margin: 0 !important;
+      width: 210mm !important;
+      height: 297mm !important;
+      max-width: 210mm !important;
+      max-height: 297mm !important;
+      page-break-after: always !important;
+      break-after: page !important;
+    }
+    .report-page:last-of-type {
+      page-break-after: auto !important;
+      break-after: auto !important;
+    }
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+`;
