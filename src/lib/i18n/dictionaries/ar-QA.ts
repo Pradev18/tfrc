@@ -58,6 +58,16 @@ export const arQA: Dictionary = {
     filterByBrand: "تصفية حسب العلامة",
     sortProducts: "ترتيب المنتجات",
     copyright: "© {year} TFRC · الطلب عبر واتساب · قطر",
+    loadingProducts: "جاري تحميل المنتجات…",
+    loadMore: "تحميل المزيد ({loaded} من {total})",
+    scrollLoadHint: "يتم تحميل المزيد تلقائياً أثناء التمرير",
+    noProductsFound: "لا توجد منتجات",
+    noProductsInCategory: "لا توجد منتجات في هذا القسم بعد.",
+    productsOnPage: "{count} منتج في هذه الصفحة",
+    previous: "السابق",
+    next: "التالي",
+    pageOf: "صفحة {page} من {total}",
+    breadcrumb: "مسار التنقل",
   },
 
   product: {
@@ -73,6 +83,8 @@ export const arQA: Dictionary = {
     video: "فيديو",
     was: "كان {price}",
     from: "من {price}",
+    saveAmount: "وفّر {currency} {amount}",
+    percentOff: "{percent}% خصم",
     inStock: "متوفر",
     outOfStock: "تحقق من التوفر",
     sizeOption: "المقاس / الخيار",
@@ -82,6 +94,8 @@ export const arQA: Dictionary = {
     orderMultipleHint: "حدد كمية منفصلة لكل مقاس تحتاجه.",
     none: "لا شيء",
     suggested: "مقترح لك",
+    customersAlsoBought: "اشترى العملاء أيضاً",
+    fullDetails: "التفاصيل الكاملة",
     added: "تمت الإضافة",
     checkAvailabilityWhatsApp: "تحقق من التوفر عبر واتساب",
     selectQtyAtLeastOne: "حدد كمية لمقاس واحد على الأقل.",
@@ -90,6 +104,18 @@ export const arQA: Dictionary = {
     selectSizeToContinue: "اختر مقاساً للمتابعة",
     noOnlinePayment:
       "لا يوجد دفع إلكتروني. أضف إلى السلة وأرسل طلبك عبر واتساب — نؤكد التوصيل شخصياً.",
+    specs: {
+      brand: "العلامة",
+      condition: "الحالة",
+      category: "القسم",
+      subcategory: "القسم الفرعي",
+      gtin: "GTIN",
+      weight: "الوزن",
+      dimensions: "الأبعاد",
+      shipping: "الشحن",
+      productType: "نوع المنتج",
+      tags: "الوسوم",
+    },
   },
 
   cart: {
@@ -116,6 +142,12 @@ export const arQA: Dictionary = {
     orderHintPlural:
       "يرسل ملخص طلب واضح عبر واتساب لجميع {units} قطع عبر {variants} خيارات مقاس.",
     orderCount: "اطلب ({count})",
+    orderCartCount: "اطلب السلة ({count})",
+    contactName: "اسمك (اختياري)",
+    contactPhone: "رقم واتساب (اختياري)",
+    contactNamePlaceholder: "الاسم",
+    contactPhonePlaceholder: "974XXXXXXXX",
+    openCartAria: "فتح السلة، {count} قطعة",
   },
 
   common: {

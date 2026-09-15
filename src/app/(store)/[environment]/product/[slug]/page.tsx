@@ -18,6 +18,7 @@ import { buildProductMetadata } from "@/lib/meta-seo";
 import { getSiteUrl } from "@/lib/site-config";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 import { ProductViewTracker } from "@/components/analytics/ProductViewTracker";
+import { TranslatedText } from "@/components/i18n/TranslatedText";
 
 interface PageProps {
   params: Promise<{ environment: string; slug: string }>;
@@ -59,17 +60,30 @@ function buildProductSpecs(product: {
   fbCategory?: string | null;
   tags?: Array<{ tag: { name: string } }>;
 }) {
-  const rows: Array<{ label: string; value: string }> = [
-    { label: "Brand", value: product.brand?.name ?? "" },
-    { label: "Condition", value: product.condition && product.condition !== "new" ? product.condition : "" },
-    { label: "Category", value: product.category?.name ?? "" },
-    { label: "Subcategory", value: product.subcategory?.name ?? "" },
-    { label: "GTIN", value: product.gtin ?? "" },
-    { label: "Weight", value: product.weight ?? "" },
-    { label: "Dimensions", value: product.dimensions ?? "" },
-    { label: "Shipping", value: product.shippingInfo ?? "" },
-    { label: "Product type", value: product.googleCategory ?? "" },
+  const rows: Array<{ labelKey: string; label: string; value: string }> = [
+    { labelKey: "product.specs.brand", label: "Brand", value: product.brand?.name ?? "" },
     {
+      labelKey: "product.specs.condition",
+      label: "Condition",
+      value: product.condition && product.condition !== "new" ? product.condition : "",
+    },
+    { labelKey: "product.specs.category", label: "Category", value: product.category?.name ?? "" },
+    {
+      labelKey: "product.specs.subcategory",
+      label: "Subcategory",
+      value: product.subcategory?.name ?? "",
+    },
+    { labelKey: "product.specs.gtin", label: "GTIN", value: product.gtin ?? "" },
+    { labelKey: "product.specs.weight", label: "Weight", value: product.weight ?? "" },
+    { labelKey: "product.specs.dimensions", label: "Dimensions", value: product.dimensions ?? "" },
+    { labelKey: "product.specs.shipping", label: "Shipping", value: product.shippingInfo ?? "" },
+    {
+      labelKey: "product.specs.productType",
+      label: "Product type",
+      value: product.googleCategory ?? "",
+    },
+    {
+      labelKey: "product.specs.tags",
       label: "Tags",
       value: (product.tags ?? []).map((t) => t.tag.name).filter(Boolean).join(", "),
     },
@@ -179,9 +193,9 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
   );
 
   const breadcrumbItems = [
-    { label: "Home", href: "/" },
+    { labelKey: "nav.home", href: "/" },
     { label: environment.config.displayName, href: `/${envSlug}` },
-    { label: "Shop", href: `/${envSlug}#catalog` },
+    { labelKey: "store.shop", href: `/${envSlug}#catalog` },
     ...(product.category
       ? [{ label: product.category.name, href: `/${envSlug}?q=${encodeURIComponent(product.category.name)}#catalog` }]
       : []),
@@ -243,7 +257,7 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
               product.description.trim() !== shortCopy ? (
                 <div className="mt-8 rounded-xl border border-[#ebe8e3] bg-white p-5 md:p-6">
                   <h2 className="mb-3 font-sans text-sm font-semibold uppercase tracking-wide text-[#6b6560]">
-                    Full details
+                    <TranslatedText k="product.fullDetails" />
                   </h2>
                   <div className="whitespace-pre-line font-sans text-sm leading-relaxed text-[#141414] md:text-base">
                     {product.description}
@@ -263,7 +277,7 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
               </h1>
               {itemCode ? (
                 <p className="mt-1.5 font-sans text-sm tabular-nums text-[#9c9690]">
-                  Item code: {itemCode}
+                  <TranslatedText k="product.itemCode" vars={{ code: itemCode }} />
                 </p>
               ) : null}
 
@@ -308,10 +322,10 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
           {suggested.length > 0 ? (
             <section className="mt-12 border-t border-[#ebe8e3] pt-10">
               <p className="font-sans text-xs font-semibold uppercase tracking-[0.18em] text-[#9c9690]">
-                Suggested for you
+                <TranslatedText k="product.suggested" />
               </p>
               <h2 className="mt-1 font-sans text-xl font-semibold text-[#141414] md:text-2xl">
-                Customers also bought
+                <TranslatedText k="product.customersAlsoBought" as="span" />
               </h2>
               <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 md:gap-4">
                 {suggested.map((p) => (

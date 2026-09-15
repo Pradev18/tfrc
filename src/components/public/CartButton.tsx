@@ -2,6 +2,7 @@
 
 import { ShoppingBag } from "lucide-react";
 import { useCart } from "@/context/CartContext";
+import { useT } from "@/context/LanguageContext";
 
 interface CartButtonProps {
   onClick: () => void;
@@ -10,13 +11,16 @@ interface CartButtonProps {
 
 export function CartButton({ onClick, className = "" }: CartButtonProps) {
   const { count } = useCart();
+  const t = useT();
 
   return (
     <button
       type="button"
       onClick={onClick}
       className={`relative flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-surface-muted ${className}`}
-      aria-label={`Open cart${count > 0 ? `, ${count} items` : ""}`}
+      aria-label={
+        count > 0 ? t("cart.openCartAria", { count }) : t("nav.openCart")
+      }
     >
       <ShoppingBag className="h-5 w-5" strokeWidth={1.5} />
       {count > 0 && (

@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { getStoredContact, saveStoredContact } from "@/lib/customer-session";
+import { useT } from "@/context/LanguageContext";
 
 /** Optional contact fields in cart — saved locally, sent with order records (admin only) */
 export function CartContactFields() {
+  const t = useT();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
 
@@ -22,7 +24,7 @@ export function CartContactFields() {
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       <div>
         <label htmlFor="cart-contact-name" className="text-[10px] font-medium text-text-muted">
-          Your name (optional)
+          {t("cart.contactName")}
         </label>
         <input
           id="cart-contact-name"
@@ -34,13 +36,13 @@ export function CartContactFields() {
             persist(next);
           }}
           className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-xs"
-          placeholder="Name"
+          placeholder={t("cart.contactNamePlaceholder")}
           autoComplete="name"
         />
       </div>
       <div>
         <label htmlFor="cart-contact-phone" className="text-[10px] font-medium text-text-muted">
-          WhatsApp number (optional)
+          {t("cart.contactPhone")}
         </label>
         <input
           id="cart-contact-phone"
@@ -52,7 +54,7 @@ export function CartContactFields() {
             persist(next);
           }}
           className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-xs"
-          placeholder="974XXXXXXXX"
+          placeholder={t("cart.contactPhonePlaceholder")}
           autoComplete="tel"
         />
       </div>

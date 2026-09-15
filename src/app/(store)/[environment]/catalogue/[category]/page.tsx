@@ -6,7 +6,7 @@ import { notFound } from "next/navigation";
 import { ProductCard } from "@/components/public/ProductCard";
 
 import { Breadcrumbs } from "@/components/public/Breadcrumbs";
-
+import { TranslatedText } from "@/components/i18n/TranslatedText";
 import { CategoryCard } from "@/components/public/CategoryCard";
 
 import {
@@ -125,27 +125,16 @@ export default async function EnvironmentCategoryPage({ params, searchParams }: 
       <div className="container-pawmart py-6 md:py-10">
 
         <Breadcrumbs
-
           items={[
-
-            { label: "Home", href: "/" },
-
+            { labelKey: "nav.home", href: "/" },
             { label: environment.config.displayName, href: `/${envSlug}` },
-
-            { label: "Shop", href: `/${envSlug}/catalogue` },
-
+            { labelKey: "store.shop", href: `/${envSlug}/catalogue` },
             ...breadcrumb.slice(0, -1).map((b) => ({
-
               label: b.name,
-
               href: `/${envSlug}/catalogue/${b.slug}`,
-
             })),
-
             { label: category.name },
-
           ]}
-
         />
 
 
@@ -222,13 +211,20 @@ export default async function EnvironmentCategoryPage({ params, searchParams }: 
 
           {items.length === 0 ? (
 
-            <p className="text-[#6b6560]">No products in this category yet.</p>
+            <p className="text-[#6b6560]">
+              <TranslatedText k="store.noProductsInCategory" />
+            </p>
 
           ) : (
 
             <>
 
-              <p className="mb-4 text-sm text-[#6b6560]">{items.length} products on this page</p>
+              <p className="mb-4 text-sm text-[#6b6560]">
+                <TranslatedText
+                  k="store.productsOnPage"
+                  vars={{ count: items.length }}
+                />
+              </p>
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4">
 
@@ -264,16 +260,19 @@ export default async function EnvironmentCategoryPage({ params, searchParams }: 
                       href={`/${envSlug}/catalogue/${slug}?page=${page - 1}`}
                       className="min-h-11 rounded-full border border-[#d8d3cc] bg-white px-5 py-3 text-sm font-semibold text-[#433f3a] hover:bg-[#f8f6f3]"
                     >
-                      ← Previous
+                      ← <TranslatedText k="store.previous" />
                     </Link>
                   ) : (
                     <span className="min-h-11 rounded-full border border-[#e5e1dc] px-5 py-3 text-sm text-[#aaa39b]">
-                      ← Previous
+                      ← <TranslatedText k="store.previous" />
                     </span>
                   )}
 
                   <span className="text-sm text-[#6b6560]">
-                    Page {page} of {totalPages}
+                    <TranslatedText
+                      k="store.pageOf"
+                      vars={{ page, total: totalPages }}
+                    />
                   </span>
 
                   {page < totalPages ? (
@@ -281,11 +280,11 @@ export default async function EnvironmentCategoryPage({ params, searchParams }: 
                       href={`/${envSlug}/catalogue/${slug}?page=${page + 1}`}
                       className="min-h-11 rounded-full border border-[#d8d3cc] bg-white px-5 py-3 text-sm font-semibold text-[#433f3a] hover:bg-[#f8f6f3]"
                     >
-                      Next →
+                      <TranslatedText k="store.next" /> →
                     </Link>
                   ) : (
                     <span className="min-h-11 rounded-full border border-[#e5e1dc] px-5 py-3 text-sm text-[#aaa39b]">
-                      Next →
+                      <TranslatedText k="store.next" /> →
                     </span>
                   )}
                 </nav>

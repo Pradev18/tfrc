@@ -2,6 +2,7 @@
 
 import { PaginatedProductGrid } from "@/components/store/PaginatedProductGrid";
 import { useLazyVisible } from "@/hooks/useLazyVisible";
+import { useT } from "@/context/LanguageContext";
 import { getEnvVisual } from "@/lib/env-visuals";
 import type { StoreFilters } from "@/lib/store-catalog-filter";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
@@ -31,6 +32,7 @@ export function LazyCategorySection({
   forceVisible = false,
   includeVariants = false,
 }: LazyCategorySectionProps) {
+  const t = useT();
   const v = getEnvVisual(environmentSlug);
   const { ref, visible } = useLazyVisible("64px");
   const isActive = forceVisible || visible;
@@ -46,13 +48,16 @@ export function LazyCategorySection({
         style={{ borderColor: v.border }}
       >
         <div>
-          <h3 className="text-xl font-semibold tracking-tight md:text-2xl" style={{ color: v.heading }}>
+          <h3
+            className="text-xl font-semibold tracking-tight md:text-2xl"
+            style={{ color: v.heading }}
+          >
             {name}
           </h3>
           <p className="mt-0.5 text-sm" style={{ color: v.muted }}>
             {includeVariants
-              ? "All products in this category"
-              : `${productCount} ${productCount === 1 ? "product" : "products"}`}
+              ? t("store.allInCategory")
+              : t("store.productsInCategory", { count: productCount })}
           </p>
         </div>
       </div>

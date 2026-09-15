@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { ProductCard } from "@/components/public/ProductCard";
 import { useStoreProductFeed } from "@/hooks/useStoreProductFeed";
+import { useT } from "@/context/LanguageContext";
 import { getEnvVisual } from "@/lib/env-visuals";
 import type { StoreFilters } from "@/lib/store-catalog-filter";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
@@ -30,8 +31,9 @@ export function PaginatedProductGrid({
   onSaleOnly,
   enabled = true,
   includeVariants = false,
-  emptyMessage = "No products found",
+  emptyMessage,
 }: PaginatedProductGridProps) {
+  const t = useT();
   const v = getEnvVisual(environmentSlug);
   const { items, total, loading, loadingMore, error, loadMore, page, totalPages } =
     useStoreProductFeed(environmentSlug, filters, {
@@ -41,6 +43,7 @@ export function PaginatedProductGrid({
       includeVariants,
     });
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const empty = emptyMessage ?? t("store.noProductsFound");
 
   useEffect(() => {
     const target = loadMoreRef.current;
@@ -59,14 +62,13 @@ export function PaginatedProductGrid({
 
   if (!enabled) return null;
 
-  // page === 0 means the first request has not settled yet.
   const waitingForFirstPage = items.length === 0 && (loading || page === 0);
 
   if (waitingForFirstPage) {
     return (
       <div aria-busy="true" aria-live="polite">
         <p className="mb-4 text-sm font-medium" style={{ color: v.muted }}>
-          Loading products…
+          {t("store.loadingProducts")}
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 xl:grid-cols-5">
           {Array.from({ length: 10 }).map((_, index) => (
@@ -98,7 +100,7 @@ export function PaginatedProductGrid({
   if (!loading && items.length === 0) {
     return (
       <div className="glass-panel rounded-2xl py-12 text-center text-sm" style={{ color: v.muted }}>
-        {emptyMessage}
+        {empty}
       </div>
     );
   }
@@ -129,10 +131,10 @@ export function PaginatedProductGrid({
             className="min-h-[48px] rounded-full px-6 py-3 text-sm font-semibold text-white transition-opacity disabled:opacity-60"
             style={{ backgroundColor: v.cta }}
           >
-            {`Load more (${items.length} of ${total})`}
+            {t("store.loadMore", { loaded: items.length, total })}
           </button>
           <p className="text-xs" style={{ color: v.muted }}>
-            More products load automatically as you scroll
+            {t("store.scrollLoadHint")}
           </p>
         </div>
       )}

@@ -4,6 +4,7 @@ import { AddToCartButton } from "@/components/public/AddToCartButton";
 import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
 import { WhatsAppOrderGate } from "@/components/public/WhatsAppOrderGate";
 import { useCartWhatsApp } from "@/hooks/useCartWhatsApp";
+import { useT } from "@/context/LanguageContext";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
 import type { TrackInquiryPayload } from "@/lib/inquiry-types";
 
@@ -39,9 +40,12 @@ export function ProductMobileOrderBar({
     whatsappSettings,
     siteUrl
   );
+  const t = useT();
 
   const orderHref = hasItems ? waHref : singleProductWaHref;
-  const orderLabel = hasItems ? `Order cart (${itemCount})` : "WhatsApp";
+  const orderLabel = hasItems
+    ? t("cart.orderCartCount", { count: itemCount })
+    : t("nav.orderWhatsApp");
   const inquiry = hasItems && checkoutInquiry
     ? { ...checkoutInquiry, eventType: "MOBILE_ORDER_BAR" as const }
     : { ...singleProductInquiry, eventType: "MOBILE_ORDER_BAR" as const };

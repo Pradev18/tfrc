@@ -24,6 +24,10 @@
 tmp-catalogue-pdf-*
 tmp-office-*
 tmp-office-report-*
+tmp-iqs-*
+tmp-*.html
+tmp-*.json
+tmp-*.txt
 
 # debug
 npm-debug.log*

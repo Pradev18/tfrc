@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { formatPriceDisplay } from "@/lib/pricing";
 import type { EffectivePrice } from "@/lib/pricing";
 import { DiscountBadge } from "@/components/public/DiscountBadge";
+import { useT } from "@/context/LanguageContext";
 
 interface PriceDisplayProps {
   pricing: EffectivePrice;
@@ -20,16 +21,18 @@ export function PriceDisplay({
   compact = false,
   accentColor,
 }: PriceDisplayProps) {
+  const t = useT();
   const display = formatPriceDisplay(pricing);
   const sizeClasses = {
-    sm: { regular: "text-xs", sale: "text-sm", was: "Was" },
-    md: { regular: "text-xs", sale: "text-lg", was: "Was" },
-    lg: { regular: "text-sm", sale: "text-3xl", was: "Was" },
+    sm: { regular: "text-xs", sale: "text-sm" },
+    md: { regular: "text-xs", sale: "text-lg" },
+    lg: { regular: "text-sm", sale: "text-3xl" },
   };
   const s = sizeClasses[size];
   const saleColor = accentColor ?? "#141414";
 
   if (pricing.isOnSale) {
+    const saved = (pricing.regular - (pricing.sale ?? pricing.regular)).toFixed(2);
     return (
       <div className={cn(compact ? "space-y-0.5" : "space-y-1", className)}>
         <div className="flex flex-wrap items-center gap-2">
@@ -48,13 +51,14 @@ export function PriceDisplay({
           )}
         </div>
         <p className={cn(s.regular, "text-[#9c9690]")}>
-          <span className="mr-1">{s.was}</span>
-          <span className="line-through">{display.regular}</span>
+          {t("product.was", { price: display.regular ?? "" })}
         </p>
         {!compact && (
           <p className="text-[10px] font-medium text-[#6b6560]">
-            Save {pricing.currency}{" "}
-            {(pricing.regular - (pricing.sale ?? pricing.regular)).toFixed(2)}
+            {t("product.saveAmount", {
+              currency: pricing.currency,
+              amount: saved,
+            })}
           </p>
         )}
       </div>

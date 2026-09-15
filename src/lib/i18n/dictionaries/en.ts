@@ -56,6 +56,16 @@ export const en = {
     filterByBrand: "Filter by brand",
     sortProducts: "Sort products",
     copyright: "© {year} TFRC · WhatsApp ordering · Qatar",
+    loadingProducts: "Loading products…",
+    loadMore: "Load more ({loaded} of {total})",
+    scrollLoadHint: "More products load automatically as you scroll",
+    noProductsFound: "No products found",
+    noProductsInCategory: "No products in this category yet.",
+    productsOnPage: "{count} products on this page",
+    previous: "Previous",
+    next: "Next",
+    pageOf: "Page {page} of {total}",
+    breadcrumb: "Breadcrumb",
   },
 
   product: {
@@ -71,6 +81,8 @@ export const en = {
     video: "Video",
     was: "Was {price}",
     from: "From {price}",
+    saveAmount: "Save {currency} {amount}",
+    percentOff: "{percent}% OFF",
     inStock: "In stock",
     outOfStock: "Check availability",
     sizeOption: "Size / option",
@@ -80,6 +92,8 @@ export const en = {
     orderMultipleHint: "Choose a separate quantity for every size you need.",
     none: "None",
     suggested: "Suggested for you",
+    customersAlsoBought: "Customers also bought",
+    fullDetails: "Full details",
     added: "Added",
     checkAvailabilityWhatsApp: "Check availability on WhatsApp",
     selectQtyAtLeastOne: "Select a quantity for at least one size.",
@@ -88,6 +102,18 @@ export const en = {
     selectSizeToContinue: "Select a size to continue",
     noOnlinePayment:
       "No online payment. Add to cart and send your order on WhatsApp — we confirm delivery personally.",
+    specs: {
+      brand: "Brand",
+      condition: "Condition",
+      category: "Category",
+      subcategory: "Subcategory",
+      gtin: "GTIN",
+      weight: "Weight",
+      dimensions: "Dimensions",
+      shipping: "Shipping",
+      productType: "Product type",
+      tags: "Tags",
+    },
   },
 
   cart: {
@@ -115,6 +141,12 @@ export const en = {
     orderHintPlural:
       "Sends a clear order summary on WhatsApp with all {units} items across {variants} size variants.",
     orderCount: "Order ({count})",
+    orderCartCount: "Order cart ({count})",
+    contactName: "Your name (optional)",
+    contactPhone: "WhatsApp number (optional)",
+    contactNamePlaceholder: "Name",
+    contactPhonePlaceholder: "974XXXXXXXX",
+    openCartAria: "Open cart, {count} items",
   },
 
   common: {

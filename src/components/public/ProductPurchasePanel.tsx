@@ -19,7 +19,8 @@ import { variantOptionLabel } from "@/lib/product-variants";
 import { useT } from "@/context/LanguageContext";
 
 export interface ProductDetailSpec {
-  label: string;
+  label?: string;
+  labelKey?: string;
   value: string;
 }
 
@@ -327,12 +328,18 @@ export function ProductPurchasePanel({
 
       {specs.length > 0 ? (
         <dl className="mt-4 space-y-2 border-t border-[#ebe8e3] pt-4">
-          {specs.map((spec) => (
-            <div key={spec.label} className="grid grid-cols-[7.5rem_1fr] gap-2 text-sm">
-              <dt className="font-sans text-[#9c9690]">{spec.label}</dt>
-              <dd className="font-sans font-medium text-[#141414]">{spec.value}</dd>
-            </div>
-          ))}
+          {specs.map((spec) => {
+            const label = spec.labelKey ? t(spec.labelKey) : spec.label ?? "";
+            return (
+              <div
+                key={`${spec.labelKey ?? spec.label}-${spec.value}`}
+                className="grid grid-cols-[7.5rem_1fr] gap-2 text-sm"
+              >
+                <dt className="font-sans text-[#9c9690]">{label}</dt>
+                <dd className="font-sans font-medium text-[#141414]">{spec.value}</dd>
+              </div>
+            );
+          })}
         </dl>
       ) : null}
 
