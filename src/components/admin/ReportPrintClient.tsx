@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { REPORT_ROWS_PER_PAGE } from "@/lib/report/office-report-pdf-html";
+import {
+  REPORT_ROWS_PER_PAGE,
+  TFRC_REPORT_LOGO_SRC,
+} from "@/lib/report/office-report-pdf-html";
 
 type PrintMeta = {
   id: string;
@@ -28,9 +31,29 @@ type ReportLine = {
   wholesalePriceApproval: string;
 };
 
-/** Hostinger-safe: load & print in section-sized chunks so browser/origin never choke. */
-const SECTION_ROWS = 500; // 50 A4 pages
+/** With images on: keep sections small so print doesn't create blank overflow pages. */
+const SECTION_ROWS_WITH_IMAGES = 100; // 10 A4 pages
+const SECTION_ROWS_LITE = 500;
 const FETCH_PAGE_SIZE = 100;
+
+async function waitForImages(root: ParentNode, timeoutMs = 12000) {
+  const imgs = Array.from(root.querySelectorAll("img"));
+  await Promise.all(
+    imgs.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete && img.naturalWidth > 0) {
+            resolve();
+            return;
+          }
+          const done = () => resolve();
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+          window.setTimeout(done, timeoutMs);
+        })
+    )
+  );
+}
 
 export function ReportPrintClient({
   reportId,
@@ -43,37 +66,46 @@ export function ReportPrintClient({
   const [sectionIndex, setSectionIndex] = useState(0);
   const [lines, setLines] = useState<ReportLine[]>([]);
   const [loading, setLoading] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [liteImages, setLiteImages] = useState(true);
+  /** Default OFF so product images print. Lite = links only (faster, no photos). */
+  const [liteImages, setLiteImages] = useState(false);
 
-  const sectionCount = Math.max(1, Math.ceil(meta.lineCount / SECTION_ROWS));
-  const sectionStart = sectionIndex * SECTION_ROWS;
-  const sectionEnd = Math.min(sectionStart + SECTION_ROWS, meta.lineCount);
+  const sectionRows = liteImages ? SECTION_ROWS_LITE : SECTION_ROWS_WITH_IMAGES;
+  const sectionCount = Math.max(1, Math.ceil(meta.lineCount / sectionRows));
+  const sectionStart = sectionIndex * sectionRows;
+  const sectionEnd = Math.min(sectionStart + sectionRows, meta.lineCount);
 
   const pages = useMemo(() => {
+    if (lines.length === 0) return [];
     const out: ReportLine[][] = [];
     for (let i = 0; i < lines.length; i += REPORT_ROWS_PER_PAGE) {
       out.push(lines.slice(i, i + REPORT_ROWS_PER_PAGE));
     }
-    return out.length ? out : [[]];
+    return out;
   }, [lines]);
 
   const loadSection = useCallback(
-    async (index: number) => {
+    async (index: number, rowsPerSection: number) => {
       setLoading(true);
       setError(null);
       try {
-        const startRow = index * SECTION_ROWS;
-        const endRow = Math.min(startRow + SECTION_ROWS, meta.lineCount);
+        const startRow = index * rowsPerSection;
+        const endRow = Math.min(startRow + rowsPerSection, meta.lineCount);
         const needed = endRow - startRow;
         if (needed <= 0) {
           setLines([]);
+          setSectionIndex(index);
           return;
         }
+
+        // API pages are 1-based over sortOrder order.
         const startPage = Math.floor(startRow / FETCH_PAGE_SIZE) + 1;
+        const pageCount = Math.ceil(needed / FETCH_PAGE_SIZE);
         const collected: ReportLine[] = [];
-        let page = startPage;
-        while (collected.length < needed) {
+
+        for (let p = 0; p < pageCount; p++) {
+          const page = startPage + p;
           const res = await fetch(
             `/api/admin/reports/${reportId}/lines?page=${page}&pageSize=${FETCH_PAGE_SIZE}`,
             { cache: "no-store" }
@@ -87,12 +119,10 @@ export function ReportPrintClient({
               collected.push(line);
             }
           }
-          if (batch.length < FETCH_PAGE_SIZE) break;
-          page += 1;
-          if (page > startPage + Math.ceil(SECTION_ROWS / FETCH_PAGE_SIZE) + 2) break;
         }
+
         collected.sort((a, b) => a.sortOrder - b.sortOrder);
-        setLines(collected.slice(0, needed));
+        setLines(collected);
         setSectionIndex(index);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load section");
@@ -104,25 +134,44 @@ export function ReportPrintClient({
   );
 
   useEffect(() => {
-    void loadSection(0);
-  }, [loadSection]);
+    void loadSection(0, sectionRows);
+  }, [loadSection, sectionRows]);
+
+  async function handlePrint() {
+    if (printing || lines.length === 0) return;
+    setPrinting(true);
+    try {
+      const root = document.querySelector(".print-root");
+      if (root) await waitForImages(root);
+      // Let layout settle before Chrome paginates.
+      await new Promise((r) => window.setTimeout(r, 200));
+      window.print();
+    } finally {
+      setPrinting(false);
+    }
+  }
+
+  const totalPdfPages = Math.ceil(meta.lineCount / REPORT_ROWS_PER_PAGE) || 1;
 
   return (
-    <div className="print-root min-h-screen bg-[#d8d0e4] text-[#1f1630]">
-      <div className="print-toolbar sticky top-0 z-20 mx-auto flex w-[210mm] flex-wrap items-center justify-between gap-3 border-b border-[#cfc3dd] bg-white px-3 py-2 print:hidden">
+    <div className="print-root bg-[#d8d0e4] text-[#1f1630]">
+      <div className="print-toolbar sticky top-0 z-20 mx-auto flex w-[210mm] flex-wrap items-center justify-between gap-3 border-b border-[#cfc3dd] bg-white px-3 py-2">
         <div className="text-sm">
           <p className="font-semibold">{meta.title}</p>
           <p className="text-xs text-[#6b6280]">
-            Section {sectionIndex + 1} / {sectionCount} · rows {sectionStart + 1}–
-            {sectionEnd} of {meta.lineCount} (safe batches — avoids Hostinger crash)
+            Section {sectionIndex + 1}/{sectionCount} · rows {sectionStart + 1}–
+            {sectionEnd} of {meta.lineCount} · ~{totalPdfPages} PDF pages total
           </p>
           <label className="mt-1 flex items-center gap-2 text-xs text-[#6b6280]">
             <input
               type="checkbox"
               checked={liteImages}
-              onChange={(e) => setLiteImages(e.target.checked)}
+              onChange={(e) => {
+                setLiteImages(e.target.checked);
+                setSectionIndex(0);
+              }}
             />
-            Lite images (links only — recommended for large sections)
+            Lite mode (hide product photos — only if print is too heavy)
           </label>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -136,7 +185,7 @@ export function ReportPrintClient({
             type="button"
             className="rounded border border-[#cfc3dd] px-3 py-1.5 text-sm disabled:opacity-50"
             disabled={loading || sectionIndex <= 0}
-            onClick={() => void loadSection(sectionIndex - 1)}
+            onClick={() => void loadSection(sectionIndex - 1, sectionRows)}
           >
             Prev section
           </button>
@@ -144,178 +193,312 @@ export function ReportPrintClient({
             type="button"
             className="rounded border border-[#cfc3dd] px-3 py-1.5 text-sm disabled:opacity-50"
             disabled={loading || sectionIndex >= sectionCount - 1}
-            onClick={() => void loadSection(sectionIndex + 1)}
+            onClick={() => void loadSection(sectionIndex + 1, sectionRows)}
           >
             Next section
           </button>
           <button
             type="button"
             className="rounded bg-[#5B2C8B] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-            disabled={loading || lines.length === 0}
-            onClick={() => window.print()}
+            disabled={loading || printing || lines.length === 0}
+            onClick={() => void handlePrint()}
           >
-            Print / Save PDF
+            {printing ? "Preparing images…" : "Print / Save PDF"}
           </button>
         </div>
       </div>
 
       {error && (
-        <p className="mx-auto mt-3 w-[210mm] text-sm text-red-700 print:hidden">{error}</p>
+        <p className="mx-auto mt-3 w-[210mm] text-sm text-red-700 print-hide">{error}</p>
       )}
       {loading && (
-        <p className="mx-auto mt-3 w-[210mm] text-sm text-[#6b6280] print:hidden">
+        <p className="mx-auto mt-3 w-[210mm] text-sm text-[#6b6280] print-hide">
           Loading section…
         </p>
       )}
 
-      {pages.map((pageLines, pageIndex) => (
-        <section
-          key={`sheet-${sectionIndex}-${pageIndex}`}
-          className="sheet mx-auto my-2 flex h-[297mm] w-[210mm] flex-col overflow-hidden bg-white p-[8mm_7mm_7mm] shadow print:my-0 print:shadow-none"
-          style={{ pageBreakAfter: pageIndex === pages.length - 1 ? "auto" : "always" }}
-        >
-          <header className="mb-2 grid grid-cols-[18mm_1fr_28mm] items-start gap-2">
-            <div className="flex h-14 w-14 items-center justify-center rounded bg-[#5B2C8B] text-[10px] font-bold text-white">
-              TFRC
-            </div>
-            <div className="text-center">
-              <p className="m-0 text-[9pt] font-bold text-[#5B2C8B]">
-                الشركة الأولى لبيع التجزئة (ذ.م.م)
-              </p>
-              <h1 className="m-0 mt-1 text-[13pt] font-bold text-[#5B2C8B]">
-                THE FIRST RETAIL COMPANY (W.L.L)
-              </h1>
-              <p className="m-0 mt-1 text-[7.5pt] text-[#6b6280]">
-                Quality Products for a Better Tomorrow
-              </p>
-              <h2 className="m-0 mt-2 inline-block border-b border-[#5B2C8B] pb-1 text-[12pt] text-[#5B2C8B]">
-                INVENTORY AVAILABILITY &amp; PRICE CHECK
-              </h2>
-            </div>
-            <div className="rounded border border-[#5B2C8B] p-2 text-[7pt]">
-              <span className="font-extrabold tracking-wide text-[#5B2C8B]">DATE</span>
-              <div className="mt-1 text-[10pt] font-bold">{meta.reportDate || "—"}</div>
-            </div>
-          </header>
+      {!loading &&
+        pages.map((pageLines, pageIndex) => {
+          const globalPage =
+            Math.floor(sectionStart / REPORT_ROWS_PER_PAGE) + pageIndex + 1;
+          const isLastSheetOfReport =
+            sectionIndex === sectionCount - 1 && pageIndex === pages.length - 1;
+          return (
+            <section key={`sheet-${sectionIndex}-${pageIndex}`} className="sheet">
+              <header className="doc-header">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  className="logo"
+                  src={TFRC_REPORT_LOGO_SRC}
+                  alt="TFRC"
+                  width={80}
+                  height={48}
+                />
+                <div className="brand">
+                  <p className="ar">الشركة الأولى لبيع التجزئة (ذ.م.م)</p>
+                  <h1>THE FIRST RETAIL COMPANY (W.L.L)</h1>
+                  <p className="tag">Quality Products for a Better Tomorrow</p>
+                  <h2>INVENTORY AVAILABILITY &amp; PRICE CHECK</h2>
+                </div>
+                <div className="date-box">
+                  <span>DATE</span>
+                  <div>{meta.reportDate || "—"}</div>
+                </div>
+              </header>
 
-          <div className="mb-2 grid grid-cols-4 gap-2 text-[8pt]">
-            <MetaField label="CUSTOMER" value={meta.customerName} />
-            <MetaField label="REQUESTED BY" value={meta.requestedBy} />
-            <MetaField label="SHOP / BRANCH" value={meta.shopBranch} />
-            <MetaField label="ITEMS" value={`${meta.lineCount}`} />
-          </div>
-          {meta.notes ? (
-            <div className="mb-2 rounded border border-[#cfc3dd] bg-[#efe8f7] p-2 text-[8pt]">
-              <span className="font-extrabold text-[#5B2C8B]">NOTES</span>
-              <div className="mt-1 whitespace-pre-wrap">{meta.notes}</div>
-            </div>
-          ) : null}
+              <div className="meta-grid">
+                <MetaField label="CUSTOMER NAME" value={meta.customerName} />
+                <MetaField label="REQUESTED BY" value={meta.requestedBy} />
+                <MetaField label="SHOP / BRANCH" value={meta.shopBranch} />
+                <MetaField label="TFRC" value="TFRC" />
+              </div>
+              {meta.notes ? (
+                <div className="notes-field">
+                  <span className="field-label">NOTES</span>
+                  <div className="field-value">{meta.notes}</div>
+                </div>
+              ) : null}
 
-          <table className="w-full flex-1 table-fixed border-collapse text-[6.4pt]">
-            <thead>
-              <tr className="bg-[#5B2C8B] text-white">
-                <th className="border border-[#b9accb] p-1">#</th>
-                <th className="border border-[#b9accb] p-1">Item code</th>
-                <th className="border border-[#b9accb] p-1">Image link</th>
-                <th className="border border-[#b9accb] p-1">Img</th>
-                <th className="border border-[#b9accb] p-1">Item Name</th>
-                <th className="border border-[#b9accb] p-1">Supplier</th>
-                <th className="border border-[#b9accb] p-1">On Hand</th>
-                <th className="border border-[#b9accb] p-1">Item Cost</th>
-                <th className="border border-[#b9accb] p-1">Selling</th>
-                <th className="border border-[#b9accb] p-1">Wholesale</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: REPORT_ROWS_PER_PAGE }).map((_, idx) => {
-                const line = pageLines[idx];
-                const n = sectionStart + pageIndex * REPORT_ROWS_PER_PAGE + idx + 1;
-                if (!line) {
-                  return (
-                    <tr key={`empty-${n}`} className="h-12">
-                      <td className="border border-[#b9accb] p-1 text-center">{n}</td>
-                      <td className="border border-[#b9accb]" colSpan={9} />
-                    </tr>
-                  );
-                }
-                return (
-                  <tr key={line.id}>
-                    <td className="border border-[#b9accb] p-1 text-center">{line.sortOrder}</td>
-                    <td className="break-all border border-[#b9accb] p-1 font-mono">
-                      {line.itemCode}
-                    </td>
-                    <td className="break-all border border-[#b9accb] p-1 text-[5.4pt] text-blue-700">
-                      {line.imageLink ? (
-                        <a href={line.imageLink} target="_blank" rel="noreferrer">
-                          {line.imageLink}
-                        </a>
-                      ) : (
-                        ""
-                      )}
-                    </td>
-                    <td className="border border-[#b9accb] p-1 text-center">
-                      {line.imageLink && !liteImages ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={line.imageLink}
-                          alt=""
-                          loading="lazy"
-                          className="mx-auto h-11 w-11 object-contain"
-                          onError={(e) => {
-                            e.currentTarget.style.display = "none";
-                          }}
-                        />
-                      ) : (
-                        <div className="mx-auto h-11 w-11 rounded border border-dashed border-gray-300" />
-                      )}
-                    </td>
-                    <td className="border border-[#b9accb] p-1">{line.itemName}</td>
-                    <td className="border border-[#b9accb] p-1">{line.supplierName}</td>
-                    <td className="border border-[#b9accb] bg-[#dceefb] p-1 text-center">
-                      {line.onHand}
-                    </td>
-                    <td className="border border-[#b9accb] bg-[#f5ecd8] p-1 text-right">
-                      {line.itemCost}
-                    </td>
-                    <td className="border border-[#b9accb] bg-[#f8dce8] p-1 text-right">
-                      {line.sellingPrice}
-                    </td>
-                    <td className="border border-[#b9accb] bg-[#fff3bf] p-1">
-                      {line.wholesalePriceApproval}
-                    </td>
+              <table className="grid">
+                <thead>
+                  <tr>
+                    <th className="c-num">#</th>
+                    <th className="c-code">Item code</th>
+                    <th className="c-link">Image link</th>
+                    <th className="c-img">Image</th>
+                    <th className="c-name">Item Name</th>
+                    <th className="c-supplier">Supplier</th>
+                    <th className="c-onhand">On Hand</th>
+                    <th className="c-cost">Item Cost</th>
+                    <th className="c-sell">Selling</th>
+                    <th className="c-ws">Wholesale</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {Array.from({ length: REPORT_ROWS_PER_PAGE }).map((_, idx) => {
+                    const line = pageLines[idx];
+                    const n =
+                      sectionStart + pageIndex * REPORT_ROWS_PER_PAGE + idx + 1;
+                    if (!line) {
+                      return (
+                        <tr key={`empty-${n}`} className="empty-row">
+                          <td className="c-num">{n}</td>
+                          <td colSpan={9} />
+                        </tr>
+                      );
+                    }
+                    return (
+                      <tr key={line.id}>
+                        <td className="c-num">{line.sortOrder}</td>
+                        <td className="c-code">{line.itemCode}</td>
+                        <td className="c-link">
+                          {line.imageLink ? (
+                            <a
+                              className="img-link"
+                              href={line.imageLink}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {line.imageLink}
+                            </a>
+                          ) : null}
+                        </td>
+                        <td className="c-img">
+                          {line.imageLink && !liteImages ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={line.imageLink}
+                              alt=""
+                              loading="eager"
+                              decoding="sync"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                e.currentTarget.style.visibility = "hidden";
+                              }}
+                            />
+                          ) : (
+                            <div className="img-fallback" />
+                          )}
+                        </td>
+                        <td className="c-name">{line.itemName}</td>
+                        <td className="c-supplier">{line.supplierName}</td>
+                        <td className="c-onhand">{line.onHand}</td>
+                        <td className="c-cost">{line.itemCost}</td>
+                        <td className="c-sell">{line.sellingPrice}</td>
+                        <td className="c-ws">{line.wholesalePriceApproval}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
 
-          {pageIndex === pages.length - 1 && sectionIndex === sectionCount - 1 ? (
-            <div className="mt-3 grid grid-cols-2 gap-3 text-[8pt]">
-              <ApprovalBox title="PREPARED BY" />
-              <ApprovalBox title="CHECKED BY" />
-            </div>
-          ) : (
-            <div className="flex-1" />
-          )}
+              {isLastSheetOfReport ? (
+                <div className="approval">
+                  <ApprovalBox title="PREPARED BY" />
+                  <ApprovalBox title="CHECKED BY" />
+                </div>
+              ) : (
+                <div className="spacer" />
+              )}
 
-          <footer className="mt-2 flex justify-between rounded bg-[#5B2C8B] px-2 py-1 text-[6.5pt] text-white">
-            <span>TFRC · Inventory Availability &amp; Price Check</span>
-            <span>
-              Page {sectionStart / REPORT_ROWS_PER_PAGE + pageIndex + 1} · Section{" "}
-              {sectionIndex + 1}/{sectionCount}
-            </span>
-          </footer>
-        </section>
-      ))}
+              <footer className="doc-footer">
+                <span>
+                  THE FIRST RETAIL COMPANY (W.L.L.) | Quality Products | Trusted
+                  Partners
+                </span>
+                <span>
+                  Page {globalPage} of {totalPdfPages}
+                </span>
+              </footer>
+            </section>
+          );
+        })}
 
       <style
         dangerouslySetInnerHTML={{
           __html: `
+        :root {
+          --purple: #5B2C8B;
+          --lavender: #efe8f7;
+          --onhand: #dceefb;
+          --cost: #f5ecd8;
+          --sell: #f8dce8;
+          --ws: #fff3bf;
+          --line: #cfc3dd;
+        }
+        * { box-sizing: border-box; }
+        html, body {
+          margin: 0; padding: 0;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        .sheet {
+          width: 210mm;
+          height: 297mm;
+          max-height: 297mm;
+          margin: 8px auto;
+          background: #fff;
+          overflow: hidden;
+          padding: 6mm 6mm 5mm;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 2px 12px rgba(0,0,0,.08);
+          break-inside: avoid;
+          page-break-inside: avoid;
+          page-break-after: always;
+          break-after: page;
+        }
+        .sheet:last-of-type {
+          page-break-after: auto;
+          break-after: auto;
+        }
+        .doc-header {
+          display: grid;
+          grid-template-columns: 22mm 1fr 28mm;
+          gap: 3mm;
+          align-items: center;
+          margin-bottom: 2mm;
+          flex: 0 0 auto;
+        }
+        .logo { width: 20mm; height: 12mm; object-fit: contain; display: block; }
+        .brand { text-align: center; }
+        .brand .ar { margin: 0; font-size: 9pt; color: var(--purple); font-weight: 700; }
+        .brand h1 { margin: 1mm 0 0; font-size: 12pt; color: var(--purple); }
+        .brand .tag { margin: 0.6mm 0 0; font-size: 7pt; color: #6b6280; }
+        .brand h2 {
+          margin: 1.5mm 0 0; font-size: 11pt; color: var(--purple);
+          border-bottom: 0.4mm solid var(--purple); display: inline-block; padding-bottom: 0.6mm;
+        }
+        .date-box {
+          border: 0.35mm solid var(--purple); border-radius: 1.5mm; padding: 1.5mm;
+          min-height: 12mm; background: #fff;
+        }
+        .date-box span {
+          display: block; font-size: 7pt; font-weight: 800; color: var(--purple); letter-spacing: 0.08em;
+        }
+        .date-box div { margin-top: 1mm; font-size: 10pt; font-weight: 700; }
+        .meta-grid {
+          display: grid; grid-template-columns: 1.3fr 1fr 1fr 0.55fr; gap: 2mm; margin-bottom: 2mm;
+          flex: 0 0 auto;
+        }
+        .meta-field, .notes-field {
+          border: 0.3mm solid var(--line); border-radius: 1.4mm; background: var(--lavender);
+          min-height: 10mm; padding: 1.2mm 2mm;
+        }
+        .notes-field { margin-bottom: 2mm; }
+        .field-label {
+          display: block; font-size: 6.5pt; font-weight: 800; color: var(--purple); letter-spacing: 0.06em;
+        }
+        .field-value { margin-top: 1mm; min-height: 4mm; font-size: 8.5pt; font-weight: 600; white-space: pre-wrap; }
+        .grid {
+          width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 6.2pt;
+          flex: 1 1 auto;
+        }
+        .grid th, .grid td {
+          border: 0.28mm solid #b9accb; padding: 0.8mm 0.6mm; vertical-align: middle; overflow: hidden;
+        }
+        .grid th {
+          background: var(--purple); color: #fff; font-weight: 800; text-align: center; font-size: 5.8pt;
+        }
+        .c-num { width: 5mm; text-align: center; }
+        .c-code { width: 16mm; word-break: break-all; font-family: ui-monospace, monospace; }
+        .c-link { width: 20mm; }
+        .c-img { width: 12mm; text-align: center; }
+        .c-name { width: 34mm; }
+        .c-supplier { width: 24mm; }
+        .c-onhand { width: 11mm; text-align: center; background: var(--onhand) !important; }
+        .c-cost { width: 14mm; text-align: right; background: var(--cost) !important; }
+        .c-sell { width: 14mm; text-align: right; background: var(--sell) !important; }
+        .c-ws { width: 16mm; background: var(--ws) !important; }
+        .c-img img {
+          width: 10mm; height: 10mm; object-fit: contain; display: inline-block; background: #fff;
+        }
+        .img-fallback {
+          width: 10mm; height: 10mm; margin: 0 auto; border: 0.25mm dashed #ccc; border-radius: 1mm;
+        }
+        .img-link {
+          color: #1d4ed8; text-decoration: underline; word-break: break-all; font-size: 5pt;
+          line-height: 1.1; max-height: 11mm; overflow: hidden; display: block;
+        }
+        .empty-row td { height: 11mm; }
+        .approval {
+          display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-top: 2mm; flex: 0 0 auto;
+        }
+        .approval-card { border: 0.35mm solid var(--purple); border-radius: 1.5mm; overflow: hidden; }
+        .approval-head {
+          background: var(--purple); color: #fff; font-size: 8pt; font-weight: 800;
+          padding: 1.4mm 2mm; letter-spacing: 0.06em;
+        }
+        .approval-body { padding: 2mm; min-height: 20mm; font-size: 8pt; }
+        .approval-body p { margin: 0 0 2mm; }
+        .stamp-box {
+          margin-top: 1mm; height: 10mm; border: 0.3mm dashed #c4b7d6; border-radius: 1mm; background: #faf7fd;
+        }
+        .spacer { flex: 1 1 auto; min-height: 0; }
+        .doc-footer {
+          margin-top: 1.5mm; background: var(--purple); color: #fff;
+          display: flex; justify-content: space-between; gap: 3mm;
+          padding: 1.5mm 2mm; font-size: 6pt; border-radius: 1mm; flex: 0 0 auto;
+        }
         @media print {
           html, body { background: #fff !important; }
-          .print-toolbar { display: none !important; }
-          .sheet { margin: 0 !important; box-shadow: none !important; page-break-after: always; }
-          .sheet:last-child { page-break-after: auto; }
+          .print-toolbar, .print-hide { display: none !important; }
+          .print-root { background: #fff !important; }
+          .sheet {
+            margin: 0 !important;
+            box-shadow: none !important;
+            height: 297mm !important;
+            max-height: 297mm !important;
+            overflow: hidden !important;
+            page-break-after: always !important;
+            break-after: page !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+          .sheet:last-of-type {
+            page-break-after: auto !important;
+            break-after: auto !important;
+          }
         }
         @page { size: A4 portrait; margin: 0; }
       `,
@@ -327,25 +510,21 @@ export function ReportPrintClient({
 
 function MetaField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded border border-[#cfc3dd] bg-[#efe8f7] p-2">
-      <span className="block text-[6.5pt] font-extrabold tracking-wide text-[#5B2C8B]">
-        {label}
-      </span>
-      <div className="mt-1 min-h-[1rem] text-[9pt] font-semibold">{value || "—"}</div>
+    <div className="meta-field">
+      <span className="field-label">{label}</span>
+      <div className="field-value">{value || "—"}</div>
     </div>
   );
 }
 
 function ApprovalBox({ title }: { title: string }) {
   return (
-    <div className="overflow-hidden rounded border border-[#5B2C8B]">
-      <div className="bg-[#5B2C8B] px-2 py-1 text-[8pt] font-extrabold tracking-wide text-white">
-        {title}
-      </div>
-      <div className="min-h-[28mm] space-y-3 p-2">
-        <p className="m-0">Name:</p>
-        <p className="m-0">Signature / date:</p>
-        <div className="h-14 rounded border border-dashed border-[#c4b7d6] bg-[#faf7fd]" />
+    <div className="approval-card">
+      <div className="approval-head">{title}</div>
+      <div className="approval-body">
+        <p>Name:</p>
+        <p>Signature / date:</p>
+        <div className="stamp-box" />
       </div>
     </div>
   );

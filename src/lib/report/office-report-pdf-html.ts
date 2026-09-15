@@ -22,15 +22,17 @@ type ReportDetail = {
 
 export const REPORT_ROWS_PER_PAGE = 10;
 
-const TFRC_MARK =
+/** Official TFRC mark (same as catalogue PDF) — data URI so print never depends on /public. */
+export const TFRC_REPORT_LOGO_SRC =
   "data:image/svg+xml;charset=utf-8," +
-  encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
-  <rect width="72" height="72" rx="10" fill="#5B2C8B"/>
-  <rect x="16" y="16" width="8" height="28" rx="1.5" fill="#fff"/>
-  <rect x="32" y="16" width="8" height="28" rx="1.5" fill="#fff"/>
-  <rect x="48" y="16" width="8" height="28" rx="1.5" fill="#fff"/>
-  <text x="36" y="60" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" font-weight="700" fill="#fff" letter-spacing="1">TFRC</text>
+  encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 72" role="img" aria-label="TFRC">
+  <rect x="12" y="8" width="16" height="40" rx="2" fill="#7B2D8E"/>
+  <rect x="40" y="8" width="16" height="40" rx="2" fill="#7B2D8E"/>
+  <rect x="68" y="8" width="16" height="40" rx="2" fill="#7B2D8E"/>
+  <text x="48" y="66" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#7B2D8E" letter-spacing="2">TFRC</text>
 </svg>`);
+
+const TFRC_MARK = TFRC_REPORT_LOGO_SRC;
 
 function escapeHtml(value: string): string {
   return value
@@ -214,16 +216,18 @@ function templateCss(): string {
     .sheet {
       width: 210mm; height: 297mm; max-height: 297mm;
       margin: 8px auto; background: #fff; overflow: hidden;
-      padding: 8mm 7mm 7mm;
+      padding: 6mm 6mm 5mm;
       display: flex; flex-direction: column;
       page-break-after: always; break-after: page;
+      break-inside: avoid; page-break-inside: avoid;
     }
     .sheet:last-child { page-break-after: auto; break-after: auto; }
     .doc-header {
-      display: grid; grid-template-columns: 18mm 1fr 28mm; gap: 3mm;
-      align-items: start; margin-bottom: 3mm;
+      display: grid; grid-template-columns: 22mm 1fr 28mm; gap: 3mm;
+      align-items: center; margin-bottom: 2mm;
+      flex: 0 0 auto;
     }
-    .logo { width: 16mm; height: 16mm; object-fit: contain; }
+    .logo { width: 20mm; height: 12mm; object-fit: contain; display: block; }
     .brand { text-align: center; }
     .brand .ar { margin: 0; font-size: 9pt; color: var(--purple); font-weight: 700; }
     .brand h1 { margin: 1mm 0 0; font-size: 13pt; color: var(--purple); letter-spacing: 0.01em; }
@@ -276,38 +280,50 @@ function templateCss(): string {
     .c-sell { width: 14mm; text-align: right; background: var(--sell) !important; }
     .c-ws { width: 18mm; background: var(--ws) !important; }
     .c-img img {
-      width: 11mm; height: 11mm; object-fit: contain; display: inline-block; background: #fff;
+      width: 10mm; height: 10mm; object-fit: contain; display: inline-block; background: #fff;
     }
     .img-fallback {
-      width: 11mm; height: 11mm; margin: 0 auto; border: 0.25mm dashed #ccc; border-radius: 1mm;
+      width: 10mm; height: 10mm; margin: 0 auto; border: 0.25mm dashed #ccc; border-radius: 1mm;
     }
     .img-link {
-      color: #1d4ed8; text-decoration: underline; word-break: break-all; font-size: 5.4pt;
+      color: #1d4ed8; text-decoration: underline; word-break: break-all; font-size: 5pt;
+      line-height: 1.1; max-height: 11mm; overflow: hidden; display: block;
     }
-    .empty-row td { height: 12mm; }
+    .empty-row td { height: 11mm; }
     .approval {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-top: 3mm;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-top: 2mm;
+      flex: 0 0 auto;
     }
     .approval-card { border: 0.35mm solid var(--purple); border-radius: 1.5mm; overflow: hidden; }
     .approval-head {
       background: var(--purple); color: #fff; font-size: 8pt; font-weight: 800;
       padding: 1.6mm 2.5mm; letter-spacing: 0.06em;
     }
-    .approval-body { padding: 2.5mm; min-height: 28mm; font-size: 8pt; }
-    .approval-body p { margin: 0 0 3mm; }
+    .approval-body { padding: 2mm; min-height: 22mm; font-size: 8pt; }
+    .approval-body p { margin: 0 0 2mm; }
     .stamp-box {
-      margin-top: 2mm; height: 14mm; border: 0.3mm dashed #c4b7d6; border-radius: 1mm; background: #faf7fd;
+      margin-top: 1mm; height: 10mm; border: 0.3mm dashed #c4b7d6; border-radius: 1mm; background: #faf7fd;
     }
-    .spacer { flex: 1 1 auto; }
+    .spacer { flex: 1 1 auto; min-height: 0; }
     .doc-footer {
-      margin-top: 2.5mm; background: var(--purple); color: #fff;
+      margin-top: 1.5mm; background: var(--purple); color: #fff;
       display: flex; justify-content: space-between; gap: 3mm;
-      padding: 2mm 2.5mm; font-size: 6.5pt; border-radius: 1mm;
+      padding: 1.5mm 2mm; font-size: 6pt; border-radius: 1mm;
+      flex: 0 0 auto;
     }
     @media print {
       html, body { background: #fff !important; }
       .toolbar { display: none !important; }
-      .sheet { margin: 0 !important; box-shadow: none !important; }
+      .sheet {
+        margin: 0 !important; box-shadow: none !important;
+        height: 297mm !important; max-height: 297mm !important;
+        overflow: hidden !important;
+        page-break-after: always;
+        break-after: page;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      .sheet:last-child { page-break-after: auto; break-after: auto; }
     }
     @page { size: A4 portrait; margin: 0; }
   `;
