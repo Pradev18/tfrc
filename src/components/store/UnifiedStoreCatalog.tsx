@@ -205,8 +205,7 @@ export function UnifiedStoreCatalog({
   }, [focusedCategorySlug, showAllProducts, isFilteredView, searchInput, shopCategories.length]);
 
   const visibleCategories = useMemo(() => {
-    if (isFilteredView) return [];
-    if (showAllProducts) return shopCategories;
+    if (isFilteredView || showAllProducts) return [];
     return focusedCategorySlug
       ? shopCategories.filter((category) => category.slug === focusedCategorySlug)
       : shopCategories;
@@ -223,11 +222,17 @@ export function UnifiedStoreCatalog({
 
   useEffect(() => {
     if (isFilteredView) return;
-    const preferred = showAllProducts
-      ? shopCategories.slice(0, 3)
-      : focusedCategorySlug
-        ? shopCategories.filter((category) => category.slug === focusedCategorySlug)
-        : shopCategories.slice(0, 3);
+    if (showAllProducts) {
+      const timer = window.setTimeout(() => {
+        prefetchStoreFeed(environmentSlug, { ...apiFilters, shop: null }, {
+          includeVariants: true,
+        });
+      }, 40);
+      return () => window.clearTimeout(timer);
+    }
+    const preferred = focusedCategorySlug
+      ? shopCategories.filter((category) => category.slug === focusedCategorySlug)
+      : shopCategories.slice(0, 3);
     const timers = preferred.map((category, index) =>
       window.setTimeout(() => {
         prefetchStoreFeed(
@@ -235,7 +240,6 @@ export function UnifiedStoreCatalog({
           { ...apiFilters, shop: null },
           {
             shopSlug: category.slug,
-            includeVariants: showAllProducts,
           }
         );
       }, 40 + index * 120)
@@ -301,6 +305,29 @@ export function UnifiedStoreCatalog({
               emptyMessage={t("store.noMatch")}
             />
           </div>
+        ) : showAllProducts ? (
+          <div className="mt-6 md:mt-8">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold tracking-tight" style={{ color: v.heading }}>
+                {t("store.allProducts")}
+              </h2>
+              <p className="mt-1 text-sm" style={{ color: v.muted }}>
+                {t("store.productsCategories", {
+                  products: totalProducts.toLocaleString(),
+                  categories: shopCategories.length,
+                })}
+              </p>
+            </div>
+            <PaginatedProductGrid
+              environmentSlug={environmentSlug}
+              environmentName={environmentName}
+              filters={apiFilters}
+              whatsappSettings={whatsappSettings}
+              siteUrl={siteUrl}
+              includeVariants
+              emptyMessage={t("store.noMatch")}
+            />
+          </div>
         ) : (
           <div className="mt-2">
             {visibleCategories.map((cat) => (
@@ -315,7 +342,6 @@ export function UnifiedStoreCatalog({
                 whatsappSettings={whatsappSettings}
                 siteUrl={siteUrl}
                 forceVisible={focusedCategorySlug === cat.slug}
-                includeVariants={showAllProducts}
               />
             ))}
           </div>

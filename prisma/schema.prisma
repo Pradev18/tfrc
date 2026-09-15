@@ -593,3 +593,101 @@ model CustomerInquiryItem {
   @@index([inquiryId])
   @@index([productId])
 }
+
+/** Admin Report module — Office Forms I.Q.S workflow (isolated from catalogues). */
+enum OfficeReportImportStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+model OfficeReportImport {
+  id                 String                   @id @default(cuid())
+  fileName           String
+  fileSize           Int                      @default(0)
+  status             OfficeReportImportStatus @default(PENDING)
+  errorMessage       String?
+  inventorySheetName String?
+  imageSheetName     String?
+  iqsSheetName       String?
+  inventoryHeaders   String                   @default("[]")
+  columnMap          String                   @default("{}")
+  inventoryRowCount  Int                      @default(0)
+  imageLinkCount     Int                      @default(0)
+  duplicateItemCodes String                   @default("[]")
+  createdByUserId    String?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  inventoryItems     OfficeReportInventoryItem[]
+  imageLinks         OfficeReportImageLink[]
+  reports            OfficeReport[]
+
+  @@index([createdAt])
+  @@index([status])
+}
+
+model OfficeReportInventoryItem {
+  id        String             @id @default(cuid())
+  importId  String
+  import    OfficeReportImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  itemCode  String
+  payload   String             @default("{}")
+  /// Sheet order for Excel-accurate first-match VLOOKUP behaviour.
+  sortOrder Int                @default(0)
+
+  @@index([importId, itemCode, sortOrder])
+  @@index([itemCode])
+}
+
+model OfficeReportImageLink {
+  id        String             @id @default(cuid())
+  importId  String
+  import    OfficeReportImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  itemCode  String
+  imageUrl  String
+  fileName  String?
+  /// Sheet order for Excel-accurate first-match VLOOKUP behaviour.
+  sortOrder Int                @default(0)
+
+  @@index([importId, itemCode, sortOrder])
+}
+
+model OfficeReport {
+  id           String             @id @default(cuid())
+  importId     String
+  import       OfficeReportImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  title        String             @default("Inventory Availability & Price Check")
+  customerName String             @default("")
+  requestedBy  String             @default("")
+  shopBranch   String             @default("")
+  tfrcLabel    String             @default("TFRC")
+  notes        String             @default("")
+  reportDate   String             @default("")
+  createdByUserId String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  lines        OfficeReportLine[]
+
+  @@index([importId])
+  @@index([createdAt])
+}
+
+model OfficeReportLine {
+  id                      String       @id @default(cuid())
+  reportId                String
+  report                  OfficeReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  sortOrder               Int          @default(0)
+  itemCode                String
+  imageLink               String       @default("")
+  itemName                String       @default("")
+  supplierName            String       @default("")
+  onHand                  String       @default("")
+  itemCost                String       @default("")
+  sellingPrice            String       @default("")
+  wholesalePriceApproval  String       @default("")
+  lookupStatus            String       @default("ok")
+  lookupWarning           String?
+
+  @@index([reportId, sortOrder])
+  @@index([itemCode])
+}

@@ -77,6 +77,11 @@ export const SHOP_CATEGORIES: Record<string, ShopCategoryDef[]> = {
         "bandana",
         "muzzle",
         "choke chain",
+        "dog belt",
+        "belt",
+        "lace",
+        "lead",
+        "dog lead",
       ],
       excludeKeywords: [
         "bag",
@@ -217,14 +222,22 @@ export const SHOP_CATEGORIES: Record<string, ShopCategoryDef[]> = {
     {
       slug: "tool-sets",
       name: "Tool Sets & Kits",
-      keywords: ["tool set", "tool kit", "pcs tool", "piece tool", "household tool"],
+      keywords: ["tool set", "tool kit", "pcs tool", "piece tool", "household tool", "tool sets"],
       sortOrder: 2,
     },
     {
       slug: "power-tools",
       name: "Power Tools",
-      keywords: ["cordless", "drill", "impact driver", "angle grinder", "blower", "rotary", "charger"],
-      excludeKeywords: ["hand saw", "hand file"],
+      keywords: [
+        "cordless",
+        "drill",
+        "impact driver",
+        "angle grinder",
+        "blower",
+        "rotary",
+        "charger",
+      ],
+      excludeKeywords: ["hand saw", "hand file", "household tool"],
       sortOrder: 3,
     },
     {
@@ -274,20 +287,20 @@ export const SHOP_CATEGORIES: Record<string, ShopCategoryDef[]> = {
     {
       slug: "tea-sets",
       name: "Tea Sets",
-      keywords: ["tea set", "teaware", "tea cup", "tea glass", "cawa", "teapot", "tea pot"],
+      keywords: ["tea set", "teaware", "tea cup", "tea glass", "cawa", "teapot", "tea pot", "coffee & tea", "coffee and tea"],
       sortOrder: 1,
     },
     {
       slug: "cups-saucers",
       name: "Cups & Saucers",
-      keywords: ["cup", "saucer", "mug", "coffee cup"],
+      keywords: ["cup", "saucer", "mug", "coffee cup", "cups and plates", "cups & plates"],
       excludeKeywords: ["tea set", "teapot"],
       sortOrder: 2,
     },
     {
       slug: "plates-dinnerware",
       name: "Plates & Dinnerware",
-      keywords: ["plate", "dinner set", "dinnerware", "dish set"],
+      keywords: ["plate", "dinner set", "dinnerware", "dish set", "cups and plates", "cups & plates"],
       sortOrder: 3,
     },
     {
@@ -331,18 +344,40 @@ export function resolveCatalogueShopCategoryPack(input: {
   tagline?: string | null;
   departmentSource?: string | null;
   productNames?: string[];
+  products?: ShopCategoryProductInput[];
 }): ShopCategoryDef[] {
   const slug = (input.slug ?? "").toLowerCase().trim();
   if (slug && SHOP_CATEGORIES[slug]?.length) {
-    return SHOP_CATEGORIES[slug]!;
+    const known = SHOP_CATEGORIES[slug]!;
+    const productInputs: ShopCategoryProductInput[] =
+      input.products ??
+      (input.productNames ?? []).map((name) => ({ name }));
+    if (productInputs.length === 0) return known;
+    const otherRatio = estimateOtherRatio(productInputs, known);
+    if (otherRatio < 0.45) return known;
+    const taxonomy = discoverShopCategoriesFromTaxonomy(productInputs);
+    if (taxonomy.length === 0) return known;
+    // Keep known pack, append taxonomy buckets so Excel categories still surface.
+    const seen = new Set(known.map((d) => d.slug));
+    const merged = [...known];
+    for (const def of taxonomy) {
+      if (seen.has(def.slug)) continue;
+      seen.add(def.slug);
+      merged.push({ ...def, sortOrder: known.length + merged.length });
+    }
+    return merged;
   }
+
+  const productInputs: ShopCategoryProductInput[] =
+    input.products ??
+    (input.productNames ?? []).map((name) => ({ name }));
 
   const haystack = [
     slug,
     input.name,
     input.tagline,
     input.departmentSource,
-    ...(input.productNames ?? []).slice(0, 80),
+    ...productInputs.slice(0, 80).flatMap((p) => [p.name, p.googleCategory, p.fbCategory]),
   ]
     .filter(Boolean)
     .join(" ")
@@ -364,7 +399,6 @@ export function resolveCatalogueShopCategoryPack(input: {
     "animal",
     "puppy",
     "kitten",
-    "accessories",
   ]);
   const toolScore = scorePack([
     "tool",
@@ -389,21 +423,120 @@ export function resolveCatalogueShopCategoryPack(input: {
     "cutlery",
   ]);
 
+  let pack: ShopCategoryDef[] = [];
   if (petScore > 0 && petScore >= toolScore && petScore >= homeScore) {
-    return SHOP_CATEGORIES.pawmart ?? [];
-  }
-  if (toolScore > 0 && toolScore >= homeScore) {
-    return SHOP_CATEGORIES.hardware ?? [];
-  }
-  if (homeScore > 0) {
-    return SHOP_CATEGORIES.household ?? [];
+    pack = SHOP_CATEGORIES.pawmart ?? [];
+  } else if (toolScore > 0 && toolScore >= homeScore) {
+    pack = SHOP_CATEGORIES.hardware ?? [];
+  } else if (homeScore > 0) {
+    pack = SHOP_CATEGORIES.household ?? [];
   }
 
-  if ((input.productNames?.length ?? 0) > 0) {
-    return discoverShopCategoriesFromProducts(input.productNames!);
+  // If a keyword pack would dump most products into "More to explore",
+  // prefer Excel taxonomy (google/fb category) discovery instead.
+  if (pack.length > 0 && productInputs.length > 0) {
+    const otherRatio = estimateOtherRatio(productInputs, pack);
+    if (otherRatio >= 0.45) {
+      const taxonomy = discoverShopCategoriesFromTaxonomy(productInputs);
+      if (taxonomy.length > 0) return taxonomy;
+    }
+    return pack;
+  }
+
+  const taxonomy = discoverShopCategoriesFromTaxonomy(productInputs);
+  if (taxonomy.length > 0) return taxonomy;
+
+  if (productInputs.length > 0) {
+    return discoverShopCategoriesFromProducts(productInputs.map((p) => p.name));
   }
 
   return [];
+}
+
+function slugifyCategoryLabel(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+function titleCaseLabel(label: string): string {
+  return label
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/**
+ * Build shop categories from Excel google_product_category / fb_product_category
+ * leaf segments — the real taxonomy already present in Meta uploads.
+ */
+export function discoverShopCategoriesFromTaxonomy(
+  products: ShopCategoryProductInput[],
+  maxCategories = 12
+): ShopCategoryDef[] {
+  const freq = new Map<
+    string,
+    { count: number; label: string; keywords: Set<string> }
+  >();
+
+  for (const product of products) {
+    const path = product.googleCategory || product.fbCategory || "";
+    const segments = path
+      .split(/>|\//)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (segments.length === 0) continue;
+
+    const leaf = segments[segments.length - 1]!;
+    const parent = segments.length > 1 ? segments[segments.length - 2] : null;
+    const slug = slugifyCategoryLabel(leaf);
+    if (!slug || slug.length < 3) continue;
+
+    const entry = freq.get(slug) ?? {
+      count: 0,
+      label: leaf,
+      keywords: new Set<string>(),
+    };
+    entry.count += 1;
+    entry.keywords.add(leaf.toLowerCase());
+    for (const token of leaf.toLowerCase().split(/[^a-z0-9]+/)) {
+      if (token.length >= 4 && !STOP_WORDS.has(token)) entry.keywords.add(token);
+    }
+    if (parent) {
+      entry.keywords.add(parent.toLowerCase());
+      for (const token of parent.toLowerCase().split(/[^a-z0-9]+/)) {
+        if (token.length >= 4 && !STOP_WORDS.has(token)) entry.keywords.add(token);
+      }
+    }
+    freq.set(slug, entry);
+  }
+
+  return [...freq.entries()]
+    .filter(([, meta]) => meta.count >= 2)
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, maxCategories)
+    .map(([slug, meta], index) => ({
+      slug,
+      name: titleCaseLabel(meta.label),
+      keywords: [...meta.keywords],
+      sortOrder: index + 1,
+    }));
+}
+
+export function estimateOtherRatio(
+  products: ShopCategoryProductInput[],
+  defs: ShopCategoryDef[]
+): number {
+  if (products.length === 0) return 1;
+  let other = 0;
+  for (const product of products) {
+    if (!resolvePrimaryShopCategory(product, defs)) other += 1;
+  }
+  return other / products.length;
 }
 
 export function getShopCategoryDef(
@@ -508,7 +641,7 @@ export function discoverShopCategoriesFromProducts(
   }
 
   return [...freq.entries()]
-    .filter(([, count]) => count >= 3)
+    .filter(([, count]) => count >= 2)
     .sort((a, b) => b[1] - a[1])
     .slice(0, maxCategories)
     .map(([token], i) => ({

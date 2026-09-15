@@ -1,8 +1,8 @@
 import { readUploadedImage } from "@/lib/upload";
 
-const MAX_EMBED_BYTES = 1_500_000;
-const FETCH_TIMEOUT_MS = 12_000;
-const CONCURRENCY = 8;
+const MAX_EMBED_BYTES = 4_000_000;
+const FETCH_TIMEOUT_MS = 20_000;
+const CONCURRENCY = 10;
 const cache = new Map<string, string>();
 
 function toDataUri(buffer: Buffer, contentType: string): string {
@@ -118,7 +118,11 @@ export function pdfImageOrPlaceholder(
   label: string
 ): string {
   if (!absoluteUrl) return placeholderDataUri(label);
-  return embedded.get(absoluteUrl) ?? placeholderDataUri(label);
+  const embeddedUri = embedded.get(absoluteUrl);
+  if (embeddedUri) return embeddedUri;
+  // Keep the live product URL so browser preview/print can still render the image
+  // when server-side embed fails (timeout, CDN hiccup, oversized file).
+  return absoluteUrl;
 }
 
 export { placeholderDataUri };

@@ -153,7 +153,7 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
   if (defs.length === 0) {
     const sample = await prisma.product.findMany({
       where: baseWhere,
-      select: { name: true },
+      select: { name: true, googleCategory: true, fbCategory: true },
       take: 3000,
       orderBy: { createdAt: "desc" },
     });
@@ -161,7 +161,7 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
       environmentSlug,
       sample.map((p) => p.name)
     );
-    if (defs.length > 0) {
+    if (defs.length > 0 || sample.length > 0) {
       const { syncEnvironmentShopCategories } = await import("@/lib/shop-category-sync");
       const { resolveCatalogueShopCategoryPack } = await import("@/lib/shop-categories");
       const pack = resolveCatalogueShopCategoryPack({
@@ -170,8 +170,20 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
         tagline: env?.tagline,
         departmentSource: env?.departmentSource,
         productNames: sample.map((p) => p.name),
+        products: sample,
       });
       if (pack.length > 0) {
+        await prisma.shopCategory.deleteMany({ where: { environmentId } });
+        await prisma.shopCategory.createMany({
+          data: pack.map((def, i) => ({
+            environmentId,
+            slug: def.slug,
+            name: def.name,
+            keywords: JSON.stringify(def.keywords),
+            sortOrder: def.sortOrder ?? i + 1,
+            isActive: true,
+          })),
+        });
         await syncEnvironmentShopCategories(environmentId, pack);
         defs = pack;
       }

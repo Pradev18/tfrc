@@ -246,7 +246,7 @@ export async function generateShopCategories(environmentId: string, slug: string
 
   const products = await prisma.product.findMany({
     where: { environmentId, status: "ACTIVE", deletedAt: null },
-    select: { name: true },
+    select: { name: true, googleCategory: true, fbCategory: true },
   });
 
   const pack = resolveCatalogueShopCategoryPack({
@@ -255,6 +255,7 @@ export async function generateShopCategories(environmentId: string, slug: string
     tagline: env?.tagline,
     departmentSource: env?.departmentSource,
     productNames: products.map((p) => p.name),
+    products,
   });
 
   if (pack.length === 0) return 0;

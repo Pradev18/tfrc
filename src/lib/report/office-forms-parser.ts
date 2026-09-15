@@ -1,0 +1,375 @@
+import * as XLSX from "xlsx";
+import {
+  findHeaderIndex,
+  headersInclude,
+  normalizeHeader,
+  normalizeItemCode,
+} from "@/lib/report/office-forms-normalize";
+
+export interface ParsedInventoryRow {
+  itemCode: string;
+  payload: Record<string, string>;
+}
+
+export interface ParsedImageLink {
+  itemCode: string;
+  imageUrl: string;
+  fileName?: string;
+}
+
+export interface OfficeFormsColumnMap {
+  itemCode: string;
+  description: string;
+  supplierName: string;
+  itemCost: string;
+  retailPrice: string;
+  onHand: string;
+  /** 1-based Excel column indexes used by the I.Q.S template (informational). */
+  vlookupIndexes?: Record<string, number>;
+}
+
+export interface ParsedOfficeFormsWorkbook {
+  inventorySheetName: string;
+  imageSheetName: string | null;
+  iqsSheetName: string | null;
+  inventoryHeaders: string[];
+  columnMap: OfficeFormsColumnMap;
+  inventoryRows: ParsedInventoryRow[];
+  imageLinks: ParsedImageLink[];
+  duplicateInventoryCodes: string[];
+  duplicateImageCodes: string[];
+}
+
+function sheetRows(ws: XLSX.WorkSheet): unknown[][] {
+  return XLSX.utils.sheet_to_json<unknown[]>(ws, {
+    header: 1,
+    defval: null,
+    raw: true,
+  });
+}
+
+function cellToString(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (Number.isInteger(value)) return String(value);
+    // Keep meaningful decimals for costs/prices
+    return String(value);
+  }
+  return String(value).trim();
+}
+
+function scoreInventorySheet(headers: string[]): number {
+  let score = 0;
+  if (findHeaderIndex(headers, ["item code", "itemcode"]) >= 0) score += 5;
+  if (findHeaderIndex(headers, ["supplier name"]) >= 0) score += 3;
+  if (findHeaderIndex(headers, ["description", "item name"]) >= 0) score += 3;
+  if (findHeaderIndex(headers, ["item cost"]) >= 0) score += 2;
+  if (findHeaderIndex(headers, ["retail price", "selling price"]) >= 0) score += 2;
+  if (findHeaderIndex(headers, ["boh", "total qty", "on hand"]) >= 0) score += 2;
+  return score;
+}
+
+function scoreImageSheet(headers: string[]): number {
+  let score = 0;
+  if (findHeaderIndex(headers, ["link", "image link", "url"]) >= 0) score += 4;
+  if (findHeaderIndex(headers, ["file name", "filename", "r2 key"]) >= 0) score += 2;
+  if (headersInclude(headers, "batch")) score += 1;
+  return score;
+}
+
+function scoreIqsSheet(headers: string[]): number {
+  let score = 0;
+  if (findHeaderIndex(headers, ["item code", "itemcode"]) >= 0) score += 3;
+  if (findHeaderIndex(headers, ["image link"]) >= 0) score += 2;
+  if (findHeaderIndex(headers, ["whole sale price approval", "wholesale price approval"]) >= 0)
+    score += 4;
+  if (findHeaderIndex(headers, ["on hand"]) >= 0) score += 2;
+  if (findHeaderIndex(headers, ["supplier name"]) >= 0) score += 1;
+  return score;
+}
+
+function findHeaderRow(rows: unknown[][], minScore: (h: string[]) => number): number {
+  let bestIdx = -1;
+  let best = 0;
+  for (let i = 0; i < Math.min(rows.length, 25); i++) {
+    const headers = (rows[i] ?? []).map((c) => cellToString(c));
+    if (headers.every((h) => !h)) continue;
+    const score = minScore(headers);
+    if (score > best) {
+      best = score;
+      bestIdx = i;
+    }
+  }
+  return best >= 4 ? bestIdx : bestIdx >= 0 && best >= 3 ? bestIdx : -1;
+}
+
+function pickSheet(
+  workbook: XLSX.WorkBook,
+  preferNames: string[],
+  scorer: (headers: string[]) => number
+): { name: string; headerRow: number; headers: string[]; rows: unknown[][] } | null {
+  const candidates: Array<{
+    name: string;
+    headerRow: number;
+    headers: string[];
+    rows: unknown[][];
+    score: number;
+    nameBonus: number;
+  }> = [];
+
+  for (const name of workbook.SheetNames) {
+    const ws = workbook.Sheets[name];
+    if (!ws) continue;
+    const rows = sheetRows(ws);
+    const headerRow = findHeaderRow(rows, scorer);
+    if (headerRow < 0) continue;
+    const headers = (rows[headerRow] ?? []).map((c) => cellToString(c));
+    const score = scorer(headers);
+    const lower = name.toLowerCase();
+    const nameBonus = preferNames.some((p) => lower.includes(p.toLowerCase())) ? 10 : 0;
+    candidates.push({ name, headerRow, headers, rows, score, nameBonus });
+  }
+
+  candidates.sort((a, b) => b.score + b.nameBonus - (a.score + a.nameBonus));
+  const best = candidates[0];
+  if (!best || best.score < 4) return null;
+  return best;
+}
+
+function buildColumnMap(headers: string[]): OfficeFormsColumnMap {
+  const itemCodeIdx = findHeaderIndex(headers, ["item code", "itemcode"]);
+  const descriptionIdx = findHeaderIndex(headers, ["description", "item name", "product name"]);
+  const supplierIdx = findHeaderIndex(headers, ["supplier name"]);
+  const costIdx = findHeaderIndex(headers, ["item cost"]);
+  const retailIdx = findHeaderIndex(headers, ["retail price", "selling price"]);
+  const onHandIdx = findHeaderIndex(headers, ["boh", "on hand", "total qty", "total quantity"]);
+
+  if (itemCodeIdx < 0) {
+    throw new Error("Item inventory sheet is missing an Item Code column.");
+  }
+  if (descriptionIdx < 0) {
+    throw new Error("Item inventory sheet is missing a Description / Item Name column.");
+  }
+  if (supplierIdx < 0) {
+    throw new Error("Item inventory sheet is missing a Supplier Name column.");
+  }
+  if (costIdx < 0) {
+    throw new Error("Item inventory sheet is missing an Item Cost column.");
+  }
+  if (retailIdx < 0) {
+    throw new Error("Item inventory sheet is missing a Retail / Selling Price column.");
+  }
+  if (onHandIdx < 0) {
+    throw new Error("Item inventory sheet is missing an On Hand / BOH / Total Qty column.");
+  }
+
+  return {
+    itemCode: headers[itemCodeIdx]!,
+    description: headers[descriptionIdx]!,
+    supplierName: headers[supplierIdx]!,
+    itemCost: headers[costIdx]!,
+    retailPrice: headers[retailIdx]!,
+    onHand: headers[onHandIdx]!,
+    vlookupIndexes: {
+      description: descriptionIdx + 1,
+      supplierName: supplierIdx + 1,
+      itemCost: costIdx + 1,
+      retailPrice: retailIdx + 1,
+      onHand: onHandIdx + 1,
+    },
+  };
+}
+
+function formatMoneyish(value: string): string {
+  if (!value) return "";
+  const n = Number(String(value).replace(/,/g, ""));
+  if (!Number.isFinite(n)) return value;
+  return n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+export function parseOfficeFormsWorkbook(buffer: Buffer): ParsedOfficeFormsWorkbook {
+  const workbook = XLSX.read(buffer, {
+    type: "buffer",
+    cellDates: false,
+    cellNF: false,
+    cellStyles: false,
+    dense: false,
+  });
+
+  if (!workbook.SheetNames.length) {
+    throw new Error("Workbook has no sheets.");
+  }
+
+  const inventory = pickSheet(
+    workbook,
+    ["item_qty", "item qty", "qty_in_store", "qty in store", "store inventory"],
+    scoreInventorySheet
+  );
+  if (!inventory) {
+    throw new Error(
+      "Could not identify the Item_Qty_in_Store sheet. Expected headers like Item Code, Description, Supplier Name, Item Cost, Retail Price, and BOH/On Hand."
+    );
+  }
+
+  const imageSheet = pickSheet(
+    workbook,
+    ["cloud fare", "cloudfare", "cloudflare", "image", "r2"],
+    scoreImageSheet
+  );
+
+  const iqsSheet = pickSheet(
+    workbook,
+    ["i.q.s", "iqs", "inventory price check", "price check"],
+    scoreIqsSheet
+  );
+
+  const columnMap = buildColumnMap(inventory.headers);
+  const inventoryRows: ParsedInventoryRow[] = [];
+  const codeCounts = new Map<string, number>();
+
+  const mappedHeaders = [
+    columnMap.itemCode,
+    columnMap.description,
+    columnMap.supplierName,
+    columnMap.itemCost,
+    columnMap.retailPrice,
+    columnMap.onHand,
+  ];
+  const headerIndex = new Map(
+    inventory.headers.map((header, idx) => [header, idx] as const)
+  );
+
+  for (let r = inventory.headerRow + 1; r < inventory.rows.length; r++) {
+    const row = inventory.rows[r] ?? [];
+    const itemCodeIdx = headerIndex.get(columnMap.itemCode) ?? -1;
+    const itemCode = normalizeItemCode(itemCodeIdx >= 0 ? row[itemCodeIdx] : "");
+    if (!itemCode) continue;
+    // Skip header-like accidental repeats
+    if (normalizeHeader(itemCode) === "item code") continue;
+
+    // Persist only I.Q.S-mapped source fields (immutable snapshot for this import).
+    const payload: Record<string, string> = {};
+    for (const header of mappedHeaders) {
+      const idx = headerIndex.get(header);
+      payload[header] = idx != null ? cellToString(row[idx]) : "";
+    }
+    codeCounts.set(itemCode, (codeCounts.get(itemCode) ?? 0) + 1);
+    inventoryRows.push({ itemCode, payload });
+  }
+
+  if (inventoryRows.length === 0) {
+    throw new Error("Item inventory sheet has no usable item rows.");
+  }
+
+  const imageLinks: ParsedImageLink[] = [];
+  const imageCounts = new Map<string, number>();
+  if (imageSheet) {
+    const codeIdx = findHeaderIndex(imageSheet.headers, [
+      "file name",
+      "filename",
+      "item code",
+      "itemcode",
+    ]);
+    const linkIdx = findHeaderIndex(imageSheet.headers, ["link", "image link", "url"]);
+    if (codeIdx >= 0 && linkIdx >= 0) {
+      for (let r = imageSheet.headerRow + 1; r < imageSheet.rows.length; r++) {
+        const row = imageSheet.rows[r] ?? [];
+        const rawName = cellToString(row[codeIdx]);
+        // Cloud Fare keys are often filenames; strip image extensions for item-code match.
+        const itemCode = normalizeItemCode(rawName.replace(/\.(jpe?g|png|webp|gif)$/i, ""));
+        const imageUrl = cellToString(row[linkIdx]);
+        if (!itemCode || !imageUrl) continue;
+        if (!/^https?:\/\//i.test(imageUrl)) continue;
+        imageCounts.set(itemCode, (imageCounts.get(itemCode) ?? 0) + 1);
+        imageLinks.push({
+          itemCode,
+          imageUrl,
+          fileName: rawName || undefined,
+        });
+      }
+    }
+  }
+
+  return {
+    inventorySheetName: inventory.name,
+    imageSheetName: imageSheet?.name ?? null,
+    iqsSheetName: iqsSheet?.name ?? null,
+    inventoryHeaders: inventory.headers.filter(Boolean),
+    columnMap,
+    inventoryRows,
+    imageLinks,
+    duplicateInventoryCodes: [...codeCounts.entries()]
+      .filter(([, n]) => n > 1)
+      .map(([code]) => code),
+    duplicateImageCodes: [...imageCounts.entries()]
+      .filter(([, n]) => n > 1)
+      .map(([code]) => code),
+  };
+}
+
+export function lookupOfficeFormsFields(
+  parsed: Pick<ParsedOfficeFormsWorkbook, "columnMap">,
+  inventoryMatches: ParsedInventoryRow[],
+  imageMatches: ParsedImageLink[]
+): {
+  itemName: string;
+  supplierName: string;
+  onHand: string;
+  itemCost: string;
+  sellingPrice: string;
+  imageLink: string;
+  lookupStatus: "ok" | "not_found" | "duplicate";
+  lookupWarning: string | null;
+} {
+  if (inventoryMatches.length === 0) {
+    return {
+      itemName: "",
+      supplierName: "",
+      onHand: "",
+      itemCost: "",
+      sellingPrice: "",
+      imageLink: imageMatches[0]?.imageUrl ?? "",
+      lookupStatus: "not_found",
+      lookupWarning: "Item code not found in the uploaded Item_Qty_in_Store data.",
+    };
+  }
+
+  // Excel VLOOKUP(...,0) returns the first sheet-order match.
+  const chosen = inventoryMatches[0]!;
+  const map = parsed.columnMap;
+  const imageLink = pickFirstImageLikeExcel(imageMatches)?.imageUrl ?? "";
+
+  const warnings: string[] = [];
+  // Only inventory duplicates are a data-integrity warning (status=duplicate).
+  // Multiple Cloud Fare formats (jpg/png) are normal — Excel still returns the first.
+  if (inventoryMatches.length > 1) {
+    warnings.push(
+      `Duplicate item code in inventory (${inventoryMatches.length} rows). Showing the first match — review before approving.`
+    );
+  }
+  if (imageMatches.length > 1) {
+    warnings.push(
+      `Multiple image links found (${imageMatches.length}). Using the first sheet-order match (Excel VLOOKUP behaviour).`
+    );
+  }
+
+  return {
+    itemName: chosen.payload[map.description] ?? "",
+    supplierName: chosen.payload[map.supplierName] ?? "",
+    onHand: chosen.payload[map.onHand] ?? "",
+    itemCost: formatMoneyish(chosen.payload[map.itemCost] ?? ""),
+    sellingPrice: formatMoneyish(chosen.payload[map.retailPrice] ?? ""),
+    imageLink,
+    lookupStatus: inventoryMatches.length > 1 ? "duplicate" : "ok",
+    lookupWarning: warnings.length ? warnings.join(" ") : null,
+  };
+}
+
+/** Match Excel VLOOKUP: first row in sheet / sort order. */
+function pickFirstImageLikeExcel(links: ParsedImageLink[]): ParsedImageLink | null {
+  if (links.length === 0) return null;
+  return links[0]!;
+}

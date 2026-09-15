@@ -22,6 +22,8 @@
 .DS_Store
 *.pem
 tmp-catalogue-pdf-*
+tmp-office-*
+tmp-office-report-*
 
 # debug
 npm-debug.log*
