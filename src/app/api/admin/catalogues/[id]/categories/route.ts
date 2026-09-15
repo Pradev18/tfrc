@@ -40,23 +40,75 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     where: { environmentId: id, deletedAt: null },
     _count: { _all: true },
   });
-  const countBySlug = new Map(
-    groupedCounts.map((group) => [group.shopCategorySlug, group._count._all])
-  );
-  const unassignedCount =
-    (countBySlug.get(null) ?? 0) +
-    (countBySlug.get(OTHER_SHOP_CATEGORY.slug) ?? 0);
-  const categories = catalogue.shopCategories
-    .filter((category) => category.isActive)
-    .map((category) => ({
+  const countBySlug = new Map<string, number>();
+  let nullCount = 0;
+  for (const group of groupedCounts) {
+    if (group.shopCategorySlug == null) {
+      nullCount += group._count._all;
+      continue;
+    }
+    countBySlug.set(group.shopCategorySlug, group._count._all);
+  }
+  if (nullCount > 0) {
+    countBySlug.set(
+      OTHER_SHOP_CATEGORY.slug,
+      (countBySlug.get(OTHER_SHOP_CATEGORY.slug) ?? 0) + nullCount
+    );
+  }
+
+  const dbCategories = catalogue.shopCategories.filter((category) => category.isActive);
+  const categories: Array<{
+    id: string;
+    environmentId: string;
+    slug: string;
+    name: string;
+    keywords: string[];
+    imageUrl: string | null;
+    sortOrder: number;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    productCount: number;
+  }> = [];
+
+  for (const category of dbCategories) {
+    if (category.slug === OTHER_SHOP_CATEGORY.slug) continue;
+    let keywords: string[] = [];
+    try {
+      const parsed = JSON.parse(category.keywords || "[]");
+      keywords = Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch {
+      keywords = [];
+    }
+    categories.push({
       ...category,
-      keywords: JSON.parse(category.keywords || "[]"),
+      keywords,
       productCount: countBySlug.get(category.slug) ?? 0,
-    }));
-  if (
-    unassignedCount > 0 &&
-    !categories.some((category) => category.slug === OTHER_SHOP_CATEGORY.slug)
-  ) {
+    });
+  }
+
+  // Match storefront: include product-assigned slugs even if ShopCategory rows are missing.
+  for (const [slug, productCount] of countBySlug) {
+    if (slug === OTHER_SHOP_CATEGORY.slug) continue;
+    if (categories.some((category) => category.slug === slug)) continue;
+    if (productCount <= 0) continue;
+    categories.push({
+      id: `orphan-${slug}`,
+      environmentId: id,
+      slug,
+      name: slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      keywords: [],
+      imageUrl: null,
+      sortOrder: 500 + categories.length,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      productCount,
+    });
+  }
+
+  const otherCount = countBySlug.get(OTHER_SHOP_CATEGORY.slug) ?? 0;
+  if (otherCount > 0) {
     categories.push({
       id: OTHER_SHOP_CATEGORY.slug,
       environmentId: id,
@@ -68,9 +120,16 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       isActive: true,
       createdAt: new Date(),
       updatedAt: new Date(),
-      productCount: unassignedCount,
+      productCount: otherCount,
     });
   }
+
+  categories.sort((a, b) => {
+    if (a.slug === OTHER_SHOP_CATEGORY.slug) return 1;
+    if (b.slug === OTHER_SHOP_CATEGORY.slug) return -1;
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    return b.productCount - a.productCount;
+  });
 
   return NextResponse.json(
     { categories },

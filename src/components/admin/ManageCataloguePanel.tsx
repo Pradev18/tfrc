@@ -234,7 +234,7 @@ export function ManageCataloguePanel({
 
       {tab === "products" && (
         <div>
-          {categories.length > 0 && (
+          {categories.some((category) => category.productCount > 0) && (
             <div className="mb-4 rounded-2xl border border-border bg-surface p-3 sm:p-4">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -255,16 +255,18 @@ export function ManageCataloguePanel({
                       value: ALL_PRODUCTS_CATEGORY_SLUG,
                       label: `All products (${catalogueTotal || total})`,
                     },
-                    ...categories.map((category) => ({
-                      value: category.slug,
-                      label: `${category.name} (${category.productCount})`,
-                    })),
+                    ...categories
+                      .filter((category) => category.productCount > 0)
+                      .map((category) => ({
+                        value: category.slug,
+                        label: `${category.name} (${category.productCount})`,
+                      })),
                   ]}
                   className="min-h-[44px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm sm:w-64"
                 />
               </div>
               <CategoryScroll
-                categories={categories}
+                categories={categories.filter((category) => category.productCount > 0)}
                 environmentSlug={catalogueSlug}
                 embedded
                 showAllProducts
@@ -466,20 +468,28 @@ export function ManageCataloguePanel({
             </button>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-            {categories.map((cat) => (
-              <button
-                type="button"
-                key={cat.id}
-                onClick={() => selectCategory(cat.slug)}
-                className="rounded-xl border border-border bg-surface p-4 text-left transition hover:border-primary/30 hover:shadow-sm"
-              >
-                <p className="font-medium">{cat.name}</p>
-                <p className="mt-1 text-xs font-semibold text-primary">
-                  {cat.productCount} products · Open products →
-                </p>
-                <p className="mt-1 text-xs text-text-muted">{cat.keywords.join(", ")}</p>
-              </button>
-            ))}
+            {categories.length === 0 ? (
+              <p className="text-sm text-text-muted sm:col-span-2">
+                No shop categories yet. Click Auto-generate from products after importing Excel.
+              </p>
+            ) : (
+              categories.map((cat) => (
+                <button
+                  type="button"
+                  key={cat.id}
+                  onClick={() => selectCategory(cat.slug)}
+                  className="rounded-xl border border-border bg-surface p-4 text-left transition hover:border-primary/30 hover:shadow-sm"
+                >
+                  <p className="font-medium">{cat.name}</p>
+                  <p className="mt-1 text-xs font-semibold text-primary">
+                    {cat.productCount} products · Open products →
+                  </p>
+                  {cat.keywords.length > 0 ? (
+                    <p className="mt-1 text-xs text-text-muted">{cat.keywords.join(", ")}</p>
+                  ) : null}
+                </button>
+              ))
+            )}
           </div>
         </div>
       )}
