@@ -56,23 +56,32 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
   );
 
   useEffect(() => {
+    setReport(initialReport);
+  }, [initialReport]);
+
+  useEffect(() => {
     const q = itemCode.trim();
     if (q.length < 2) {
       setSuggestions([]);
       return;
     }
+    let cancelled = false;
     const handle = window.setTimeout(async () => {
       const res = await fetch(
         `/api/admin/reports/imports/${report.import.id}/search?q=${encodeURIComponent(q)}`,
         { cache: "no-store" }
       );
       const data = await res.json();
-      if (res.ok) setSuggestions(data.results ?? []);
+      if (!cancelled && res.ok) setSuggestions(data.results ?? []);
     }, 220);
-    return () => window.clearTimeout(handle);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
   }, [itemCode, report.import.id]);
 
   async function patchMeta(patch: Partial<ReportDetail>) {
+    if (busy || saveState === "saving") return;
     setSaveState("saving");
     setError(null);
     const res = await fetch(`/api/admin/reports/${report.id}`, {
@@ -93,7 +102,7 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
 
   async function addLine(code: string) {
     const trimmed = code.trim();
-    if (!trimmed) return;
+    if (!trimmed || busy) return;
     setBusy(true);
     setError(null);
     try {

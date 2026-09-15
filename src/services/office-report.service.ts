@@ -24,11 +24,13 @@ export async function createOfficeReportImport(input: {
     throw new Error(error instanceof Error ? error.message : "Failed to parse workbook");
   }
 
+  // Stay PENDING until every batch + seeded line is written. Mid-import data must
+  // never be used for lookups, preview, or edits.
   const created = await prisma.officeReportImport.create({
     data: {
       fileName: input.fileName,
       fileSize: input.fileSize,
-      status: "READY",
+      status: "PENDING",
       inventorySheetName: parsed.inventorySheetName,
       imageSheetName: parsed.imageSheetName,
       iqsSheetName: parsed.iqsSheetName,
@@ -80,6 +82,7 @@ export async function createOfficeReportImport(input: {
       },
     });
 
+    let seededLineCount = 0;
     // Prefill report rows from item codes already present on the I.Q.S sheet.
     if (parsed.iqsSeedRows.length > 0) {
       const invByCode = new Map<string, ParsedInventoryRow[]>();
@@ -122,9 +125,15 @@ export async function createOfficeReportImport(input: {
           data: lineData.slice(i, i + BATCH),
         });
       }
+      seededLineCount = lineData.length;
     }
 
-    return { importRecord: created, report };
+    const importRecord = await prisma.officeReportImport.update({
+      where: { id: created.id },
+      data: { status: "READY", errorMessage: null },
+    });
+
+    return { importRecord, report, seededLineCount };
   } catch (error) {
     // Roll back partial import so we never mix incomplete source data.
     await prisma.officeReportImport.delete({ where: { id: created.id } }).catch(() => null);
@@ -152,6 +161,7 @@ function formatIqsReportDate(raw: string): string {
 
 export async function listOfficeReports() {
   const reports = await prisma.officeReport.findMany({
+    where: { import: { status: "READY" } },
     orderBy: { createdAt: "desc" },
     include: {
       import: true,
@@ -189,6 +199,7 @@ export async function getOfficeReportDetail(reportId: string) {
     },
   });
   if (!report) return null;
+  if (report.import.status !== "READY") return null;
   return serializeReport(report);
 }
 
@@ -360,16 +371,25 @@ export async function updateOfficeReportMeta(
     title: string;
   }>
 ) {
+  const report = await prisma.officeReport.findUnique({
+    where: { id: reportId },
+    include: { import: { select: { status: true } } },
+  });
+  if (!report) throw new Error("Report not found.");
+  if (report.import.status !== "READY") {
+    throw new Error("Report import is not ready.");
+  }
+
   return prisma.officeReport.update({
     where: { id: reportId },
     data: {
-      ...(patch.customerName != null ? { customerName: patch.customerName } : {}),
-      ...(patch.requestedBy != null ? { requestedBy: patch.requestedBy } : {}),
-      ...(patch.shopBranch != null ? { shopBranch: patch.shopBranch } : {}),
-      ...(patch.tfrcLabel != null ? { tfrcLabel: patch.tfrcLabel } : {}),
-      ...(patch.notes != null ? { notes: patch.notes } : {}),
-      ...(patch.reportDate != null ? { reportDate: patch.reportDate } : {}),
-      ...(patch.title != null ? { title: patch.title } : {}),
+      ...(patch.customerName != null ? { customerName: String(patch.customerName) } : {}),
+      ...(patch.requestedBy != null ? { requestedBy: String(patch.requestedBy) } : {}),
+      ...(patch.shopBranch != null ? { shopBranch: String(patch.shopBranch) } : {}),
+      ...(patch.tfrcLabel != null ? { tfrcLabel: String(patch.tfrcLabel) } : {}),
+      ...(patch.notes != null ? { notes: String(patch.notes) } : {}),
+      ...(patch.reportDate != null ? { reportDate: String(patch.reportDate) } : {}),
+      ...(patch.title != null ? { title: String(patch.title) } : {}),
     },
   });
 }
@@ -384,13 +404,19 @@ export async function updateOfficeReportLine(
 ) {
   const existing = await prisma.officeReportLine.findFirst({
     where: { id: lineId, reportId },
+    include: { report: { include: { import: { select: { status: true, id: true } } } } },
   });
   if (!existing) throw new Error("Report line not found.");
+  if (existing.report.import.status !== "READY") {
+    throw new Error("Report import is not ready.");
+  }
 
+  // Source-derived fields stay immutable unless item code itself changes (re-lookup).
   if (patch.itemCode != null && normalizeItemCode(patch.itemCode) !== existing.itemCode) {
-    const report = await prisma.officeReport.findUnique({ where: { id: reportId } });
-    if (!report) throw new Error("Report not found.");
-    const { itemCode, fields } = await resolveLookup(report.importId, patch.itemCode);
+    const { itemCode, fields } = await resolveLookup(
+      existing.report.import.id,
+      patch.itemCode
+    );
     return prisma.officeReportLine.update({
       where: { id: lineId },
       data: {
@@ -404,7 +430,7 @@ export async function updateOfficeReportLine(
         lookupStatus: fields.lookupStatus,
         lookupWarning: fields.lookupWarning,
         ...(patch.wholesalePriceApproval != null
-          ? { wholesalePriceApproval: patch.wholesalePriceApproval }
+          ? { wholesalePriceApproval: String(patch.wholesalePriceApproval) }
           : {}),
       },
     });
@@ -414,7 +440,7 @@ export async function updateOfficeReportLine(
     where: { id: lineId },
     data: {
       ...(patch.wholesalePriceApproval != null
-        ? { wholesalePriceApproval: patch.wholesalePriceApproval }
+        ? { wholesalePriceApproval: String(patch.wholesalePriceApproval) }
         : {}),
     },
   });
@@ -440,12 +466,13 @@ export async function deleteOfficeReport(reportId: string) {
   const importId = report.importId;
   const siblingCount = report.import._count.reports;
 
-  await prisma.officeReport.delete({ where: { id: reportId } });
-
-  // If this was the only report for the import, remove the import + source data too.
-  if (siblingCount <= 1) {
-    await prisma.officeReportImport.delete({ where: { id: importId } });
-  }
+  await prisma.$transaction(async (tx) => {
+    await tx.officeReport.delete({ where: { id: reportId } });
+    // If this was the only report for the import, remove the import + source data too.
+    if (siblingCount <= 1) {
+      await tx.officeReportImport.delete({ where: { id: importId } });
+    }
+  });
 }
 
 export async function searchOfficeItemCodes(importId: string, query: string, limit = 20) {
@@ -454,9 +481,11 @@ export async function searchOfficeItemCodes(importId: string, query: string, lim
 
   const importRecord = await prisma.officeReportImport.findUnique({
     where: { id: importId },
-    select: { columnMap: true },
+    select: { columnMap: true, status: true },
   });
-  const columnMap = safeJsonObject(importRecord?.columnMap ?? "{}") as Partial<OfficeFormsColumnMap>;
+  if (!importRecord || importRecord.status !== "READY") return [];
+
+  const columnMap = safeJsonObject(importRecord.columnMap ?? "{}") as Partial<OfficeFormsColumnMap>;
   const descriptionKey = columnMap.description;
 
   const rows = await prisma.officeReportInventoryItem.findMany({

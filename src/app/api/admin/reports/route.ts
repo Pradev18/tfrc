@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   }
   if (file.size > MAX_IMPORT_BYTES) {
     return NextResponse.json(
-      { error: "File is too large. Maximum size is 25 MB." },
+      { error: "File is too large. Maximum size is 30 MB." },
       { status: 400 }
     );
   }
@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
       iqsSheetName: result.importRecord.iqsSheetName,
       inventoryRowCount: result.importRecord.inventoryRowCount,
       imageLinkCount: result.importRecord.imageLinkCount,
+      seededLineCount: result.seededLineCount,
     });
   } catch (e) {
     return NextResponse.json(

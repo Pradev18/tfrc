@@ -42,8 +42,8 @@ export function ReportsAdminClient({
     if (res.ok) setReports(data.reports ?? []);
   }
 
-  async function onUpload(file: File | null) {
-    if (!file) return;
+  async function onUpload(file: File | null, inputEl?: HTMLInputElement | null) {
+    if (!file || uploading) return;
     setError(null);
     setUploading(true);
     try {
@@ -62,10 +62,12 @@ export function ReportsAdminClient({
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setUploading(false);
+      if (inputEl) inputEl.value = "";
     }
   }
 
   async function onDelete(id: string) {
+    if (uploading || deletingId) return;
     if (!window.confirm("Delete this report and its imported source data for this upload?")) {
       return;
     }
@@ -96,8 +98,9 @@ export function ReportsAdminClient({
       <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
         <h2 className="text-base font-semibold text-text">Upload Excel File</h2>
         <p className="mt-1 text-sm text-text-muted">
-          Upload the Office Forms workbook. The system detects Item_Qty_in_Store and related
-          sheets, then builds a new report import.
+          Upload the Office Forms workbook. Item codes already on the I.Q.S sheet are loaded
+          automatically. Each upload creates a new isolated import — previous report data is not
+          mixed in.
         </p>
         <label className="mt-4 inline-flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-border bg-surface-muted px-4 py-3 text-sm font-medium text-text hover:border-primary">
           <span>
@@ -110,7 +113,7 @@ export function ReportsAdminClient({
             accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             className="hidden"
             disabled={uploading}
-            onChange={(e) => onUpload(e.target.files?.[0] ?? null)}
+            onChange={(e) => onUpload(e.target.files?.[0] ?? null, e.currentTarget)}
           />
         </label>
         <p className="mt-2 text-xs text-text-muted">Supported: .xlsx / .xls · Max 30 MB</p>
