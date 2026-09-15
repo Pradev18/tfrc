@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toProxiedReportImageSrc } from "@/lib/report/report-image-src";
 
 type ReportLine = {
   id: string;
@@ -579,9 +580,10 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
                         <div className="space-y-1">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={line.imageLink}
+                            src={toProxiedReportImageSrc(line.imageLink)}
                             alt=""
                             className="h-12 w-12 rounded border border-border object-contain bg-white"
+                            referrerPolicy="no-referrer"
                             onError={(e) => {
                               e.currentTarget.style.display = "none";
                             }}

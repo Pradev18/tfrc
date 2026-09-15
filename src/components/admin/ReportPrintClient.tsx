@@ -6,6 +6,10 @@ import {
   REPORT_ROWS_PER_PAGE,
   TFRC_REPORT_LOGO_SRC,
 } from "@/lib/report/office-report-pdf-html";
+import {
+  alternateImageUrls,
+  toProxiedReportImageSrc,
+} from "@/lib/report/report-image-src";
 
 type PrintMeta = {
   id: string;
@@ -35,22 +39,68 @@ type ReportLine = {
 const SECTION_ROWS = 100;
 const FETCH_PAGE_SIZE = 100;
 
-async function waitForImages(root: ParentNode, timeoutMs = 12000) {
+async function waitForImages(root: ParentNode, timeoutMs = 30000) {
   const imgs = Array.from(root.querySelectorAll("img.product-img")) as HTMLImageElement[];
   await Promise.all(
     imgs.map(
       (img) =>
         new Promise<void>((resolve) => {
+          const finish = () => resolve();
+          const settle = async () => {
+            try {
+              if (typeof img.decode === "function") await img.decode();
+            } catch {
+              // decode can reject for broken images — still settle
+            }
+            finish();
+          };
+
           if (img.complete && img.naturalWidth > 0) {
-            resolve();
+            void settle();
             return;
           }
-          const done = () => resolve();
-          img.addEventListener("load", done, { once: true });
-          img.addEventListener("error", done, { once: true });
-          window.setTimeout(done, timeoutMs);
+          if (img.complete && img.naturalWidth === 0) {
+            finish();
+            return;
+          }
+
+          img.addEventListener("load", () => void settle(), { once: true });
+          img.addEventListener("error", finish, { once: true });
+          window.setTimeout(finish, timeoutMs);
         })
     )
+  );
+}
+
+function ReportProductImage({ remoteUrl }: { remoteUrl: string }) {
+  const candidates = useMemo(() => {
+    const list = [remoteUrl, ...alternateImageUrls(remoteUrl)].filter(Boolean);
+    return [...new Set(list)];
+  }, [remoteUrl]);
+  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const current = candidates[attempt] ?? "";
+
+  if (failed || !current) return <div className="img-empty" />;
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      key={current}
+      className="product-img"
+      src={toProxiedReportImageSrc(current)}
+      alt=""
+      loading="eager"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => {
+        if (attempt + 1 < candidates.length) {
+          setAttempt((n) => n + 1);
+          return;
+        }
+        setFailed(true);
+      }}
+    />
   );
 }
 
@@ -134,9 +184,11 @@ export function ReportPrintClient({
     if (printing || lines.length === 0) return;
     setPrinting(true);
     try {
+      // Give React a paint so proxied <img> nodes exist, then wait for loads.
+      await new Promise((r) => window.requestAnimationFrame(() => r(undefined)));
       const root = document.querySelector(".report-print-root");
-      if (root) await waitForImages(root);
-      await new Promise((r) => window.setTimeout(r, 250));
+      if (root) await waitForImages(root, 45000);
+      await new Promise((r) => window.setTimeout(r, 400));
       window.print();
     } finally {
       setPrinting(false);
@@ -315,18 +367,7 @@ export function ReportPrintClient({
                             </td>
                             <td className="c-img">
                               {line.imageLink ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  className="product-img"
-                                  src={line.imageLink}
-                                  alt=""
-                                  loading="eager"
-                                  decoding="sync"
-                                  referrerPolicy="no-referrer"
-                                  onError={(e) => {
-                                    e.currentTarget.style.visibility = "hidden";
-                                  }}
-                                />
+                                <ReportProductImage remoteUrl={line.imageLink} />
                               ) : (
                                 <div className="img-empty" />
                               )}
@@ -656,13 +697,15 @@ const REPORT_A4_CSS = `
     max-height: 14mm;
     overflow: hidden;
   }
-  .c-img { text-align: center; }
+  .c-img { text-align: center; overflow: visible; }
   .c-img .product-img {
     width: 15mm;
     height: 15mm;
     object-fit: contain;
     display: inline-block;
     background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   .report-page--final .c-img .product-img {
     width: 12mm;

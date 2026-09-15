@@ -461,7 +461,7 @@ export function lookupOfficeFormsFields(
       onHand: "",
       itemCost: "",
       sellingPrice: "",
-      imageLink: imageMatches[0]?.imageUrl ?? "",
+      imageLink: pickPreferredImageLikeExcel(imageMatches),
       lookupStatus: "not_found",
       lookupWarning: "Item code not found in the uploaded Item_Qty_in_Store data.",
     };
@@ -470,7 +470,7 @@ export function lookupOfficeFormsFields(
   // Excel VLOOKUP(...,0) returns the first sheet-order match.
   const chosen = inventoryMatches[0]!;
   const map = parsed.columnMap;
-  const imageLink = pickFirstImageLikeExcel(imageMatches)?.imageUrl ?? "";
+  const imageLink = pickPreferredImageLikeExcel(imageMatches);
 
   const warnings: string[] = [];
   // Only inventory duplicates are a data-integrity warning (status=duplicate).
@@ -498,8 +498,22 @@ export function lookupOfficeFormsFields(
   };
 }
 
-/** Match Excel VLOOKUP: first row in sheet / sort order. */
-function pickFirstImageLikeExcel(links: ParsedImageLink[]): ParsedImageLink | null {
-  if (links.length === 0) return null;
-  return links[0]!;
+/**
+ * Prefer a usable photo format when Cloud Fare lists several files for one code
+ * (e.g. .jpg + .png). Ties keep earlier sheet order (Excel VLOOKUP behaviour).
+ */
+function pickPreferredImageLikeExcel(links: ParsedImageLink[]): string {
+  if (links.length === 0) return "";
+  if (links.length === 1) return links[0]!.imageUrl;
+  const scored = links.map((link, index) => {
+    const lower = link.imageUrl.toLowerCase();
+    let score = 0;
+    if (lower.includes(".jpg") || lower.includes(".jpeg")) score += 40;
+    else if (lower.includes(".png")) score += 30;
+    else if (lower.includes(".webp")) score += 20;
+    else if (lower.includes(".gif")) score += 10;
+    return { url: link.imageUrl, score: score * 1000 - index };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]!.url;
 }
