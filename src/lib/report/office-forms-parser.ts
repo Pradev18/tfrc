@@ -28,6 +28,20 @@ export interface OfficeFormsColumnMap {
   vlookupIndexes?: Record<string, number>;
 }
 
+export interface ParsedIqsSeedRow {
+  itemCode: string;
+  wholesalePriceApproval: string;
+}
+
+export interface ParsedIqsFormMeta {
+  customerName: string;
+  requestedBy: string;
+  shopBranch: string;
+  reportDate: string;
+  notes: string;
+  tfrcLabel: string;
+}
+
 export interface ParsedOfficeFormsWorkbook {
   inventorySheetName: string;
   imageSheetName: string | null;
@@ -36,6 +50,9 @@ export interface ParsedOfficeFormsWorkbook {
   columnMap: OfficeFormsColumnMap;
   inventoryRows: ParsedInventoryRow[];
   imageLinks: ParsedImageLink[];
+  /** Item codes already filled on the I.Q.S sheet (seed report lines). */
+  iqsSeedRows: ParsedIqsSeedRow[];
+  iqsFormMeta: ParsedIqsFormMeta;
   duplicateInventoryCodes: string[];
   duplicateImageCodes: string[];
 }
@@ -293,6 +310,11 @@ export function parseOfficeFormsWorkbook(buffer: Buffer): ParsedOfficeFormsWorkb
     }
   }
 
+  const { seedRows: iqsSeedRows, formMeta: iqsFormMeta } = extractIqsSeed(
+    iqsSheet?.rows ?? [],
+    iqsSheet?.headerRow ?? -1
+  );
+
   return {
     inventorySheetName: inventory.name,
     imageSheetName: imageSheet?.name ?? null,
@@ -301,6 +323,8 @@ export function parseOfficeFormsWorkbook(buffer: Buffer): ParsedOfficeFormsWorkb
     columnMap,
     inventoryRows,
     imageLinks,
+    iqsSeedRows,
+    iqsFormMeta,
     duplicateInventoryCodes: [...codeCounts.entries()]
       .filter(([, n]) => n > 1)
       .map(([code]) => code),
@@ -308,6 +332,112 @@ export function parseOfficeFormsWorkbook(buffer: Buffer): ParsedOfficeFormsWorkb
       .filter(([, n]) => n > 1)
       .map(([code]) => code),
   };
+}
+
+function extractIqsSeed(
+  rows: unknown[][],
+  headerRow: number
+): { seedRows: ParsedIqsSeedRow[]; formMeta: ParsedIqsFormMeta } {
+  const formMeta: ParsedIqsFormMeta = {
+    customerName: "",
+    requestedBy: "",
+    shopBranch: "",
+    reportDate: "",
+    notes: "",
+    tfrcLabel: "TFRC",
+  };
+
+  if (headerRow < 0 || rows.length === 0) {
+    return { seedRows: [], formMeta };
+  }
+
+  // Best-effort form values from rows above the table header (blank in template is fine).
+  const knownLabels = new Set(
+    [
+      "customer name",
+      "requested by",
+      "shop / branch",
+      "shop",
+      "branch",
+      "notes",
+      "date",
+      "tfrc",
+      "inventory availability & price check",
+      "the first retail company (w.l.l)",
+      "the first retail company (w.l.l.)",
+    ].map((v) => normalizeHeader(v))
+  );
+
+  const labelMap: Array<{ aliases: string[]; key: keyof ParsedIqsFormMeta }> = [
+    { aliases: ["customer name"], key: "customerName" },
+    { aliases: ["requested by"], key: "requestedBy" },
+    { aliases: ["shop / branch"], key: "shopBranch" },
+    { aliases: ["notes"], key: "notes" },
+    { aliases: ["date"], key: "reportDate" },
+    { aliases: ["tfrc"], key: "tfrcLabel" },
+  ];
+
+  function isLabelLike(value: string): boolean {
+    const n = normalizeHeader(value);
+    if (!n) return true;
+    if (knownLabels.has(n)) return true;
+    return labelMap.some((entry) =>
+      entry.aliases.some((alias) => n === alias || n.includes(alias))
+    );
+  }
+
+  for (let r = 0; r < headerRow; r++) {
+    const row = rows[r] ?? [];
+    for (let c = 0; c < row.length; c++) {
+      const label = normalizeHeader(row[c]);
+      if (!label) continue;
+      const match = labelMap.find((entry) => entry.aliases.some((alias) => label === alias));
+      if (!match) continue;
+
+      // Prefer the cell directly under the label (Excel form layout).
+      const below = cellToString((rows[r + 1] ?? [])[c]);
+      let value = below && !isLabelLike(below) ? below : "";
+
+      // Fallback: next cell on same row only if it is not another field label.
+      if (!value) {
+        for (let k = c + 1; k < Math.min(row.length, c + 3); k++) {
+          const candidate = cellToString(row[k]);
+          if (!candidate || isLabelLike(candidate)) continue;
+          value = candidate;
+          break;
+        }
+      }
+
+      if (value) formMeta[match.key] = value;
+    }
+  }
+
+  const headers = (rows[headerRow] ?? []).map((c) => cellToString(c));
+  const codeIdx = findHeaderIndex(headers, ["item code", "itemcode"]);
+  const wholesaleIdx = findHeaderIndex(headers, [
+    "whole sale price approval",
+    "wholesale price approval",
+    "wholesale",
+  ]);
+  if (codeIdx < 0) return { seedRows: [], formMeta };
+
+  const seedRows: ParsedIqsSeedRow[] = [];
+  const seen = new Set<string>();
+  for (let r = headerRow + 1; r < rows.length; r++) {
+    const row = rows[r] ?? [];
+    const itemCode = normalizeItemCode(row[codeIdx]);
+    if (!itemCode) continue;
+    if (normalizeHeader(itemCode) === "item code") continue;
+    if (seen.has(itemCode)) continue;
+    seen.add(itemCode);
+    const wholesaleRaw =
+      wholesaleIdx >= 0 ? cellToString(row[wholesaleIdx]) : "";
+    const wholesalePriceApproval =
+      !wholesaleRaw || wholesaleRaw === " " ? "" : wholesaleRaw;
+    seedRows.push({ itemCode, wholesalePriceApproval });
+  }
+
+  return { seedRows, formMeta };
 }
 
 export function lookupOfficeFormsFields(

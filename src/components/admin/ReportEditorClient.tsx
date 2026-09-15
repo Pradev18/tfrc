@@ -257,6 +257,10 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
 
       <section className="rounded-xl border border-border bg-surface p-4">
         <h2 className="text-base font-semibold text-text">Add item code</h2>
+        <p className="mt-1 text-sm text-text-muted">
+          Item codes already filled on the I.Q.S sheet are loaded automatically after upload.
+          Add more codes here anytime.
+        </p>
         <div className="relative mt-3 flex flex-col gap-2 sm:flex-row">
           <input
             className="w-full rounded-lg border border-border bg-white px-3 py-2 font-mono text-sm"
@@ -321,6 +325,8 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
                 <tr>
                   <td colSpan={10} className="px-4 py-8 text-center text-text-muted">
                     No report rows yet. Enter an item code to fetch inventory details.
+                    If the workbook I.Q.S sheet already has item codes, re-upload to
+                    load them automatically.
                   </td>
                 </tr>
               ) : (

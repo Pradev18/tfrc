@@ -71,9 +71,58 @@ export async function createOfficeReportImport(input: {
       data: {
         importId: created.id,
         createdByUserId: input.userId ?? null,
-        tfrcLabel: "TFRC",
+        tfrcLabel: parsed.iqsFormMeta.tfrcLabel || "TFRC",
+        customerName: parsed.iqsFormMeta.customerName,
+        requestedBy: parsed.iqsFormMeta.requestedBy,
+        shopBranch: parsed.iqsFormMeta.shopBranch,
+        notes: parsed.iqsFormMeta.notes,
+        reportDate: formatIqsReportDate(parsed.iqsFormMeta.reportDate),
       },
     });
+
+    // Prefill report rows from item codes already present on the I.Q.S sheet.
+    if (parsed.iqsSeedRows.length > 0) {
+      const invByCode = new Map<string, ParsedInventoryRow[]>();
+      for (const row of parsed.inventoryRows) {
+        const list = invByCode.get(row.itemCode) ?? [];
+        list.push(row);
+        invByCode.set(row.itemCode, list);
+      }
+      const imgByCode = new Map<string, ParsedImageLink[]>();
+      for (const row of parsed.imageLinks) {
+        const list = imgByCode.get(row.itemCode) ?? [];
+        list.push(row);
+        imgByCode.set(row.itemCode, list);
+      }
+
+      const lineData = parsed.iqsSeedRows.map((seed, index) => {
+        const fields = lookupOfficeFormsFields(
+          parsed,
+          invByCode.get(seed.itemCode) ?? [],
+          imgByCode.get(seed.itemCode) ?? []
+        );
+        return {
+          reportId: report.id,
+          sortOrder: index + 1,
+          itemCode: seed.itemCode,
+          imageLink: fields.imageLink,
+          itemName: fields.itemName,
+          supplierName: fields.supplierName,
+          onHand: fields.onHand,
+          itemCost: fields.itemCost,
+          sellingPrice: fields.sellingPrice,
+          wholesalePriceApproval: seed.wholesalePriceApproval,
+          lookupStatus: fields.lookupStatus,
+          lookupWarning: fields.lookupWarning,
+        };
+      });
+
+      for (let i = 0; i < lineData.length; i += BATCH) {
+        await prisma.officeReportLine.createMany({
+          data: lineData.slice(i, i + BATCH),
+        });
+      }
+    }
 
     return { importRecord: created, report };
   } catch (error) {
@@ -83,6 +132,22 @@ export async function createOfficeReportImport(input: {
       error instanceof Error ? error.message : "Failed to save imported workbook data"
     );
   }
+}
+
+function formatIqsReportDate(raw: string): string {
+  if (!raw) return "";
+  // Excel serial date sometimes arrives as a number string (e.g. 46279).
+  const asNumber = Number(raw);
+  if (Number.isFinite(asNumber) && asNumber > 20000 && asNumber < 80000) {
+    const epoch = new Date(Date.UTC(1899, 11, 30));
+    epoch.setUTCDate(epoch.getUTCDate() + Math.floor(asNumber));
+    return epoch.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "2-digit",
+    });
+  }
+  return raw;
 }
 
 export async function listOfficeReports() {
