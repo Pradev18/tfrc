@@ -615,6 +615,12 @@ model OfficeReportImport {
   inventoryRowCount  Int                      @default(0)
   imageLinkCount     Int                      @default(0)
   duplicateItemCodes String                   @default("[]")
+  /// Unique item codes to seed into report lines (first/original only).
+  uniqueItemCount    Int                      @default(0)
+  /// How many unique report lines have been seeded so far (chunked import).
+  seedProgress       Int                      @default(0)
+  /// JSON map of itemCode → wholesalePriceApproval from the I.Q.S sheet.
+  iqsWholesaleByCode String                   @default("{}")
   createdByUserId    String?
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt

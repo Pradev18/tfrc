@@ -10,13 +10,18 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   const { error } = await requireAdminSession();
   if (error) return error;
   const { id } = await context.params;
-  const report = await getOfficeReportDetail(id);
+  const page = Number(req.nextUrl.searchParams.get("page") || "1");
+  const pageSize = Number(req.nextUrl.searchParams.get("pageSize") || "100");
+  const report = await getOfficeReportDetail(id, {
+    page: Number.isFinite(page) ? page : 1,
+    pageSize: Number.isFinite(pageSize) ? pageSize : 100,
+  });
   if (!report) return NextResponse.json({ error: "Report not found" }, { status: 404 });
   return NextResponse.json({ report });
 }
@@ -28,10 +33,16 @@ export async function PATCH(
   const { error } = await requireAdminSession();
   if (error) return error;
   const { id } = await context.params;
-  const body = (await req.json()) as Record<string, string>;
+  const body = (await req.json()) as Record<string, string | number>;
   try {
-    await updateOfficeReportMeta(id, body);
-    const report = await getOfficeReportDetail(id);
+    await updateOfficeReportMeta(id, body as Record<string, string>);
+    const page = typeof body.page === "number" ? body.page : Number(body.page || 1);
+    const pageSize =
+      typeof body.pageSize === "number" ? body.pageSize : Number(body.pageSize || 100);
+    const report = await getOfficeReportDetail(id, {
+      page: Number.isFinite(page) ? page : 1,
+      pageSize: Number.isFinite(pageSize) ? pageSize : 100,
+    });
     return NextResponse.json({ report });
   } catch (e) {
     return NextResponse.json(

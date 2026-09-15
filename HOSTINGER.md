@@ -290,6 +290,15 @@ Run `npx prisma db push` if the schema changed.
 | Uploads disappear | Mount `public/uploads` volume or use cloud storage |
 | No products | Run `npm run db:seed` or import via admin |
 | Prisma error on Windows dev | Normal — use `npx prisma db push` on server |
+| Cloudflare “invalid/incomplete response” on Report | App was OOMing on 66k-row PDF/import. Redeploy latest: seeding is chunked; Print/PDF loads **500 rows per section**. Keep the upload tab open until seeding finishes. **No external PDF service needed.** |
+| Report stuck PENDING | Open Reports → **Resume seed**, or open the report editor (it continues batches automatically) |
+
+### Report module — Hostinger notes
+
+- **No extra services to connect** (no Puppeteer, no paid PDF API, no Redis required).
+- Cloudflare free proxy times out ~100s on a single request — that is why import/seed and print are **batched**.
+- Start command uses `--max-old-space-size=2048` to reduce Node OOM risk.
+- After pulling schema changes, redeploy so `prisma db push` / `ensure-prod-db` applies `uniqueItemCount` / `seedProgress` columns.
 
 ---
 

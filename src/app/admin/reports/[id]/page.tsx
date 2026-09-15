@@ -12,7 +12,7 @@ export default async function AdminReportDetailPage({
   if (!session) redirect("/admin/login");
 
   const { id } = await params;
-  const report = await getOfficeReportDetail(id);
+  const report = await getOfficeReportDetail(id, { page: 1, pageSize: 100 });
   if (!report) notFound();
 
   return <ReportEditorClient initialReport={report} />;

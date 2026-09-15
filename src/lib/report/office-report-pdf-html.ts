@@ -1,6 +1,24 @@
-import type { getOfficeReportDetail } from "@/services/office-report.service";
-
-type ReportDetail = NonNullable<Awaited<ReturnType<typeof getOfficeReportDetail>>>;
+type ReportDetail = {
+  title: string;
+  customerName: string;
+  requestedBy: string;
+  shopBranch: string;
+  tfrcLabel?: string;
+  notes: string;
+  reportDate: string;
+  lines: Array<{
+    id: string;
+    sortOrder: number;
+    itemCode: string;
+    imageLink: string;
+    itemName: string;
+    supplierName: string;
+    onHand: string;
+    itemCost: string;
+    sellingPrice: string;
+    wholesalePriceApproval: string;
+  }>;
+};
 
 export const REPORT_ROWS_PER_PAGE = 10;
 
@@ -297,7 +315,7 @@ function templateCss(): string {
 
 export function buildOfficeReportPdfHtml(
   report: ReportDetail,
-  options?: { autoPrint?: boolean }
+  options?: { autoPrint?: boolean; sampleNote?: string }
 ): string {
   const pages = chunkRows(report.lines, REPORT_ROWS_PER_PAGE);
   const pageCount = pages.length;
@@ -314,6 +332,10 @@ export function buildOfficeReportPdfHtml(
     )
     .join("");
 
+  const note = options?.sampleNote
+    ? `<p class="toolbar-note" style="margin:0;color:#6b6280;font-size:12px;">${escapeHtml(options.sampleNote)}</p>`
+    : "";
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -323,7 +345,10 @@ export function buildOfficeReportPdfHtml(
 </head>
 <body>
   <div class="toolbar">
-    <p>${escapeHtml(report.title)} · ${report.lines.length} item(s) · TFRC</p>
+    <div>
+      <p style="margin:0">${escapeHtml(report.title)} · ${report.lines.length} item(s) · TFRC</p>
+      ${note}
+    </div>
     <button type="button" onclick="window.print()">Download / Print PDF</button>
   </div>
   ${sheets}

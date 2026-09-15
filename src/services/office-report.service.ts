@@ -8,7 +8,9 @@ import {
 } from "@/lib/report/office-forms-parser";
 import { normalizeItemCode } from "@/lib/report/office-forms-normalize";
 
-const BATCH = 1000;
+const BATCH = 500;
+/** Hostinger-safe: keep each seed request small so Cloudflare/proxy does not time out. */
+const SEED_BATCH = 250;
 
 export async function createOfficeReportImport(input: {
   fileName: string;
@@ -24,8 +26,13 @@ export async function createOfficeReportImport(input: {
     throw new Error(error instanceof Error ? error.message : "Failed to parse workbook");
   }
 
-  // Stay PENDING until every batch + seeded line is written. Mid-import data must
-  // never be used for lookups, preview, or edits.
+  const uniqueCodes = new Set(parsed.inventoryRows.map((row) => row.itemCode));
+  const wholesaleByCode: Record<string, string> = {};
+  for (const seed of parsed.iqsSeedRows) {
+    wholesaleByCode[seed.itemCode] = seed.wholesalePriceApproval;
+  }
+
+  // Stay PENDING until chunked seeding finishes. Mid-import data must not be used for PDF.
   const created = await prisma.officeReportImport.create({
     data: {
       fileName: input.fileName,
@@ -39,6 +46,9 @@ export async function createOfficeReportImport(input: {
       inventoryRowCount: parsed.inventoryRows.length,
       imageLinkCount: parsed.imageLinks.length,
       duplicateItemCodes: JSON.stringify(parsed.duplicateInventoryCodes),
+      uniqueItemCount: uniqueCodes.size,
+      seedProgress: 0,
+      iqsWholesaleByCode: JSON.stringify(wholesaleByCode),
       createdByUserId: input.userId ?? null,
     },
   });
@@ -82,65 +92,182 @@ export async function createOfficeReportImport(input: {
       },
     });
 
-    let seededLineCount = 0;
-    // Prefill report rows from item codes already present on the I.Q.S sheet.
-    if (parsed.iqsSeedRows.length > 0) {
-      const invByCode = new Map<string, ParsedInventoryRow[]>();
-      for (const row of parsed.inventoryRows) {
-        const list = invByCode.get(row.itemCode) ?? [];
-        list.push(row);
-        invByCode.set(row.itemCode, list);
-      }
-      const imgByCode = new Map<string, ParsedImageLink[]>();
-      for (const row of parsed.imageLinks) {
-        const list = imgByCode.get(row.itemCode) ?? [];
-        list.push(row);
-        imgByCode.set(row.itemCode, list);
-      }
+    // Free parsed workbook ASAP — seeding continues in small HTTP batches.
+    parsed = null as unknown as typeof parsed;
 
-      const lineData = parsed.iqsSeedRows.map((seed, index) => {
-        const fields = lookupOfficeFormsFields(
-          parsed,
-          invByCode.get(seed.itemCode) ?? [],
-          imgByCode.get(seed.itemCode) ?? []
-        );
-        return {
-          reportId: report.id,
-          sortOrder: index + 1,
-          itemCode: seed.itemCode,
-          imageLink: fields.imageLink,
-          itemName: fields.itemName,
-          supplierName: fields.supplierName,
-          onHand: fields.onHand,
-          itemCost: fields.itemCost,
-          sellingPrice: fields.sellingPrice,
-          wholesalePriceApproval: seed.wholesalePriceApproval,
-          lookupStatus: fields.lookupStatus,
-          lookupWarning: fields.lookupWarning,
-        };
-      });
-
-      for (let i = 0; i < lineData.length; i += BATCH) {
-        await prisma.officeReportLine.createMany({
-          data: lineData.slice(i, i + BATCH),
-        });
-      }
-      seededLineCount = lineData.length;
-    }
-
-    const importRecord = await prisma.officeReportImport.update({
+    const importRecord = await prisma.officeReportImport.findUniqueOrThrow({
       where: { id: created.id },
-      data: { status: "READY", errorMessage: null },
     });
 
-    return { importRecord, report, seededLineCount };
+    return {
+      importRecord,
+      report,
+      seededLineCount: 0,
+      uniqueItemCount: uniqueCodes.size,
+      needsSeed: uniqueCodes.size > 0,
+    };
   } catch (error) {
-    // Roll back partial import so we never mix incomplete source data.
     await prisma.officeReportImport.delete({ where: { id: created.id } }).catch(() => null);
     throw new Error(
       error instanceof Error ? error.message : "Failed to save imported workbook data"
     );
   }
+}
+
+/**
+ * Seed the next chunk of unique inventory originals into report lines.
+ * Call repeatedly until `done` is true (Hostinger / Cloudflare safe).
+ */
+export async function seedOfficeReportLinesBatch(
+  reportId: string,
+  batchSize = SEED_BATCH
+) {
+  const take = Math.min(Math.max(batchSize, 50), 500);
+  const report = await prisma.officeReport.findUnique({
+    where: { id: reportId },
+    include: { import: true },
+  });
+  if (!report) throw new Error("Report not found.");
+  if (report.import.status === "FAILED") {
+    throw new Error(report.import.errorMessage || "Import failed.");
+  }
+  if (report.import.status === "READY") {
+    return {
+      done: true,
+      seeded: report.import.seedProgress,
+      total: report.import.uniqueItemCount,
+      progress: report.import.seedProgress,
+    };
+  }
+
+  const offset = report.import.seedProgress;
+  const total = report.import.uniqueItemCount;
+  if (total <= 0) {
+    await prisma.officeReportImport.update({
+      where: { id: report.importId },
+      data: { status: "READY", seedProgress: 0, errorMessage: null },
+    });
+    return { done: true, seeded: 0, total: 0, progress: 0 };
+  }
+
+  const uniqueRows = await prisma.$queryRaw<
+    Array<{ itemCode: string; firstOrder: number | bigint }>
+  >`
+    SELECT itemCode as itemCode, MIN(sortOrder) as firstOrder
+    FROM OfficeReportInventoryItem
+    WHERE importId = ${report.importId}
+    GROUP BY itemCode
+    ORDER BY firstOrder ASC
+    LIMIT ${take} OFFSET ${offset}
+  `;
+
+  if (uniqueRows.length === 0) {
+    await prisma.officeReportImport.update({
+      where: { id: report.importId },
+      data: { status: "READY", seedProgress: total, errorMessage: null },
+    });
+    return { done: true, seeded: 0, total, progress: total };
+  }
+
+  const wholesaleByCode = safeJsonObject(report.import.iqsWholesaleByCode) as Record<
+    string,
+    string
+  >;
+  const codes = uniqueRows.map((row) => row.itemCode);
+
+  const inventoryMatches = await prisma.officeReportInventoryItem.findMany({
+    where: { importId: report.importId, itemCode: { in: codes } },
+    orderBy: [{ itemCode: "asc" }, { sortOrder: "asc" }],
+  });
+  const imageMatches = await prisma.officeReportImageLink.findMany({
+    where: { importId: report.importId, itemCode: { in: codes } },
+    orderBy: [{ itemCode: "asc" }, { sortOrder: "asc" }],
+  });
+
+  const invByCode = new Map<string, typeof inventoryMatches>();
+  for (const row of inventoryMatches) {
+    const list = invByCode.get(row.itemCode) ?? [];
+    list.push(row);
+    invByCode.set(row.itemCode, list);
+  }
+  const imgByCode = new Map<string, typeof imageMatches>();
+  for (const row of imageMatches) {
+    const list = imgByCode.get(row.itemCode) ?? [];
+    list.push(row);
+    imgByCode.set(row.itemCode, list);
+  }
+
+  const columnMap = safeJsonObject(report.import.columnMap) as unknown as OfficeFormsColumnMap;
+  const lineData = codes.map((itemCode, index) => {
+    const invRows = invByCode.get(itemCode) ?? [];
+    const imgRows = imgByCode.get(itemCode) ?? [];
+    const fields = lookupOfficeFormsFields(
+      { columnMap },
+      invRows.map((row) => ({
+        itemCode: row.itemCode,
+        payload: safeJsonObject(row.payload) as Record<string, string>,
+      })),
+      imgRows.map((row) => ({
+        itemCode: row.itemCode,
+        imageUrl: row.imageUrl,
+        fileName: row.fileName ?? undefined,
+      }))
+    );
+    return {
+      reportId,
+      sortOrder: offset + index + 1,
+      itemCode,
+      imageLink: fields.imageLink,
+      itemName: fields.itemName,
+      supplierName: fields.supplierName,
+      onHand: fields.onHand,
+      itemCost: fields.itemCost,
+      sellingPrice: fields.sellingPrice,
+      wholesalePriceApproval: wholesaleByCode[itemCode] ?? "",
+      lookupStatus: fields.lookupStatus,
+      lookupWarning:
+        invRows.length > 1
+          ? `Duplicate in source inventory (${invRows.length} rows). Original (first) row is used in the report/PDF.`
+          : fields.lookupWarning,
+    };
+  });
+
+  await prisma.officeReportLine.createMany({ data: lineData });
+
+  const nextProgress = offset + lineData.length;
+  const done = nextProgress >= total;
+  await prisma.officeReportImport.update({
+    where: { id: report.importId },
+    data: {
+      seedProgress: nextProgress,
+      status: done ? "READY" : "PENDING",
+      errorMessage: null,
+    },
+  });
+
+  return {
+    done,
+    seeded: lineData.length,
+    total,
+    progress: nextProgress,
+  };
+}
+
+export async function getOfficeReportSeedStatus(reportId: string) {
+  const report = await prisma.officeReport.findUnique({
+    where: { id: reportId },
+    include: { import: true },
+  });
+  if (!report) return null;
+  return {
+    reportId: report.id,
+    importId: report.import.id,
+    status: report.import.status,
+    progress: report.import.seedProgress,
+    total: report.import.uniqueItemCount,
+    done: report.import.status === "READY",
+    errorMessage: report.import.errorMessage,
+  };
 }
 
 function formatIqsReportDate(raw: string): string {
@@ -161,7 +288,7 @@ function formatIqsReportDate(raw: string): string {
 
 export async function listOfficeReports() {
   const reports = await prisma.officeReport.findMany({
-    where: { import: { status: "READY" } },
+    where: { import: { status: { in: ["READY", "PENDING"] } } },
     orderBy: { createdAt: "desc" },
     include: {
       import: true,
@@ -182,6 +309,8 @@ export async function listOfficeReports() {
       status: report.import.status,
       inventoryRowCount: report.import.inventoryRowCount,
       imageLinkCount: report.import.imageLinkCount,
+      uniqueItemCount: report.import.uniqueItemCount,
+      seedProgress: report.import.seedProgress,
       inventorySheetName: report.import.inventorySheetName,
       imageSheetName: report.import.imageSheetName,
       iqsSheetName: report.import.iqsSheetName,
@@ -190,38 +319,221 @@ export async function listOfficeReports() {
   }));
 }
 
-export async function getOfficeReportDetail(reportId: string) {
+const DEFAULT_PAGE_SIZE = 100;
+
+type OfficeReportLineRow = {
+  id: string;
+  sortOrder: number;
+  itemCode: string;
+  imageLink: string;
+  itemName: string;
+  supplierName: string;
+  onHand: string;
+  itemCost: string;
+  sellingPrice: string;
+  wholesalePriceApproval: string;
+  lookupStatus: string;
+  lookupWarning: string | null;
+};
+
+/** Keep first occurrence of each item code (original) for PDF / template. */
+export function dedupeReportLinesKeepOriginal<T extends { itemCode: string }>(
+  lines: T[]
+): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const line of lines) {
+    if (seen.has(line.itemCode)) continue;
+    seen.add(line.itemCode);
+    out.push(line);
+  }
+  return out;
+}
+
+export async function getOfficeReportDetail(
+  reportId: string,
+  opts?: { page?: number; pageSize?: number }
+) {
+  const pageSize = Math.min(Math.max(opts?.pageSize ?? DEFAULT_PAGE_SIZE, 1), 500);
+  const page = Math.max(opts?.page ?? 1, 1);
+  const skip = (page - 1) * pageSize;
+
   const report = await prisma.officeReport.findUnique({
     where: { id: reportId },
     include: {
       import: true,
-      lines: { orderBy: { sortOrder: "asc" } },
+      lines: {
+        orderBy: { sortOrder: "asc" },
+        skip,
+        take: pageSize,
+      },
+      _count: { select: { lines: true } },
+    },
+  });
+  if (!report) return null;
+  if (report.import.status === "FAILED") return null;
+
+  const lineCount = report._count.lines;
+  return {
+    ...serializeReport(report),
+    lineCount,
+    page,
+    pageSize,
+    pageCount: Math.max(1, Math.ceil(Math.max(lineCount, 1) / pageSize)),
+    seed: {
+      status: report.import.status,
+      progress: report.import.seedProgress,
+      total: report.import.uniqueItemCount,
+      done: report.import.status === "READY",
+    },
+  };
+}
+
+/** Meta + line count only — never load all 66k lines into memory. */
+export async function getOfficeReportPrintMeta(reportId: string) {
+  const report = await prisma.officeReport.findUnique({
+    where: { id: reportId },
+    include: {
+      import: true,
+      _count: { select: { lines: true } },
     },
   });
   if (!report) return null;
   if (report.import.status !== "READY") return null;
-  return serializeReport(report);
+  return {
+    id: report.id,
+    title: report.title,
+    customerName: report.customerName,
+    requestedBy: report.requestedBy,
+    shopBranch: report.shopBranch,
+    tfrcLabel: report.tfrcLabel,
+    notes: report.notes,
+    reportDate: report.reportDate,
+    lineCount: report._count.lines,
+    import: {
+      id: report.import.id,
+      fileName: report.import.fileName,
+      duplicateItemCodes: safeJsonArray(report.import.duplicateItemCodes),
+      inventoryRowCount: report.import.inventoryRowCount,
+      uniqueItemCount: report.import.uniqueItemCount,
+    },
+  };
 }
 
-function serializeReport(
-  report: NonNullable<Awaited<ReturnType<typeof prisma.officeReport.findUnique>> & {
-    import: NonNullable<Awaited<ReturnType<typeof prisma.officeReportImport.findUnique>>>;
-    lines: Array<{
-      id: string;
-      sortOrder: number;
-      itemCode: string;
-      imageLink: string;
-      itemName: string;
-      supplierName: string;
-      onHand: string;
-      itemCost: string;
-      sellingPrice: string;
-      wholesalePriceApproval: string;
-      lookupStatus: string;
-      lookupWarning: string | null;
-    }>;
-  }>
+/** @deprecated Prefer paginated print page — kept for small sample previews only. */
+export async function getOfficeReportDetailForPdf(
+  reportId: string,
+  opts?: { maxLines?: number }
 ) {
+  const maxLines = Math.min(Math.max(opts?.maxLines ?? 50, 1), 200);
+  const report = await prisma.officeReport.findUnique({
+    where: { id: reportId },
+    include: {
+      import: true,
+      lines: { orderBy: { sortOrder: "asc" }, take: maxLines },
+      _count: { select: { lines: true } },
+    },
+  });
+  if (!report) return null;
+  if (report.import.status !== "READY") return null;
+
+  const uniqueLines = dedupeReportLinesKeepOriginal(report.lines);
+  const serialized = serializeReport({ ...report, lines: uniqueLines });
+  return {
+    ...serialized,
+    lineCount: report._count.lines,
+    page: 1,
+    pageSize: uniqueLines.length,
+    pageCount: 1,
+    truncated: report._count.lines > uniqueLines.length,
+  };
+}
+
+export async function listOfficeReportDuplicateInventory(importId: string) {
+  const importRecord = await prisma.officeReportImport.findUnique({
+    where: { id: importId },
+    select: { status: true, duplicateItemCodes: true, columnMap: true },
+  });
+  if (!importRecord || importRecord.status !== "READY") return null;
+
+  const duplicateCodes = safeJsonArray(importRecord.duplicateItemCodes);
+  if (duplicateCodes.length === 0) {
+    return { duplicateItemCodes: [] as string[], groups: [] as Array<{
+      itemCode: string;
+      occurrences: Array<{
+        sortOrder: number;
+        isOriginal: boolean;
+        itemName: string;
+        supplierName: string;
+        onHand: string;
+        itemCost: string;
+        sellingPrice: string;
+      }>;
+    }> };
+  }
+
+  const columnMap = safeJsonObject(importRecord.columnMap) as unknown as OfficeFormsColumnMap;
+  const rows = await prisma.officeReportInventoryItem.findMany({
+    where: { importId, itemCode: { in: duplicateCodes } },
+    orderBy: [{ itemCode: "asc" }, { sortOrder: "asc" }],
+  });
+
+  const byCode = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const list = byCode.get(row.itemCode) ?? [];
+    list.push(row);
+    byCode.set(row.itemCode, list);
+  }
+
+  const groups = duplicateCodes.map((itemCode) => {
+    const matches = byCode.get(itemCode) ?? [];
+    return {
+      itemCode,
+      occurrences: matches.map((row, index) => {
+        const payload = safeJsonObject(row.payload) as Record<string, string>;
+        return {
+          sortOrder: row.sortOrder,
+          isOriginal: index === 0,
+          itemName: columnMap.description ? payload[columnMap.description] || "" : "",
+          supplierName: columnMap.supplierName ? payload[columnMap.supplierName] || "" : "",
+          onHand: columnMap.onHand ? payload[columnMap.onHand] || "" : "",
+          itemCost: columnMap.itemCost ? payload[columnMap.itemCost] || "" : "",
+          sellingPrice: columnMap.retailPrice ? payload[columnMap.retailPrice] || "" : "",
+        };
+      }),
+    };
+  });
+
+  return { duplicateItemCodes: duplicateCodes, groups };
+}
+
+function serializeReport(report: {
+  id: string;
+  title: string;
+  customerName: string;
+  requestedBy: string;
+  shopBranch: string;
+  tfrcLabel: string;
+  notes: string;
+  reportDate: string;
+  createdAt: Date;
+  updatedAt: Date;
+  import: {
+    id: string;
+    fileName: string;
+    status: string;
+    inventorySheetName: string | null;
+    imageSheetName: string | null;
+    iqsSheetName: string | null;
+    inventoryRowCount: number;
+    imageLinkCount: number;
+    uniqueItemCount: number;
+    seedProgress: number;
+    duplicateItemCodes: string;
+    columnMap: string;
+  };
+  lines: OfficeReportLineRow[];
+}) {
   return {
     id: report.id,
     title: report.title,
@@ -242,6 +554,8 @@ function serializeReport(
       iqsSheetName: report.import.iqsSheetName,
       inventoryRowCount: report.import.inventoryRowCount,
       imageLinkCount: report.import.imageLinkCount,
+      uniqueItemCount: report.import.uniqueItemCount,
+      seedProgress: report.import.seedProgress,
       duplicateItemCodes: safeJsonArray(report.import.duplicateItemCodes),
       columnMap: safeJsonObject(report.import.columnMap) as unknown as OfficeFormsColumnMap,
     },
@@ -329,7 +643,6 @@ export async function addOfficeReportLine(reportId: string, itemCodeRaw: string)
     where: { id: reportId },
     include: {
       import: { select: { status: true } },
-      lines: { select: { sortOrder: true } },
     },
   });
   if (!report) throw new Error("Report not found.");
@@ -338,8 +651,22 @@ export async function addOfficeReportLine(reportId: string, itemCodeRaw: string)
   }
 
   const { itemCode, fields } = await resolveLookup(report.importId, itemCodeRaw);
-  const nextOrder =
-    report.lines.reduce((max, line) => Math.max(max, line.sortOrder), 0) + 1;
+
+  const existingLine = await prisma.officeReportLine.findFirst({
+    where: { reportId, itemCode },
+    select: { id: true },
+  });
+  if (existingLine) {
+    throw new Error(
+      `Item code ${itemCode} is already on this report. Duplicates are listed separately and omitted from the PDF.`
+    );
+  }
+
+  const agg = await prisma.officeReportLine.aggregate({
+    where: { reportId },
+    _max: { sortOrder: true },
+  });
+  const nextOrder = (agg._max.sortOrder ?? 0) + 1;
 
   return prisma.officeReportLine.create({
     data: {

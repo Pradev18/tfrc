@@ -63,6 +63,8 @@ export async function POST(req: NextRequest) {
       inventoryRowCount: result.importRecord.inventoryRowCount,
       imageLinkCount: result.importRecord.imageLinkCount,
       seededLineCount: result.seededLineCount,
+      uniqueItemCount: result.uniqueItemCount,
+      needsSeed: result.needsSeed,
     });
   } catch (e) {
     return NextResponse.json(

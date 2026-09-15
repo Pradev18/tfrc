@@ -18,12 +18,32 @@ type ReportListItem = {
     status: string;
     inventoryRowCount: number;
     imageLinkCount: number;
+    uniqueItemCount?: number;
+    seedProgress?: number;
     inventorySheetName: string | null;
     imageSheetName: string | null;
     iqsSheetName: string | null;
     createdAt: string;
   };
 };
+
+async function seedUntilReady(
+  reportId: string,
+  onProgress: (progress: number, total: number) => void
+) {
+  // ~66k / 250 ≈ 265 requests; each stays under Cloudflare/Hostinger limits.
+  for (let i = 0; i < 2000; i++) {
+    const res = await fetch(`/api/admin/reports/${reportId}/seed`, {
+      method: "POST",
+      cache: "no-store",
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Seeding failed");
+    onProgress(data.progress ?? 0, data.total ?? 0);
+    if (data.done) return;
+  }
+  throw new Error("Seeding timed out. Re-open the report to continue.");
+}
 
 export function ReportsAdminClient({
   initialReports,
@@ -33,6 +53,7 @@ export function ReportsAdminClient({
   const router = useRouter();
   const [reports, setReports] = useState(initialReports);
   const [uploading, setUploading] = useState(false);
+  const [progressLabel, setProgressLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -46,6 +67,7 @@ export function ReportsAdminClient({
     if (!file || uploading) return;
     setError(null);
     setUploading(true);
+    setProgressLabel("Uploading & parsing workbook…");
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -56,12 +78,22 @@ export function ReportsAdminClient({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
+
+      if (data.needsSeed && data.reportId) {
+        setProgressLabel("Building unique report rows (safe batches)…");
+        await seedUntilReady(data.reportId, (progress, total) => {
+          setProgressLabel(`Seeding report rows ${progress.toLocaleString()} / ${total.toLocaleString()}…`);
+        });
+      }
+
       router.push(`/admin/reports/${data.reportId}`);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
+      await refresh();
     } finally {
       setUploading(false);
+      setProgressLabel(null);
       if (inputEl) inputEl.value = "";
     }
   }
@@ -86,6 +118,26 @@ export function ReportsAdminClient({
     }
   }
 
+  async function resumeSeed(reportId: string) {
+    if (uploading) return;
+    setUploading(true);
+    setError(null);
+    try {
+      await seedUntilReady(reportId, (progress, total) => {
+        setProgressLabel(`Seeding report rows ${progress.toLocaleString()} / ${total.toLocaleString()}…`);
+      });
+      await refresh();
+      router.push(`/admin/reports/${reportId}`);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Seeding failed");
+      await refresh();
+    } finally {
+      setUploading(false);
+      setProgressLabel(null);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
@@ -98,14 +150,15 @@ export function ReportsAdminClient({
       <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
         <h2 className="text-base font-semibold text-text">Upload Excel File</h2>
         <p className="mt-1 text-sm text-text-muted">
-          Upload the Office Forms workbook. Item codes already on the I.Q.S sheet are loaded
-          automatically. Each upload creates a new isolated import — previous report data is not
-          mixed in.
+          Upload the Office Forms workbook. Unique inventory codes are seeded in small
+          batches (Hostinger/Cloudflare safe). Duplicates are listed separately and omitted
+          from the PDF. Print uses sectioned pages so the server never builds a huge HTML
+          file.
         </p>
         <label className="mt-4 inline-flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-border bg-surface-muted px-4 py-3 text-sm font-medium text-text hover:border-primary">
           <span>
             {uploading
-              ? "Uploading & parsing workbook… (large files can take up to a minute)"
+              ? progressLabel || "Working…"
               : "Choose Excel File"}
           </span>
           <input
@@ -116,7 +169,12 @@ export function ReportsAdminClient({
             onChange={(e) => onUpload(e.target.files?.[0] ?? null, e.currentTarget)}
           />
         </label>
-        <p className="mt-2 text-xs text-text-muted">Supported: .xlsx / .xls · Max 30 MB</p>
+        <p className="mt-2 text-xs text-text-muted">
+          Supported: .xlsx / .xls · Max 30 MB · No external PDF service required
+        </p>
+        {progressLabel && (
+          <p className="mt-3 text-sm font-medium text-primary">{progressLabel}</p>
+        )}
         {error && <p className="mt-3 text-sm text-error">{error}</p>}
       </section>
 
@@ -140,46 +198,68 @@ export function ReportsAdminClient({
                 </tr>
               </thead>
               <tbody>
-                {reports.map((report) => (
-                  <tr key={report.id} className="border-t border-border">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-text">{report.title}</p>
-                      <p className="text-xs text-text-muted">
-                        {report.import.inventorySheetName || "Inventory"} ·{" "}
-                        {report.import.inventoryRowCount} source items
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-text-muted">{report.import.fileName}</td>
-                    <td className="px-4 py-3 text-text-muted">
-                      {new Date(report.createdAt).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3">{report.lineCount}</td>
-                    <td className="px-4 py-3">{report.import.status}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Link href={`/admin/reports/${report.id}`} className="text-primary hover:underline">
-                          Edit
-                        </Link>
-                        <a
-                          href={`/api/admin/reports/${report.id}/preview`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-primary hover:underline"
-                        >
-                          Preview
-                        </a>
-                        <button
-                          type="button"
-                          className="text-error hover:underline disabled:opacity-50"
-                          disabled={deletingId === report.id}
-                          onClick={() => onDelete(report.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {reports.map((report) => {
+                  const pending = report.import.status === "PENDING";
+                  return (
+                    <tr key={report.id} className="border-t border-border">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-text">{report.title}</p>
+                        <p className="text-xs text-text-muted">
+                          {report.import.inventorySheetName || "Inventory"} ·{" "}
+                          {report.import.inventoryRowCount} source items
+                        </p>
+                      </td>
+                      <td className="px-4 py-3 text-text-muted">{report.import.fileName}</td>
+                      <td className="px-4 py-3 text-text-muted">
+                        {new Date(report.createdAt).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3">
+                        {pending
+                          ? `${report.import.seedProgress ?? 0} / ${report.import.uniqueItemCount ?? "?"}`
+                          : report.lineCount}
+                      </td>
+                      <td className="px-4 py-3">{report.import.status}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          {pending ? (
+                            <button
+                              type="button"
+                              className="text-primary hover:underline disabled:opacity-50"
+                              disabled={uploading}
+                              onClick={() => void resumeSeed(report.id)}
+                            >
+                              Resume seed
+                            </button>
+                          ) : (
+                            <>
+                              <Link
+                                href={`/admin/reports/${report.id}`}
+                                className="text-primary hover:underline"
+                              >
+                                Edit
+                              </Link>
+                              <Link
+                                href={`/admin/reports/${report.id}/print`}
+                                className="text-primary hover:underline"
+                                target="_blank"
+                              >
+                                Print / PDF
+                              </Link>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            className="text-error hover:underline disabled:opacity-50"
+                            disabled={deletingId === report.id || uploading}
+                            onClick={() => onDelete(report.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

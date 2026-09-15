@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type ReportLine = {
   id: string;
@@ -27,6 +27,16 @@ type ReportDetail = {
   tfrcLabel: string;
   notes: string;
   reportDate: string;
+  lineCount: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+  seed?: {
+    status: string;
+    progress: number;
+    total: number;
+    done: boolean;
+  };
   import: {
     id: string;
     fileName: string;
@@ -35,9 +45,24 @@ type ReportDetail = {
     iqsSheetName: string | null;
     inventoryRowCount: number;
     imageLinkCount: number;
+    uniqueItemCount?: number;
+    seedProgress?: number;
     duplicateItemCodes: string[];
   };
   lines: ReportLine[];
+};
+
+type DuplicateGroup = {
+  itemCode: string;
+  occurrences: Array<{
+    sortOrder: number;
+    isOriginal: boolean;
+    itemName: string;
+    supplierName: string;
+    onHand: string;
+    itemCost: string;
+    sellingPrice: string;
+  }>;
 };
 
 export function ReportEditorClient({ initialReport }: { initialReport: ReportDetail }) {
@@ -49,15 +74,72 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [pageLoading, setPageLoading] = useState(false);
+  const [showDuplicates, setShowDuplicates] = useState(false);
+  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[] | null>(null);
+  const [duplicatesLoading, setDuplicatesLoading] = useState(false);
 
   const previewHref = useMemo(
-    () => `/api/admin/reports/${report.id}/preview`,
+    () => `/admin/reports/${report.id}/print`,
     [report.id]
   );
+
+  const seeding = report.seed && !report.seed.done;
 
   useEffect(() => {
     setReport(initialReport);
   }, [initialReport]);
+
+  useEffect(() => {
+    if (!seeding) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        for (let i = 0; i < 2000 && !cancelled; i++) {
+          const res = await fetch(`/api/admin/reports/${report.id}/seed`, {
+            method: "POST",
+            cache: "no-store",
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Seeding failed");
+          if (cancelled) return;
+          setReport((prev) => ({
+            ...prev,
+            seed: {
+              status: data.done ? "READY" : "PENDING",
+              progress: data.progress ?? 0,
+              total: data.total ?? 0,
+              done: Boolean(data.done),
+            },
+            lineCount: data.progress ?? prev.lineCount,
+          }));
+          if (data.done) {
+            const refreshed = await fetch(
+              `/api/admin/reports/${report.id}/lines?page=1&pageSize=${report.pageSize}`,
+              { cache: "no-store" }
+            );
+            const body = await refreshed.json();
+            if (refreshed.ok && body.report) setReport(body.report);
+            return;
+          }
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Seeding failed");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [seeding, report.id, report.pageSize]);
+
+  const rangeLabel = useMemo(() => {
+    if (report.lineCount === 0) return "0 items";
+    const start = (report.page - 1) * report.pageSize + 1;
+    const end = Math.min(report.page * report.pageSize, report.lineCount);
+    return `${start}–${end} of ${report.lineCount} unique items`;
+  }, [report.lineCount, report.page, report.pageSize]);
 
   useEffect(() => {
     const q = itemCode.trim();
@@ -80,6 +162,50 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
     };
   }, [itemCode, report.import.id]);
 
+  const loadPage = useCallback(
+    async (page: number) => {
+      setPageLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(
+          `/api/admin/reports/${report.id}/lines?page=${page}&pageSize=${report.pageSize}`,
+          { cache: "no-store" }
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load page");
+        setReport(data.report);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load page");
+      } finally {
+        setPageLoading(false);
+      }
+    },
+    [report.id, report.pageSize]
+  );
+
+  async function loadDuplicates() {
+    if (duplicateGroups) {
+      setShowDuplicates((v) => !v);
+      return;
+    }
+    setDuplicatesLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/admin/reports/imports/${report.import.id}/duplicates`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load duplicates");
+      setDuplicateGroups(data.groups ?? []);
+      setShowDuplicates(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load duplicates");
+    } finally {
+      setDuplicatesLoading(false);
+    }
+  }
+
   async function patchMeta(patch: Partial<ReportDetail>) {
     if (busy || saveState === "saving") return;
     setSaveState("saving");
@@ -87,7 +213,11 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
     const res = await fetch(`/api/admin/reports/${report.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
+      body: JSON.stringify({
+        ...patch,
+        page: report.page,
+        pageSize: report.pageSize,
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -109,7 +239,11 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
       const res = await fetch(`/api/admin/reports/${report.id}/lines`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemCode: trimmed }),
+        body: JSON.stringify({
+          itemCode: trimmed,
+          page: report.page,
+          pageSize: report.pageSize,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Lookup failed");
@@ -131,7 +265,11 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
     const res = await fetch(`/api/admin/reports/${report.id}/lines/${lineId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
+      body: JSON.stringify({
+        ...patch,
+        page: report.page,
+        pageSize: report.pageSize,
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -144,9 +282,10 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
   async function removeLine(lineId: string) {
     if (!window.confirm("Remove this report row?")) return;
     setError(null);
-    const res = await fetch(`/api/admin/reports/${report.id}/lines/${lineId}`, {
-      method: "DELETE",
-    });
+    const res = await fetch(
+      `/api/admin/reports/${report.id}/lines/${lineId}?page=${report.page}&pageSize=${report.pageSize}`,
+      { method: "DELETE" }
+    );
     const data = await res.json();
     if (!res.ok) {
       setError(data.error || "Delete failed");
@@ -164,7 +303,8 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
           </Link>
           <h1 className="mt-1 text-display text-3xl text-primary">Report</h1>
           <p className="mt-1 text-sm text-text-muted">
-            {report.import.fileName} · {report.import.inventoryRowCount} inventory items
+            {report.import.fileName} · {report.import.inventoryRowCount} inventory rows ·{" "}
+            {report.lineCount} unique report items
             {report.import.imageLinkCount ? ` · ${report.import.imageLinkCount} image links` : ""}
           </p>
         </div>
@@ -173,20 +313,27 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
             href={previewHref}
             target="_blank"
             rel="noreferrer"
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            aria-disabled={Boolean(seeding)}
+            onClick={(e) => {
+              if (seeding) e.preventDefault();
+            }}
           >
-            Preview
-          </a>
-          <a
-            href={`${previewHref}?print=1`}
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-text"
-          >
-            Download PDF
+            Print / PDF
           </a>
         </div>
       </div>
+
+      {seeding && (
+        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          Seeding unique report rows in safe batches so Hostinger does not crash:{" "}
+          <strong>
+            {(report.seed?.progress ?? 0).toLocaleString()} /{" "}
+            {(report.seed?.total ?? 0).toLocaleString()}
+          </strong>
+          . Keep this tab open until it finishes.
+        </section>
+      )}
 
       <section className="rounded-xl border border-border bg-surface p-4 text-sm text-text-muted">
         <p>
@@ -205,13 +352,72 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
             </>
           ) : null}
         </p>
+        <p className="mt-2">
+          Report and PDF use every unique inventory item code (first / original row only).
+          Duplicate source rows are listed separately and omitted from the template.
+        </p>
         {report.import.duplicateItemCodes.length > 0 && (
-          <p className="mt-2 text-amber-700">
-            Duplicate inventory item codes detected ({report.import.duplicateItemCodes.length}).
-            Lookups will warn when those codes are used.
-          </p>
+          <div className="mt-3">
+            <button
+              type="button"
+              className="text-sm font-semibold text-amber-800 underline"
+              onClick={() => void loadDuplicates()}
+              disabled={duplicatesLoading}
+            >
+              {duplicatesLoading
+                ? "Loading duplicates…"
+                : showDuplicates
+                  ? "Hide duplicate item codes"
+                  : `Show ${report.import.duplicateItemCodes.length} duplicate item code(s)`}
+            </button>
+          </div>
         )}
       </section>
+
+      {showDuplicates && duplicateGroups && (
+        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <h2 className="text-base font-semibold text-amber-950">
+            Duplicate inventory rows (excluded from PDF except originals)
+          </h2>
+          <p className="mt-1 text-sm text-amber-900">
+            For each code below, the first sheet-order row is kept in the report/PDF. Extra
+            occurrences are listed here only.
+          </p>
+          <div className="mt-3 max-h-96 space-y-3 overflow-auto">
+            {duplicateGroups.length === 0 ? (
+              <p className="text-sm text-amber-900">No duplicate groups found.</p>
+            ) : (
+              duplicateGroups.map((group) => (
+                <div
+                  key={group.itemCode}
+                  className="rounded-lg border border-amber-200 bg-white p-3 text-sm"
+                >
+                  <p className="font-mono font-semibold text-text">{group.itemCode}</p>
+                  <ul className="mt-2 space-y-1 text-xs text-text-muted">
+                    {group.occurrences.map((occ) => (
+                      <li key={`${group.itemCode}-${occ.sortOrder}`}>
+                        <span
+                          className={
+                            occ.isOriginal
+                              ? "font-semibold text-emerald-700"
+                              : "text-amber-800"
+                          }
+                        >
+                          {occ.isOriginal ? "Original (used)" : "Duplicate (dropped)"}
+                        </span>
+                        {" · "}
+                        {occ.itemName || "—"} · {occ.supplierName || "—"} · On hand{" "}
+                        {occ.onHand || "—"} · Cost {occ.itemCost || "—"} · Sell{" "}
+                        {occ.sellingPrice || "—"}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2">
         <label className="text-sm">
@@ -267,8 +473,8 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
       <section className="rounded-xl border border-border bg-surface p-4">
         <h2 className="text-base font-semibold text-text">Add item code</h2>
         <p className="mt-1 text-sm text-text-muted">
-          Item codes already filled on the I.Q.S sheet are loaded automatically after upload.
-          Add more codes here anytime.
+          All unique inventory codes are loaded after upload. Add a missing code here if needed
+          (duplicates already on the report are rejected).
         </p>
         <div className="relative mt-3 flex flex-col gap-2 sm:flex-row">
           <input
@@ -313,6 +519,32 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
       {error && <p className="text-sm text-error">{error}</p>}
 
       <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 text-sm">
+          <p className="text-text-muted">
+            {pageLoading ? "Loading…" : rangeLabel}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded border border-border px-3 py-1 disabled:opacity-50"
+              disabled={pageLoading || report.page <= 1}
+              onClick={() => void loadPage(report.page - 1)}
+            >
+              Previous
+            </button>
+            <span className="text-text-muted">
+              Page {report.page} / {report.pageCount}
+            </span>
+            <button
+              type="button"
+              className="rounded border border-border px-3 py-1 disabled:opacity-50"
+              disabled={pageLoading || report.page >= report.pageCount}
+              onClick={() => void loadPage(report.page + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[#5B2C8B] text-xs text-white">
@@ -333,15 +565,14 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
               {report.lines.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-4 py-8 text-center text-text-muted">
-                    No report rows yet. Enter an item code to fetch inventory details.
-                    If the workbook I.Q.S sheet already has item codes, re-upload to
-                    load them automatically.
+                    No report rows yet. Re-upload the workbook to load all unique inventory
+                    item codes, or add a code manually above.
                   </td>
                 </tr>
               ) : (
-                report.lines.map((line, index) => (
+                report.lines.map((line) => (
                   <tr key={line.id} className="border-t border-border align-top">
-                    <td className="px-3 py-2">{index + 1}</td>
+                    <td className="px-3 py-2">{line.sortOrder}</td>
                     <td className="px-3 py-2 font-mono text-xs">{line.itemCode}</td>
                     <td className="px-3 py-2">
                       {line.imageLink ? (
