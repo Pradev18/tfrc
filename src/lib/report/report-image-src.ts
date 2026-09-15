@@ -1,37 +1,76 @@
 /**
- * Report product images come from Cloudflare R2 (and similar CDNs).
- * Direct hotlinks often fail partially in admin preview / print, so we
- * route display through a same-origin admin proxy and offer format fallbacks.
+ * Report product images come from Cloudflare R2 (Cloud Fare sheet).
+ * Prefer browser-displayable rasters; .emf/.wmf/.tif cannot render in <img>/PDF.
  */
 
-const IMAGE_EXT_RE = /\.(jpe?g|png|webp|gif)(\?|$)/i;
+const RASTER_EXT_RE = /\.(jpe?g|png|webp|gif)(\?|#|$)/i;
+const NON_DISPLAY_EXT_RE = /\.(emf|wmf|tif|tiff|bmp|pdf|svg)(\?|#|$)/i;
 
-/** Prefer common product photo formats when multiple Cloud Fare rows exist. */
-export function pickPreferredImageUrl(urls: string[]): string {
-  if (urls.length === 0) return "";
-  const scored = urls.map((url, index) => {
-    const lower = url.toLowerCase();
-    let score = 0;
-    if (lower.includes(".jpg") || lower.includes(".jpeg")) score += 40;
-    else if (lower.includes(".png")) score += 30;
-    else if (lower.includes(".webp")) score += 20;
-    else if (lower.includes(".gif")) score += 10;
-    // Stable: earlier sheet order wins ties (Excel VLOOKUP behaviour).
-    return { url, score: score * 1000 - index };
-  });
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0]!.url;
+export function isBrowserDisplayableImageUrl(url: string): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  if (NON_DISPLAY_EXT_RE.test(lower) && !RASTER_EXT_RE.test(lower)) return false;
+  return RASTER_EXT_RE.test(lower);
 }
 
-/** Alternate URLs to try when the primary image 404s (jpg ↔ png, etc.). */
-export function alternateImageUrls(primary: string): string[] {
-  if (!primary || !IMAGE_EXT_RE.test(primary)) return [];
-  const exts = [".jpg", ".jpeg", ".png", ".webp"];
-  const out: string[] = [];
-  for (const ext of exts) {
-    const next = primary.replace(IMAGE_EXT_RE, `${ext}$2`);
-    if (next !== primary && !out.includes(next)) out.push(next);
+function extensionScore(url: string): number {
+  const lower = url.toLowerCase();
+  if (/\.jpe?g(\?|#|$)/i.test(lower)) return 50;
+  if (/\.png(\?|#|$)/i.test(lower)) return 40;
+  if (/\.webp(\?|#|$)/i.test(lower)) return 30;
+  if (/\.gif(\?|#|$)/i.test(lower)) return 20;
+  // Non-displayable Windows/print formats — never win when a raster exists.
+  if (/\.emf(\?|#|$)/i.test(lower)) return -100;
+  if (/\.wmf(\?|#|$)/i.test(lower)) return -100;
+  if (/\.tiff?(\?|#|$)/i.test(lower)) return -80;
+  if (/\.bmp(\?|#|$)/i.test(lower)) return -60;
+  if (/\.pdf(\?|#|$)/i.test(lower)) return -90;
+  return 1;
+}
+
+/** Prefer a usable photo when Cloud Fare lists several files for one code. */
+export function pickPreferredImageUrl(urls: string[]): string {
+  const cleaned = urls.map((u) => String(u || "").trim()).filter(Boolean);
+  if (cleaned.length === 0) return "";
+  if (cleaned.length === 1) return cleaned[0]!;
+
+  const scored = cleaned.map((url, index) => ({
+    url,
+    score: extensionScore(url) * 1000 - index,
+  }));
+  scored.sort((a, b) => b.score - a.score);
+
+  const best = scored[0]!.url;
+  // If the winner is still non-displayable, prefer any raster further down.
+  if (!isBrowserDisplayableImageUrl(best) || extensionScore(best) < 0) {
+    const raster = scored.find((s) => extensionScore(s.url) >= 20);
+    if (raster) return raster.url;
   }
+  return best;
+}
+
+/**
+ * Alternate URLs to try when the primary image cannot display
+ * (404, .emf, wrong extension, etc.).
+ */
+export function alternateImageUrls(primary: string): string[] {
+  if (!primary) return [];
+  const out: string[] = [];
+  const push = (u: string) => {
+    if (u && u !== primary && !out.includes(u)) out.push(u);
+  };
+
+  // Swap / append common raster extensions on the same path.
+  if (RASTER_EXT_RE.test(primary) || NON_DISPLAY_EXT_RE.test(primary)) {
+    for (const ext of [".jpg", ".JPG", ".jpeg", ".JPEG", ".png", ".PNG", ".webp"]) {
+      push(primary.replace(RASTER_EXT_RE, `${ext}$2`).replace(NON_DISPLAY_EXT_RE, `${ext}$2`));
+    }
+  } else if (/\/[^/]+$/i.test(primary)) {
+    for (const ext of [".jpg", ".png", ".jpeg", ".webp"]) {
+      push(`${primary}${ext}`);
+    }
+  }
+
   return out;
 }
 
@@ -41,4 +80,19 @@ export function toProxiedReportImageSrc(remoteUrl: string): string {
   if (remoteUrl.startsWith("data:") || remoteUrl.startsWith("blob:")) return remoteUrl;
   if (remoteUrl.startsWith("/api/admin/reports/image-proxy")) return remoteUrl;
   return `/api/admin/reports/image-proxy?url=${encodeURIComponent(remoteUrl)}`;
+}
+
+/** Item-code variants for Cloud Fare / inventory mismatches (leading zeros). */
+export function itemCodeMatchVariants(code: string): string[] {
+  const base = String(code || "").trim();
+  if (!base) return [];
+  const out = new Set<string>([base]);
+  if (/^\d+$/.test(base)) {
+    const stripped = base.replace(/^0+/, "") || "0";
+    out.add(stripped);
+    for (const width of [11, 12, 13, 14]) {
+      if (stripped.length < width) out.add(stripped.padStart(width, "0"));
+    }
+  }
+  return [...out];
 }

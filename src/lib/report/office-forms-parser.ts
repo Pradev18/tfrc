@@ -5,6 +5,7 @@ import {
   normalizeHeader,
   normalizeItemCode,
 } from "@/lib/report/office-forms-normalize";
+import { pickPreferredImageUrl } from "@/lib/report/report-image-src";
 
 export interface ParsedInventoryRow {
   itemCode: string;
@@ -500,20 +501,8 @@ export function lookupOfficeFormsFields(
 
 /**
  * Prefer a usable photo format when Cloud Fare lists several files for one code
- * (e.g. .jpg + .png). Ties keep earlier sheet order (Excel VLOOKUP behaviour).
+ * (e.g. .jpg + .emf). Ties keep earlier sheet order.
  */
 function pickPreferredImageLikeExcel(links: ParsedImageLink[]): string {
-  if (links.length === 0) return "";
-  if (links.length === 1) return links[0]!.imageUrl;
-  const scored = links.map((link, index) => {
-    const lower = link.imageUrl.toLowerCase();
-    let score = 0;
-    if (lower.includes(".jpg") || lower.includes(".jpeg")) score += 40;
-    else if (lower.includes(".png")) score += 30;
-    else if (lower.includes(".webp")) score += 20;
-    else if (lower.includes(".gif")) score += 10;
-    return { url: link.imageUrl, score: score * 1000 - index };
-  });
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0]!.url;
+  return pickPreferredImageUrl(links.map((l) => l.imageUrl));
 }

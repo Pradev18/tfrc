@@ -7,6 +7,10 @@ import {
   type ParsedInventoryRow,
 } from "@/lib/report/office-forms-parser";
 import { normalizeItemCode } from "@/lib/report/office-forms-normalize";
+import {
+  itemCodeMatchVariants,
+  pickPreferredImageUrl,
+} from "@/lib/report/report-image-src";
 
 const BATCH = 500;
 /** Hostinger-safe: keep each seed request small so Cloudflare/proxy does not time out. */
@@ -174,13 +178,14 @@ export async function seedOfficeReportLinesBatch(
     string
   >;
   const codes = uniqueRows.map((row) => row.itemCode);
+  const codeVariants = [...new Set(codes.flatMap((c) => itemCodeMatchVariants(c)))];
 
   const inventoryMatches = await prisma.officeReportInventoryItem.findMany({
     where: { importId: report.importId, itemCode: { in: codes } },
     orderBy: [{ itemCode: "asc" }, { sortOrder: "asc" }],
   });
   const imageMatches = await prisma.officeReportImageLink.findMany({
-    where: { importId: report.importId, itemCode: { in: codes } },
+    where: { importId: report.importId, itemCode: { in: codeVariants } },
     orderBy: [{ itemCode: "asc" }, { sortOrder: "asc" }],
   });
 
@@ -192,9 +197,13 @@ export async function seedOfficeReportLinesBatch(
   }
   const imgByCode = new Map<string, typeof imageMatches>();
   for (const row of imageMatches) {
-    const list = imgByCode.get(row.itemCode) ?? [];
-    list.push(row);
-    imgByCode.set(row.itemCode, list);
+    // Index under every match variant so IQS codes find Cloud Fare rows with
+    // different leading-zero padding.
+    for (const key of itemCodeMatchVariants(row.itemCode)) {
+      const list = imgByCode.get(key) ?? [];
+      list.push(row);
+      imgByCode.set(key, list);
+    }
   }
 
   const columnMap = safeJsonObject(report.import.columnMap) as unknown as OfficeFormsColumnMap;
@@ -374,8 +383,14 @@ export async function getOfficeReportDetail(
   if (report.import.status === "FAILED") return null;
 
   const lineCount = report._count.lines;
+  const serialized = serializeReport(report);
+  const lines = await enrichLinesWithPreferredImages(
+    report.importId,
+    serialized.lines
+  );
   return {
-    ...serializeReport(report),
+    ...serialized,
+    lines,
     lineCount,
     page,
     pageSize,
@@ -439,8 +454,13 @@ export async function getOfficeReportDetailForPdf(
 
   const uniqueLines = dedupeReportLinesKeepOriginal(report.lines);
   const serialized = serializeReport({ ...report, lines: uniqueLines });
+  const lines = await enrichLinesWithPreferredImages(
+    report.importId,
+    serialized.lines
+  );
   return {
     ...serialized,
+    lines,
     lineCount: report._count.lines,
     page: 1,
     pageSize: uniqueLines.length,
@@ -585,6 +605,46 @@ function safeJsonArray(raw: string): string[] {
   }
 }
 
+/**
+ * Existing seeded lines may store the first Cloud Fare URL (.emf).
+ * Re-pick a browser-displayable raster from all import image rows at read time.
+ */
+async function enrichLinesWithPreferredImages<
+  T extends { itemCode: string; imageLink: string },
+>(importId: string, lines: T[]): Promise<T[]> {
+  if (lines.length === 0) return lines;
+  const variants = [
+    ...new Set(lines.flatMap((line) => itemCodeMatchVariants(line.itemCode))),
+  ];
+  const imageRows = await prisma.officeReportImageLink.findMany({
+    where: { importId, itemCode: { in: variants } },
+    orderBy: [{ itemCode: "asc" }, { sortOrder: "asc" }],
+    select: { itemCode: true, imageUrl: true },
+  });
+
+  const urlsByVariant = new Map<string, string[]>();
+  for (const row of imageRows) {
+    for (const key of itemCodeMatchVariants(row.itemCode)) {
+      const list = urlsByVariant.get(key) ?? [];
+      list.push(row.imageUrl);
+      urlsByVariant.set(key, list);
+    }
+  }
+
+  return lines.map((line) => {
+    const candidates = [
+      ...(urlsByVariant.get(line.itemCode) ?? []),
+      ...itemCodeMatchVariants(line.itemCode).flatMap(
+        (v) => urlsByVariant.get(v) ?? []
+      ),
+      line.imageLink,
+    ].filter(Boolean);
+    const preferred = pickPreferredImageUrl([...new Set(candidates)]);
+    if (!preferred || preferred === line.imageLink) return line;
+    return { ...line, imageLink: preferred };
+  });
+}
+
 function safeJsonObject(raw: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(raw);
@@ -614,9 +674,9 @@ async function resolveLookup(importId: string, itemCodeRaw: string) {
     take: 10,
   });
   const imageMatches = await prisma.officeReportImageLink.findMany({
-    where: { importId, itemCode },
+    where: { importId, itemCode: { in: itemCodeMatchVariants(itemCode) } },
     orderBy: { sortOrder: "asc" },
-    take: 10,
+    take: 50,
   });
 
   const parsedInventory: ParsedInventoryRow[] = inventoryMatches.map((row) => ({
