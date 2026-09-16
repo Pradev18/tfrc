@@ -66,9 +66,8 @@ function renderFormField(label: string, value: string, wide = false): string {
 function renderTableRows(lines: ReportDetail["lines"], startIndex: number): string {
   const cells = lines.map((line, idx) => {
     const n = startIndex + idx + 1;
-    const file = line.imageLink.split("/").pop() || "Open image";
     const link = line.imageLink
-      ? `<a class="img-link" href="${escapeAttr(line.imageLink)}" target="_blank" rel="noopener noreferrer" title="${escapeAttr(line.imageLink)}">${escapeHtml(decodeURIComponent(file))}</a>`
+      ? `<a class="img-link" href="${escapeAttr(line.imageLink)}" target="_blank" rel="noopener noreferrer" title="${escapeAttr(line.imageLink)}">View Image</a>`
       : "";
     const image = line.imageLink
       ? `<img class="product-img" src="${escapeAttr(reportDisplaySrc(line.imageLink))}" alt="" loading="eager" onerror="this.onerror=null;this.src='${escapeAttr(toProxiedReportImageSrc(line.imageLink))}'" />`
@@ -87,15 +86,6 @@ function renderTableRows(lines: ReportDetail["lines"], startIndex: number): stri
         <td class="c-ws">${escapeHtml(line.wholesalePriceApproval)}</td>
       </tr>`;
   });
-
-  while (cells.length < REPORT_ROWS_PER_PAGE) {
-    const n = startIndex + cells.length + 1;
-    cells.push(`
-      <tr class="empty-row">
-        <td class="c-num">${n}</td>
-        <td></td><td></td><td></td><td></td><td></td><td class="c-onhand"></td><td class="c-cost"></td><td class="c-sell"></td><td class="c-ws"></td>
-      </tr>`);
-  }
 
   return cells.join("");
 }
@@ -150,7 +140,7 @@ function renderPage(
       ${renderFormField("CUSTOMER NAME", report.customerName)}
       ${renderFormField("REQUESTED BY", report.requestedBy)}
       ${renderFormField("SHOP / BRANCH", report.shopBranch)}
-      ${renderFormField("TFRC", report.tfrcLabel || "TFRC")}
+      ${renderFormField("TFRC", (report.tfrcLabel || "").trim().toUpperCase() === "TFRC" ? "" : report.tfrcLabel || "")}
     </div>
     ${renderFormField("NOTES", report.notes, true)}
 
@@ -273,11 +263,11 @@ function templateCss(): string {
     }
     .grid td { background: #fff; }
     .c-num { width: 7mm; text-align: center; font-weight: 700; }
-    .c-code { width: 18mm; word-break: break-all; font-family: ui-monospace, Consolas, monospace; font-size: 7.5pt; }
-    .c-link { width: 24mm; }
-    .c-img { width: 18mm; text-align: center; }
-    .c-name { width: 38mm; font-size: 8pt; word-break: break-word; }
-    .c-supplier { width: 28mm; font-size: 8pt; word-break: break-word; }
+    .c-code { width: 32mm; white-space: nowrap; word-break: keep-all; font-family: ui-monospace, Consolas, monospace; font-size: 7.5pt; }
+    .c-link { width: 18mm; }
+    .c-img { width: 16mm; text-align: center; }
+    .c-name { width: 42mm; font-size: 8pt; line-height: 1.2; overflow-wrap: break-word; }
+    .c-supplier { width: 28mm; font-size: 7.5pt; line-height: 1.15; overflow-wrap: break-word; }
     .c-onhand { width: 13mm; text-align: center; background: var(--onhand) !important; font-weight: 700; }
     .c-cost { width: 16mm; text-align: right; background: var(--cost) !important; }
     .c-sell { width: 16mm; text-align: right; background: var(--sell) !important; }
@@ -290,7 +280,7 @@ function templateCss(): string {
       width: 14mm; height: 14mm; margin: 0 auto; border: 0.3mm dashed #ccc; border-radius: 1mm;
     }
     .img-link {
-      color: #1d4ed8; text-decoration: underline; word-break: break-all; font-size: 6pt;
+      color: #1d4ed8; text-decoration: underline; white-space: nowrap; font-size: 7.5pt;
       line-height: 1.15; max-height: 14mm; overflow: hidden; display: block;
     }
     .approval {

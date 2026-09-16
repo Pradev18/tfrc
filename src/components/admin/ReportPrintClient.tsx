@@ -21,6 +21,7 @@ type PrintMeta = {
   shopBranch: string;
   notes: string;
   reportDate: string;
+  tfrcLabel: string;
   lineCount: number;
 };
 
@@ -74,14 +75,15 @@ async function waitForImages(root: ParentNode, timeoutMs = 30000) {
   );
 }
 
-function imageLinkLabel(url: string): string {
-  try {
-    const path = new URL(url).pathname;
-    const file = decodeURIComponent(path.split("/").filter(Boolean).pop() || "");
-    return file || "Open image";
-  } catch {
-    return "Open image";
-  }
+function imageLinkLabel(_url: string): string {
+  return "View Image";
+}
+
+function tfrcFieldValue(label: string | undefined): string {
+  const value = (label || "").trim();
+  // Workbook label is TFRC; the value cell under it is blank unless the user typed one.
+  if (!value || value.toUpperCase() === "TFRC") return "";
+  return value;
 }
 
 function reportImageCandidates(remoteUrl: string): string[] {
@@ -308,7 +310,7 @@ export function ReportPrintClient({
                   </div>
                   <div className="rp-meta-cell rp-meta-cell--narrow">
                     <span className="rp-label">TFRC</span>
-                    <div className="rp-field">TFRC</div>
+                    <div className="rp-field">{tfrcFieldValue(meta.tfrcLabel)}</div>
                   </div>
                 </section>
 
@@ -350,27 +352,7 @@ export function ReportPrintClient({
                       </tr>
                     </thead>
                     <tbody>
-                      {Array.from({ length: REPORT_ROWS_PER_PAGE }).map((_, idx) => {
-                        const line = pageLines[idx];
-                        if (!line) {
-                          return (
-                            <tr key={`empty-${idx}`} className="rp-row rp-row--empty">
-                              <td className="c-num">
-                                {sectionStart + pageIndex * REPORT_ROWS_PER_PAGE + idx + 1}
-                              </td>
-                              <td />
-                              <td />
-                              <td />
-                              <td />
-                              <td />
-                              <td className="c-onhand" />
-                              <td className="c-cost" />
-                              <td className="c-sell" />
-                              <td className="c-ws" />
-                            </tr>
-                          );
-                        }
-                        return (
+                      {pageLines.map((line) => (
                           <tr key={line.id} className="rp-row">
                             <td className="c-num">{line.sortOrder}</td>
                             <td className="c-code">{line.itemCode}</td>
@@ -400,8 +382,7 @@ export function ReportPrintClient({
                             <td className="c-sell">{line.sellingPrice}</td>
                             <td className="c-ws">{line.wholesalePriceApproval}</td>
                           </tr>
-                        );
-                      })}
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -659,16 +640,16 @@ const REPORT_A4_CSS = `
     table-layout: fixed;
     font-size: 8pt;
   }
-  .rp-table col.col-num { width: 7mm; }
-  .rp-table col.col-code { width: 18mm; }
-  .rp-table col.col-link { width: 24mm; }
-  .rp-table col.col-img { width: 18mm; }
-  .rp-table col.col-name { width: 38mm; }
+  .rp-table col.col-num { width: 8mm; }
+  .rp-table col.col-code { width: 32mm; }
+  .rp-table col.col-link { width: 18mm; }
+  .rp-table col.col-img { width: 16mm; }
+  .rp-table col.col-name { width: 42mm; }
   .rp-table col.col-supplier { width: 28mm; }
   .rp-table col.col-onhand { width: 13mm; }
-  .rp-table col.col-cost { width: 16mm; }
-  .rp-table col.col-sell { width: 16mm; }
-  .rp-table col.col-ws { width: 18mm; }
+  .rp-table col.col-cost { width: 14mm; }
+  .rp-table col.col-sell { width: 14mm; }
+  .rp-table col.col-ws { width: 16mm; }
 
   .rp-table th {
     background: var(--rp-purple);
@@ -706,15 +687,19 @@ const REPORT_A4_CSS = `
   .c-code {
     font-family: ui-monospace, "Consolas", monospace;
     font-size: 7.5pt;
-    word-break: break-all;
+    white-space: nowrap;
+    word-break: keep-all;
+    overflow: visible;
+    padding-left: 0.5mm;
+    padding-right: 0.5mm;
   }
   .c-link a {
     color: #1d4ed8;
     text-decoration: underline;
     font-size: 7.5pt;
     line-height: 1.2;
-    display: block;
-    word-break: break-all;
+    display: inline-block;
+    white-space: nowrap;
   }
   .c-img { text-align: center; overflow: visible; }
   .c-img .product-img {
@@ -743,10 +728,19 @@ const REPORT_A4_CSS = `
     width: 12mm;
     height: 12mm;
   }
-  .c-name, .c-supplier {
+  .c-name {
     font-size: 8pt;
     line-height: 1.2;
-    word-break: break-word;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+  .c-supplier {
+    font-size: 7.5pt;
+    line-height: 1.15;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
   }
   .c-onhand {
     text-align: center;
