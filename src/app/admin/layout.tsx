@@ -49,7 +49,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="flex min-h-screen bg-surface-muted">
       <AdminOverlayGuard />
       {session && (
-        <aside className="relative hidden w-56 shrink-0 border-r border-border bg-surface lg:block">
+        <aside className="no-print relative hidden w-56 shrink-0 border-r border-border bg-surface lg:block">
           <div className="border-b border-border p-5">
             <Link href="/admin" className="text-display text-lg text-primary">
               TFRC Admin
@@ -87,7 +87,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
       <div className="min-w-0 flex-1">
         {session && (
-          <header className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3 sm:px-6">
+          <header className="no-print flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3 sm:px-6">
             <AdminMobileNav />
             <Link
               href="/"

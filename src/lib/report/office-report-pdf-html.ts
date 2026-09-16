@@ -66,8 +66,9 @@ function renderFormField(label: string, value: string, wide = false): string {
 function renderTableRows(lines: ReportDetail["lines"], startIndex: number): string {
   const cells = lines.map((line, idx) => {
     const n = startIndex + idx + 1;
+    const file = line.imageLink.split("/").pop() || "Open image";
     const link = line.imageLink
-      ? `<a class="img-link" href="${escapeAttr(line.imageLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(line.imageLink)}</a>`
+      ? `<a class="img-link" href="${escapeAttr(line.imageLink)}" target="_blank" rel="noopener noreferrer" title="${escapeAttr(line.imageLink)}">${escapeHtml(decodeURIComponent(file))}</a>`
       : "";
     const image = line.imageLink
       ? `<img class="product-img" src="${escapeAttr(reportDisplaySrc(line.imageLink))}" alt="" loading="eager" onerror="this.onerror=null;this.src='${escapeAttr(toProxiedReportImageSrc(line.imageLink))}'" />`

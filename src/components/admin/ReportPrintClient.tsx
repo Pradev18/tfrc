@@ -74,6 +74,16 @@ async function waitForImages(root: ParentNode, timeoutMs = 30000) {
   );
 }
 
+function imageLinkLabel(url: string): string {
+  try {
+    const path = new URL(url).pathname;
+    const file = decodeURIComponent(path.split("/").filter(Boolean).pop() || "");
+    return file || "Open image";
+  } catch {
+    return "Open image";
+  }
+}
+
 function reportImageCandidates(remoteUrl: string): string[] {
   const remotes = [...new Set([remoteUrl, ...alternateImageUrls(remoteUrl)].filter(Boolean))];
   remotes.sort((a, b) => {
@@ -370,8 +380,9 @@ export function ReportPrintClient({
                                   href={line.imageLink}
                                   target="_blank"
                                   rel="noopener noreferrer"
+                                  title={line.imageLink}
                                 >
-                                  {line.imageLink}
+                                  {imageLinkLabel(line.imageLink)}
                                 </a>
                               ) : null}
                             </td>
@@ -700,12 +711,10 @@ const REPORT_A4_CSS = `
   .c-link a {
     color: #1d4ed8;
     text-decoration: underline;
-    word-break: break-all;
-    font-size: 6pt;
-    line-height: 1.15;
+    font-size: 7.5pt;
+    line-height: 1.2;
     display: block;
-    max-height: 14mm;
-    overflow: hidden;
+    word-break: break-all;
   }
   .c-img { text-align: center; overflow: visible; }
   .c-img .product-img {
@@ -836,7 +845,6 @@ const REPORT_A4_CSS = `
     }
 
     aside,
-    header,
     nav,
     .no-print,
     .admin-toolbar {
@@ -883,7 +891,18 @@ const REPORT_A4_CSS = `
       page-break-after: auto !important;
     }
 
-    .report-page .rp-header { min-height: 22mm; margin-bottom: 2mm; }
+    .report-page .rp-header {
+      display: grid !important;
+      min-height: 18mm;
+      margin-bottom: 1.5mm;
+      overflow: visible;
+    }
+    .report-page .rp-logo { width: 18mm; height: 12mm; }
+    .report-page .rp-brand .rp-ar,
+    .report-page .rp-brand .rp-tag { font-size: 7pt; margin: 0; }
+    .report-page .rp-brand h1 { font-size: 10.5pt; margin: 0.4mm 0 0; }
+    .report-page .rp-brand h2 { font-size: 9pt; margin: 0.6mm 0 0; }
+    .report-page .rp-date { min-height: 14mm; padding: 1.2mm; }
     .report-page .rp-meta-cell,
     .report-page .rp-notes { min-height: 11mm; }
     .report-page .rp-notes { margin-bottom: 2mm; }
