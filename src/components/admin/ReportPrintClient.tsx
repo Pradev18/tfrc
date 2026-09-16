@@ -814,37 +814,86 @@ const REPORT_A4_CSS = `
     min-height: 7mm;
   }
 
+  /*
+   * Print must survive Windows "Print to PDF", which often uses US Letter
+   * (279mm) and ignores a 297mm box. A 297mm sheet was splitting: table on
+   * one page, footer on the next, plus a blank admin page and a trailing blank.
+   * 268mm fits Letter and A4. Flex still fills that page; nothing overflows.
+   */
   @media print {
+    @page {
+      size: A4 portrait;
+      margin: 0;
+    }
+
     html, body {
       background: #fff !important;
       margin: 0 !important;
       padding: 0 !important;
+      height: auto !important;
+      min-height: 0 !important;
+      overflow: visible !important;
     }
-    .no-print, .admin-toolbar { display: none !important; }
+
+    aside,
+    header,
+    nav,
+    .no-print,
+    .admin-toolbar {
+      display: none !important;
+    }
+
+    body > div,
+    main,
+    .min-h-screen,
+    .min-w-0 {
+      display: block !important;
+      width: auto !important;
+      min-height: 0 !important;
+      height: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #fff !important;
+      border: 0 !important;
+      box-shadow: none !important;
+    }
+
     .preview-stage {
       display: block !important;
       padding: 0 !important;
       gap: 0 !important;
       background: #fff !important;
     }
+
     .report-page {
       box-shadow: none !important;
       margin: 0 !important;
-      width: 210mm !important;
-      height: 297mm !important;
-      max-width: 210mm !important;
-      max-height: 297mm !important;
-      page-break-after: always !important;
+      width: 204mm !important;
+      height: 268mm !important;
+      max-width: 204mm !important;
+      max-height: 268mm !important;
+      overflow: hidden !important;
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
       break-after: page !important;
+      page-break-after: always !important;
     }
     .report-page:last-of-type {
-      page-break-after: auto !important;
       break-after: auto !important;
+      page-break-after: auto !important;
     }
-  }
 
-  @page {
-    size: A4 portrait;
-    margin: 0;
+    .report-page .rp-header { min-height: 22mm; margin-bottom: 2mm; }
+    .report-page .rp-meta-cell,
+    .report-page .rp-notes { min-height: 11mm; }
+    .report-page .rp-notes { margin-bottom: 2mm; }
+    .report-page .rp-table th { height: 10mm; }
+    .report-page .rp-table tbody tr.rp-row,
+    .report-page--final .rp-table tbody tr.rp-row { height: 16mm !important; }
+    .report-page--final .rp-table tbody tr.rp-row { height: 13mm !important; }
+    .report-page .c-img .product-img,
+    .report-page--final .c-img .product-img { width: 12mm; height: 12mm; }
+    .report-page .rp-approval { min-height: 22mm; margin-top: 2mm; }
+    .report-page .rp-footer { min-height: 6mm; }
   }
 `;
