@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/admin-auth";
+import prisma from "@/lib/db";
 import {
   addOfficeReportLine,
   getOfficeReportDetail,
@@ -34,12 +35,17 @@ export async function POST(
   const { id } = await context.params;
   const body = (await req.json()) as { itemCode?: string; page?: number; pageSize?: number };
   try {
-    await addOfficeReportLine(id, body.itemCode ?? "");
+    const created = await addOfficeReportLine(id, body.itemCode ?? "");
+    const pageSize = Number.isFinite(body.pageSize)
+      ? Math.min(Math.max(body.pageSize ?? 100, 1), 500)
+      : 100;
+    const lineCount = await prisma.officeReportLine.count({ where: { reportId: id } });
+    const lastPage = Math.max(1, Math.ceil(lineCount / pageSize));
     const report = await getOfficeReportDetail(id, {
-      page: body.page ?? 1,
-      pageSize: body.pageSize ?? 100,
+      page: lastPage,
+      pageSize,
     });
-    return NextResponse.json({ report });
+    return NextResponse.json({ report, addedLineId: created.id });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to add item" },

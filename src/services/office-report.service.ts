@@ -654,6 +654,74 @@ function safeJsonObject(raw: string): Record<string, unknown> {
   }
 }
 
+async function findInventoryRows(importId: string, itemCode: string) {
+  const variants = itemCodeMatchVariants(itemCode);
+  const exact = await prisma.officeReportInventoryItem.findMany({
+    where: { importId, itemCode: { in: variants } },
+    orderBy: { sortOrder: "asc" },
+    take: 20,
+  });
+  if (exact.length > 0) return exact;
+
+  // Prefix search uses the itemCode index so this stays fast on 60k+ inventory rows.
+  const prefixes = [...new Set(variants.filter((code) => code.length >= 2))].slice(0, 8);
+  if (prefixes.length === 0) return exact;
+  const candidates = await prisma.officeReportInventoryItem.findMany({
+    where: {
+      importId,
+      OR: prefixes.map((prefix) => ({ itemCode: { startsWith: prefix } })),
+    },
+    orderBy: { sortOrder: "asc" },
+    take: 40,
+  });
+  const wanted = new Set(variants.map((code) => code.toLowerCase()));
+  return candidates.filter((row) => {
+    const normalized = normalizeItemCode(row.itemCode).toLowerCase();
+    if (wanted.has(normalized)) return true;
+    return itemCodeMatchVariants(row.itemCode).some((code) => wanted.has(code.toLowerCase()));
+  });
+}
+
+async function findImageRows(importId: string, itemCode: string) {
+  const variants = itemCodeMatchVariants(itemCode);
+  const exact = await prisma.officeReportImageLink.findMany({
+    where: { importId, itemCode: { in: variants } },
+    orderBy: { sortOrder: "asc" },
+    take: 50,
+  });
+  if (exact.length > 0) return exact;
+
+  const prefixes = [...new Set(variants.filter((code) => code.length >= 2))].slice(0, 8);
+  if (prefixes.length === 0) return exact;
+  const candidates = await prisma.officeReportImageLink.findMany({
+    where: {
+      importId,
+      OR: prefixes.map((prefix) => ({ itemCode: { startsWith: prefix } })),
+    },
+    orderBy: { sortOrder: "asc" },
+    take: 40,
+  });
+  const wanted = new Set(variants.map((code) => code.toLowerCase()));
+  return candidates.filter((row) => {
+    const normalized = normalizeItemCode(row.itemCode).toLowerCase();
+    if (wanted.has(normalized)) return true;
+    return itemCodeMatchVariants(row.itemCode).some((code) => wanted.has(code.toLowerCase()));
+  });
+}
+
+function wholesaleForCode(
+  wholesaleByCode: Record<string, string>,
+  itemCode: string
+): string {
+  const direct = wholesaleByCode[itemCode];
+  if (direct) return direct;
+  for (const variant of itemCodeMatchVariants(itemCode)) {
+    const value = wholesaleByCode[variant];
+    if (value) return value;
+  }
+  return "";
+}
+
 async function resolveLookup(importId: string, itemCodeRaw: string) {
   const itemCode = normalizeItemCode(itemCodeRaw);
   if (!itemCode) {
@@ -668,16 +736,10 @@ async function resolveLookup(importId: string, itemCodeRaw: string) {
   }
 
   const columnMap = safeJsonObject(importRecord.columnMap) as unknown as OfficeFormsColumnMap;
-  const inventoryMatches = await prisma.officeReportInventoryItem.findMany({
-    where: { importId, itemCode },
-    orderBy: { sortOrder: "asc" },
-    take: 10,
-  });
-  const imageMatches = await prisma.officeReportImageLink.findMany({
-    where: { importId, itemCode: { in: itemCodeMatchVariants(itemCode) } },
-    orderBy: { sortOrder: "asc" },
-    take: 50,
-  });
+  const [inventoryMatches, imageMatches] = await Promise.all([
+    findInventoryRows(importId, itemCode),
+    findImageRows(importId, itemCode),
+  ]);
 
   const parsedInventory: ParsedInventoryRow[] = inventoryMatches.map((row) => ({
     itemCode: row.itemCode,
@@ -694,8 +756,23 @@ async function resolveLookup(importId: string, itemCodeRaw: string) {
     parsedInventory,
     parsedImages
   );
+  if (fields.lookupStatus === "not_found") {
+    throw new Error(
+      `Item code ${itemCode} was not found in the uploaded Item_Qty_in_Store data.`
+    );
+  }
 
-  return { itemCode, fields };
+  const wholesaleByCode = safeJsonObject(importRecord.iqsWholesaleByCode) as Record<
+    string,
+    string
+  >;
+  const canonicalCode = inventoryMatches[0]?.itemCode || itemCode;
+
+  return {
+    itemCode: canonicalCode,
+    fields,
+    wholesalePriceApproval: wholesaleForCode(wholesaleByCode, canonicalCode),
+  };
 }
 
 export async function addOfficeReportLine(reportId: string, itemCodeRaw: string) {
@@ -710,7 +787,10 @@ export async function addOfficeReportLine(reportId: string, itemCodeRaw: string)
     throw new Error("Report import is not ready. Upload a valid workbook first.");
   }
 
-  const { itemCode, fields } = await resolveLookup(report.importId, itemCodeRaw);
+  const { itemCode, fields, wholesalePriceApproval } = await resolveLookup(
+    report.importId,
+    itemCodeRaw
+  );
 
   const existingLine = await prisma.officeReportLine.findFirst({
     where: { reportId, itemCode },
@@ -728,7 +808,7 @@ export async function addOfficeReportLine(reportId: string, itemCodeRaw: string)
   });
   const nextOrder = (agg._max.sortOrder ?? 0) + 1;
 
-  return prisma.officeReportLine.create({
+  const created = await prisma.officeReportLine.create({
     data: {
       reportId,
       sortOrder: nextOrder,
@@ -739,11 +819,13 @@ export async function addOfficeReportLine(reportId: string, itemCodeRaw: string)
       onHand: fields.onHand,
       itemCost: fields.itemCost,
       sellingPrice: fields.sellingPrice,
-      wholesalePriceApproval: "",
+      wholesalePriceApproval,
       lookupStatus: fields.lookupStatus,
       lookupWarning: fields.lookupWarning,
     },
   });
+
+  return created;
 }
 
 export async function updateOfficeReportMeta(
@@ -800,7 +882,7 @@ export async function updateOfficeReportLine(
 
   // Source-derived fields stay immutable unless item code itself changes (re-lookup).
   if (patch.itemCode != null && normalizeItemCode(patch.itemCode) !== existing.itemCode) {
-    const { itemCode, fields } = await resolveLookup(
+    const { itemCode, fields, wholesalePriceApproval } = await resolveLookup(
       existing.report.import.id,
       patch.itemCode
     );
@@ -814,11 +896,12 @@ export async function updateOfficeReportLine(
         onHand: fields.onHand,
         itemCost: fields.itemCost,
         sellingPrice: fields.sellingPrice,
+        wholesalePriceApproval:
+          patch.wholesalePriceApproval != null
+            ? String(patch.wholesalePriceApproval)
+            : wholesalePriceApproval,
         lookupStatus: fields.lookupStatus,
         lookupWarning: fields.lookupWarning,
-        ...(patch.wholesalePriceApproval != null
-          ? { wholesalePriceApproval: String(patch.wholesalePriceApproval) }
-          : {}),
       },
     });
   }
@@ -878,7 +961,7 @@ export async function searchOfficeItemCodes(importId: string, query: string, lim
   const rows = await prisma.officeReportInventoryItem.findMany({
     where: {
       importId,
-      itemCode: { contains: q },
+      itemCode: { startsWith: q },
     },
     distinct: ["itemCode"],
     take: limit,
