@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  serverExternalPackages: ["emf-to-png", "@resvg/resvg-js"],
   experimental: {
     // Allow large Office Forms workbook uploads in admin Report module.
     serverActions: {

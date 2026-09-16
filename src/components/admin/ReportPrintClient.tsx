@@ -9,6 +9,7 @@ import {
 import {
   alternateImageUrls,
   isBrowserDisplayableImageUrl,
+  reportDisplaySrc,
   toProxiedReportImageSrc,
 } from "@/lib/report/report-image-src";
 
@@ -80,7 +81,13 @@ function reportImageCandidates(remoteUrl: string): string[] {
     const bOk = isBrowserDisplayableImageUrl(b) ? 0 : 1;
     return aOk - bOk;
   });
-  // Direct R2 first (browser <img> does not need CORS). Proxy is only a fallback.
+  // JPG/PNG load directly. EMF/WMF must go through the converter proxy first.
+  if (!isBrowserDisplayableImageUrl(remoteUrl)) {
+    return [
+      toProxiedReportImageSrc(remoteUrl),
+      ...remotes.filter((url) => isBrowserDisplayableImageUrl(url)),
+    ];
+  }
   return [...remotes, ...remotes.map((url) => toProxiedReportImageSrc(url))];
 }
 

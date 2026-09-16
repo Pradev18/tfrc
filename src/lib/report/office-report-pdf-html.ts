@@ -1,4 +1,4 @@
-import { toProxiedReportImageSrc } from "@/lib/report/report-image-src";
+import { reportDisplaySrc, toProxiedReportImageSrc } from "@/lib/report/report-image-src";
 
 type ReportDetail = {
   title: string;
@@ -70,7 +70,7 @@ function renderTableRows(lines: ReportDetail["lines"], startIndex: number): stri
       ? `<a class="img-link" href="${escapeAttr(line.imageLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(line.imageLink)}</a>`
       : "";
     const image = line.imageLink
-      ? `<img class="product-img" src="${escapeAttr(line.imageLink)}" alt="" loading="eager" onerror="this.onerror=null;this.src='${escapeAttr(toProxiedReportImageSrc(line.imageLink))}'" />`
+      ? `<img class="product-img" src="${escapeAttr(reportDisplaySrc(line.imageLink))}" alt="" loading="eager" onerror="this.onerror=null;this.src='${escapeAttr(toProxiedReportImageSrc(line.imageLink))}'" />`
       : `<div class="img-fallback"></div>`;
     return `
       <tr>

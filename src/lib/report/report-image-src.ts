@@ -74,6 +74,14 @@ export function alternateImageUrls(primary: string): string[] {
   return out;
 }
 
+/** Browser <img> src. Raster URLs stay direct; EMF/WMF go through the converter proxy. */
+export function reportDisplaySrc(remoteUrl: string): string {
+  if (!remoteUrl) return "";
+  if (remoteUrl.startsWith("data:") || remoteUrl.startsWith("blob:")) return remoteUrl;
+  if (!isBrowserDisplayableImageUrl(remoteUrl)) return toProxiedReportImageSrc(remoteUrl);
+  return remoteUrl;
+}
+
 /** Same-origin display URL (keeps original link for <a href>). */
 export function toProxiedReportImageSrc(remoteUrl: string): string {
   if (!remoteUrl) return "";

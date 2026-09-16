@@ -50,6 +50,27 @@ function parseAllowedUrl(raw: string): URL | null {
   }
 }
 
+const emfPngCache = new Map<string, Buffer>();
+
+function isEmfBuffer(buffer: Buffer): boolean {
+  // EMR_HEADER record type 1
+  return buffer.length > 48 && buffer[0] === 0x01 && buffer[1] === 0x00 && buffer[2] === 0x00 && buffer[3] === 0x00;
+}
+
+async function emfBufferToPng(buffer: Buffer): Promise<Buffer | null> {
+  try {
+    const { convert } = await import("emf-to-png");
+    const png = await convert(buffer, {
+      width: 360,
+      background: "#ffffff",
+      format: "png",
+    });
+    return Buffer.from(png);
+  } catch {
+    return null;
+  }
+}
+
 function isRenderableImageContentType(contentType: string): boolean {
   const ct = contentType.toLowerCase();
   if (!ct) return true;
@@ -121,8 +142,28 @@ export async function GET(req: NextRequest) {
     if (result.buffer.byteLength > MAX_BYTES) {
       return NextResponse.json({ error: "Image too large" }, { status: 413 });
     }
+    const looksLikeEmf =
+      isEmfBuffer(result.buffer) ||
+      /emf|wmf/i.test(result.contentType) ||
+      /\.(emf|wmf)(\?|#|$)/i.test(candidate);
+    if (looksLikeEmf) {
+      const cached = emfPngCache.get(candidate);
+      const png = cached ?? (await emfBufferToPng(result.buffer));
+      if (png && png.byteLength > 0 && png.byteLength <= MAX_BYTES) {
+        emfPngCache.set(candidate, png);
+        return new NextResponse(new Uint8Array(png), {
+          status: 200,
+          headers: {
+            "Content-Type": "image/png",
+            "Cache-Control": "private, max-age=86400",
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
+      }
+      continue;
+    }
+
     if (!isRenderableImageContentType(result.contentType)) {
-      // e.g. image/x-emf — try next candidate
       continue;
     }
     // Reject tiny non-images / HTML error pages mistaken as images
