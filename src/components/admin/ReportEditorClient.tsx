@@ -580,12 +580,17 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
                         <div className="space-y-1">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={toProxiedReportImageSrc(line.imageLink)}
+                            src={line.imageLink}
                             alt=""
                             className="h-12 w-12 rounded border border-border object-contain bg-white"
-                            referrerPolicy="no-referrer"
                             onError={(e) => {
-                              e.currentTarget.style.display = "none";
+                              const img = e.currentTarget;
+                              const proxied = toProxiedReportImageSrc(line.imageLink);
+                              if (img.src.includes("/api/admin/reports/image-proxy")) {
+                                img.style.display = "none";
+                                return;
+                              }
+                              img.src = proxied;
                             }}
                           />
                           <a

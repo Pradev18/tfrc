@@ -70,7 +70,7 @@ function renderTableRows(lines: ReportDetail["lines"], startIndex: number): stri
       ? `<a class="img-link" href="${escapeAttr(line.imageLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(line.imageLink)}</a>`
       : "";
     const image = line.imageLink
-      ? `<img class="product-img" src="${escapeAttr(toProxiedReportImageSrc(line.imageLink))}" alt="" loading="eager" referrerpolicy="no-referrer" onerror="this.style.display='none';this.nextElementSibling.style.display='block'" /><div class="img-fallback" style="display:none"></div>`
+      ? `<img class="product-img" src="${escapeAttr(line.imageLink)}" alt="" loading="eager" onerror="this.onerror=null;this.src='${escapeAttr(toProxiedReportImageSrc(line.imageLink))}'" />`
       : `<div class="img-fallback"></div>`;
     return `
       <tr>

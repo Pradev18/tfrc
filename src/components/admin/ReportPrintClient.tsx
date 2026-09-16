@@ -8,6 +8,7 @@ import {
 } from "@/lib/report/office-report-pdf-html";
 import {
   alternateImageUrls,
+  isBrowserDisplayableImageUrl,
   toProxiedReportImageSrc,
 } from "@/lib/report/report-image-src";
 
@@ -72,33 +73,35 @@ async function waitForImages(root: ParentNode, timeoutMs = 30000) {
   );
 }
 
+function reportImageCandidates(remoteUrl: string): string[] {
+  const remotes = [...new Set([remoteUrl, ...alternateImageUrls(remoteUrl)].filter(Boolean))];
+  remotes.sort((a, b) => {
+    const aOk = isBrowserDisplayableImageUrl(a) ? 0 : 1;
+    const bOk = isBrowserDisplayableImageUrl(b) ? 0 : 1;
+    return aOk - bOk;
+  });
+  // Direct R2 first (browser <img> does not need CORS). Proxy is only a fallback.
+  return [...remotes, ...remotes.map((url) => toProxiedReportImageSrc(url))];
+}
+
 function ReportProductImage({ remoteUrl }: { remoteUrl: string }) {
-  const candidates = useMemo(() => {
-    const list = [remoteUrl, ...alternateImageUrls(remoteUrl)].filter(Boolean);
-    return [...new Set(list)];
-  }, [remoteUrl]);
+  const candidates = useMemo(() => reportImageCandidates(remoteUrl), [remoteUrl]);
   const [attempt, setAttempt] = useState(0);
-  const [failed, setFailed] = useState(false);
   const current = candidates[attempt] ?? "";
 
-  if (failed || !current) return <div className="img-empty" />;
+  if (!current) return <div className="img-empty" />;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
       key={current}
       className="product-img"
-      src={toProxiedReportImageSrc(current)}
+      src={current}
       alt=""
       loading="eager"
       decoding="async"
-      referrerPolicy="no-referrer"
       onError={() => {
-        if (attempt + 1 < candidates.length) {
-          setAttempt((n) => n + 1);
-          return;
-        }
-        setFailed(true);
+        setAttempt((n) => (n + 1 < candidates.length ? n + 1 : candidates.length));
       }}
     />
   );
@@ -701,8 +704,10 @@ const REPORT_A4_CSS = `
   .c-img .product-img {
     width: 15mm;
     height: 15mm;
+    max-width: 100%;
     object-fit: contain;
     display: inline-block;
+    visibility: visible;
     background: #fff;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
