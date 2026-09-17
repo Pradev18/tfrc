@@ -138,8 +138,8 @@ export function ReportPrintClient({
   const [lines, setLines] = useState<ReportLine[]>([]);
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
-  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
-  const [whatsAppNote, setWhatsAppNote] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadNote, setDownloadNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const sectionCount = Math.max(1, Math.ceil(meta.lineCount / SECTION_ROWS));
@@ -267,7 +267,7 @@ export function ReportPrintClient({
     if (loadedSection !== startSection) {
       await loadSection(startSection);
     }
-    if (added === 0) throw new Error("Add items before sending the PDF");
+    if (added === 0) throw new Error("Add items before downloading the PDF");
     return pdf.output("blob");
   }
 
@@ -280,39 +280,20 @@ export function ReportPrintClient({
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  async function handleSendWhatsApp() {
-    if (sendingWhatsApp || loading || lines.length === 0) return;
-    setSendingWhatsApp(true);
+  async function handleDownloadPdf() {
+    if (downloading || loading || lines.length === 0) return;
+    setDownloading(true);
     setError(null);
-    setWhatsAppNote("Making the PDF…");
+    setDownloadNote("Making the PDF…");
     try {
       const blob = await buildPreviewPdf();
-      const file = new File([blob], "TFRC-report.pdf", { type: "application/pdf" });
-
-      const form = new FormData();
-      form.append("file", file, file.name);
-      const res = await fetch(`/api/admin/reports/${reportId}/whatsapp`, {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.sent) {
-        setWhatsAppNote("PDF file sent to +974 5504 9229 only.");
-        return;
-      }
-
-      // WhatsApp chat links can only insert text, which is why a URL appeared.
-      // Hand the real PDF file to the already-locked owner chat instead.
-      downloadPdfFile(file);
-      window.open("https://web.whatsapp.com/send?phone=97455049229", "_blank", "noopener,noreferrer");
-      setWhatsAppNote(
-        "TFRC-report.pdf was downloaded. Drop that file into the +974 5504 9229 chat and send it. Do not send a link."
-      );
+      downloadPdfFile(new File([blob], "TFRC-report.pdf", { type: "application/pdf" }));
+      setDownloadNote("TFRC-report.pdf downloaded.");
     } catch (e) {
-      setWhatsAppNote(null);
+      setDownloadNote(null);
       setError(e instanceof Error ? e.message : "Could not make the PDF");
     } finally {
-      setSendingWhatsApp(false);
+      setDownloading(false);
     }
   }
 
@@ -364,22 +345,22 @@ export function ReportPrintClient({
           <button
             type="button"
             className="btn-primary"
-            disabled={loading || printing || sendingWhatsApp || lines.length === 0}
+            disabled={loading || printing || downloading || lines.length === 0}
             onClick={() => void handlePrint()}
           >
             {printing ? "Preparing…" : "Print / Save PDF"}
           </button>
           <button
             type="button"
-            className="btn-whatsapp"
-            disabled={loading || printing || sendingWhatsApp || lines.length === 0}
-            onClick={() => void handleSendWhatsApp()}
+            className="btn-primary"
+            disabled={loading || printing || downloading || lines.length === 0}
+            onClick={() => void handleDownloadPdf()}
           >
-            {sendingWhatsApp ? "Sending…" : "Send on WhatsApp"}
+            {downloading ? "Downloading…" : "Download PDF"}
           </button>
         </div>
       </div>
-      {whatsAppNote && <p className="status-muted no-print">{whatsAppNote}</p>}
+      {downloadNote && <p className="status-muted no-print">{downloadNote}</p>}
 
       {error && <p className="status-error no-print">{error}</p>}
       {loading && <p className="status-muted no-print">Loading section…</p>}
@@ -611,12 +592,7 @@ const REPORT_A4_CSS = `
     border-color: var(--rp-purple);
     color: #fff;
   }
-  .btn-whatsapp {
-    background: #128c7e;
-    border-color: #128c7e;
-    color: #fff;
-  }
-  .btn-primary:disabled, .btn-secondary:disabled, .btn-whatsapp:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
   .status-error { margin: 12px 16px; color: #b91c1c; font-size: 13px; }
   .status-muted { margin: 12px 16px; color: var(--rp-muted); font-size: 13px; }
 
