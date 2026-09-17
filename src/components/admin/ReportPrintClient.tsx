@@ -6,6 +6,7 @@ import {
   REPORT_ROWS_PER_PAGE,
   TFRC_REPORT_LOGO_SRC,
 } from "@/lib/report/office-report-pdf-html";
+import { isOwnerWhatsAppHref } from "@/lib/report/owner-whatsapp";
 import {
   alternateImageUrls,
   isBrowserDisplayableImageUrl,
@@ -138,6 +139,8 @@ export function ReportPrintClient({
   const [lines, setLines] = useState<ReportLine[]>([]);
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+  const [whatsAppNote, setWhatsAppNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const sectionCount = Math.max(1, Math.ceil(meta.lineCount / SECTION_ROWS));
@@ -202,6 +205,110 @@ export function ReportPrintClient({
     void loadSection(0);
   }, [loadSection]);
 
+  async function inlineImagesForPdf(root: ParentNode) {
+    const imgs = Array.from(root.querySelectorAll("img")) as HTMLImageElement[];
+    await Promise.all(
+      imgs.map(async (img) => {
+        const src = img.currentSrc || img.src;
+        if (!src || src.startsWith("data:") || src.startsWith("blob:")) return;
+        try {
+          const absolute = new URL(src, window.location.href);
+          const fetchUrl =
+            absolute.origin === window.location.origin
+              ? absolute.pathname + absolute.search
+              : `/api/admin/reports/image-proxy?url=${encodeURIComponent(absolute.href)}`;
+          const res = await fetch(fetchUrl, { credentials: "include" });
+          if (!res.ok) return;
+          const blob = await res.blob();
+          if (!blob.type.startsWith("image/")) return;
+          img.src = URL.createObjectURL(blob);
+        } catch {
+          // keep the on-screen image if it cannot be inlined
+        }
+      })
+    );
+  }
+
+  async function buildPreviewPdf(): Promise<Blob> {
+    const html2canvas = (await import("html2canvas")).default;
+    const { jsPDF } = await import("jspdf");
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+    let added = 0;
+    const startSection = sectionIndex;
+    let loadedSection = sectionIndex;
+
+    for (let section = 0; section < sectionCount; section++) {
+      if (section !== loadedSection) {
+        await loadSection(section);
+        loadedSection = section;
+      }
+      await new Promise((r) => window.setTimeout(r, 80));
+      await new Promise((r) => window.requestAnimationFrame(() => r(undefined)));
+      const root = document.querySelector(".report-print-root");
+      if (!root) throw new Error("Preview is not ready");
+      await inlineImagesForPdf(root);
+      await waitForImages(root, 20000);
+      const pages = Array.from(root.querySelectorAll(".report-page")) as HTMLElement[];
+      for (const page of pages) {
+        const shadow = page.style.boxShadow;
+        page.style.boxShadow = "none";
+        const canvas = await html2canvas(page, {
+          scale: 2,
+          backgroundColor: "#ffffff",
+          useCORS: true,
+          logging: false,
+        });
+        page.style.boxShadow = shadow;
+        if (added > 0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, 297);
+        added += 1;
+      }
+    }
+
+    if (loadedSection !== startSection) {
+      await loadSection(startSection);
+    }
+    if (added === 0) throw new Error("Add items before sending the PDF");
+    return pdf.output("blob");
+  }
+
+  async function handleSendWhatsApp() {
+    if (sendingWhatsApp || loading || lines.length === 0) return;
+    setSendingWhatsApp(true);
+    setError(null);
+    setWhatsAppNote("Preparing the PDF for +974 5504 9229 only…");
+    try {
+      const blob = await buildPreviewPdf();
+      const form = new FormData();
+      form.append("file", blob, "TFRC-report.pdf");
+      const res = await fetch(`/api/admin/reports/${reportId}/whatsapp`, {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not prepare the WhatsApp copy");
+
+      if (data.sent) {
+        setWhatsAppNote("PDF copy sent to +974 5504 9229 only.");
+        return;
+      }
+
+      if (typeof data.whatsappHref === "string" && isOwnerWhatsAppHref(data.whatsappHref)) {
+        window.open(data.whatsappHref, "_blank", "noopener,noreferrer");
+        setWhatsAppNote(
+          "WhatsApp opened for +974 5504 9229 only. Press Send so the owner receives the PDF copy."
+        );
+        return;
+      }
+      throw new Error("Could not open the owner WhatsApp number");
+    } catch (e) {
+      setWhatsAppNote(null);
+      setError(e instanceof Error ? e.message : "Could not send the PDF on WhatsApp");
+    } finally {
+      setSendingWhatsApp(false);
+    }
+  }
+
   async function handlePrint() {
     if (printing || lines.length === 0) return;
     setPrinting(true);
@@ -250,13 +357,22 @@ export function ReportPrintClient({
           <button
             type="button"
             className="btn-primary"
-            disabled={loading || printing || lines.length === 0}
+            disabled={loading || printing || sendingWhatsApp || lines.length === 0}
             onClick={() => void handlePrint()}
           >
             {printing ? "Preparing…" : "Print / Save PDF"}
           </button>
+          <button
+            type="button"
+            className="btn-whatsapp"
+            disabled={loading || printing || sendingWhatsApp || lines.length === 0}
+            onClick={() => void handleSendWhatsApp()}
+          >
+            {sendingWhatsApp ? "Sending…" : "Send on WhatsApp"}
+          </button>
         </div>
       </div>
+      {whatsAppNote && <p className="status-muted no-print">{whatsAppNote}</p>}
 
       {error && <p className="status-error no-print">{error}</p>}
       {loading && <p className="status-muted no-print">Loading section…</p>}
@@ -488,7 +604,12 @@ const REPORT_A4_CSS = `
     border-color: var(--rp-purple);
     color: #fff;
   }
-  .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-whatsapp {
+    background: #128c7e;
+    border-color: #128c7e;
+    color: #fff;
+  }
+  .btn-primary:disabled, .btn-secondary:disabled, .btn-whatsapp:disabled { opacity: 0.5; cursor: not-allowed; }
   .status-error { margin: 12px 16px; color: #b91c1c; font-size: 13px; }
   .status-muted { margin: 12px 16px; color: var(--rp-muted); font-size: 13px; }
 
