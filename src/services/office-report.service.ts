@@ -945,9 +945,15 @@ export async function deleteOfficeReport(reportId: string) {
   });
 }
 
-export async function searchOfficeItemCodes(importId: string, query: string, limit = 20) {
+export async function searchOfficeItemCodes(
+  importId: string,
+  query: string,
+  limit = 40,
+  offset = 0
+) {
   const q = normalizeItemCode(query);
-  if (!q) return [];
+  const take = Math.min(Math.max(limit, 1), 80);
+  const skip = Math.max(offset, 0);
 
   const importRecord = await prisma.officeReportImport.findUnique({
     where: { id: importId },
@@ -961,10 +967,11 @@ export async function searchOfficeItemCodes(importId: string, query: string, lim
   const rows = await prisma.officeReportInventoryItem.findMany({
     where: {
       importId,
-      itemCode: { startsWith: q },
+      ...(q ? { itemCode: { startsWith: q } } : {}),
     },
     distinct: ["itemCode"],
-    take: limit,
+    take,
+    skip,
     orderBy: [{ itemCode: "asc" }, { sortOrder: "asc" }],
     select: { itemCode: true, payload: true },
   });

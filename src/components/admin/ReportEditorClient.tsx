@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { reportDisplaySrc, toProxiedReportImageSrc } from "@/lib/report/report-image-src";
 
 type ReportLine = {
@@ -72,6 +72,9 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
   const [suggestions, setSuggestions] = useState<Array<{ itemCode: string; itemName: string }>>(
     []
   );
+  const [codesOpen, setCodesOpen] = useState(false);
+  const [codesLoading, setCodesLoading] = useState(false);
+  const [codesHasMore, setCodesHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
@@ -142,26 +145,48 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
     return `${start}–${end} of ${report.lineCount} unique items`;
   }, [report.lineCount, report.page, report.pageSize]);
 
+  const codeRequest = useRef(0);
+
+  const loadCodes = useCallback(
+    async (query: string, offset: number, append: boolean) => {
+      const requestId = ++codeRequest.current;
+      setCodesLoading(true);
+      try {
+        const res = await fetch(
+          `/api/admin/reports/imports/${report.import.id}/search?q=${encodeURIComponent(query)}&offset=${offset}`,
+          { cache: "no-store" }
+        );
+        const data = await res.json();
+        if (requestId !== codeRequest.current) return;
+        if (!res.ok) return;
+        const batch = (data.results ?? []) as Array<{ itemCode: string; itemName: string }>;
+        setSuggestions((current) => (append ? [...current, ...batch] : batch));
+        setCodesHasMore(batch.length === 40);
+      } finally {
+        if (requestId === codeRequest.current) setCodesLoading(false);
+      }
+    },
+    [codeRequest, report.import.id]
+  );
+
   useEffect(() => {
-    const q = itemCode.trim();
-    if (q.length < 2) {
-      setSuggestions([]);
-      return;
-    }
+    setSuggestions([]);
+    setCodesHasMore(false);
+    setCodesOpen(false);
+  }, [report.import.id]);
+
+  useEffect(() => {
+    if (!codesOpen) return;
     let cancelled = false;
-    const handle = window.setTimeout(async () => {
-      const res = await fetch(
-        `/api/admin/reports/imports/${report.import.id}/search?q=${encodeURIComponent(q)}`,
-        { cache: "no-store" }
-      );
-      const data = await res.json();
-      if (!cancelled && res.ok) setSuggestions(data.results ?? []);
-    }, 220);
+    const handle = window.setTimeout(() => {
+      if (cancelled) return;
+      void loadCodes(itemCode.trim(), 0, false);
+    }, 180);
     return () => {
       cancelled = true;
       window.clearTimeout(handle);
     };
-  }, [itemCode, report.import.id]);
+  }, [codesOpen, itemCode, loadCodes]);
 
   const loadPage = useCallback(
     async (page: number) => {
@@ -474,43 +499,90 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
       <section className="rounded-xl border border-border bg-surface p-4">
         <h2 className="text-base font-semibold text-text">Add item code</h2>
         <p className="mt-1 text-sm text-text-muted">
-          Type an item code and add it. Only codes you add appear in the report.
+          Open the list for codes from this Excel only, or type a code and add it. Older uploads are not shown.
         </p>
         <div className="relative mt-3 flex flex-col gap-2 sm:flex-row">
           <input
             className="w-full rounded-lg border border-border bg-white px-3 py-2 font-mono text-sm"
             value={itemCode}
-            onChange={(e) => setItemCode(e.target.value)}
+            placeholder="Type a code or choose from this upload"
+            onChange={(e) => {
+              setItemCode(e.target.value);
+              setCodesOpen(true);
+            }}
+            onFocus={() => setCodesOpen(true)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
+                setCodesOpen(false);
                 void addLine(itemCode);
               }
+              if (e.key === "Escape") setCodesOpen(false);
             }}
             disabled={busy}
+            autoComplete="off"
           />
+          <button
+            type="button"
+            className="rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-text"
+            disabled={busy}
+            onClick={() => setCodesOpen((open) => !open)}
+          >
+            Codes
+          </button>
           <button
             type="button"
             className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
             disabled={busy || !itemCode.trim()}
-            onClick={() => addLine(itemCode)}
+            onClick={() => {
+              setCodesOpen(false);
+              void addLine(itemCode);
+            }}
           >
             {busy ? "Looking up…" : "Add"}
           </button>
-          {suggestions.length > 0 && (
-            <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-lg border border-border bg-white shadow-lg sm:right-28">
+          {codesOpen && (
+            <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto rounded-lg border border-border bg-white shadow-lg sm:right-40">
+              <li className="sticky top-0 border-b border-border bg-white px-3 py-2 text-xs text-text-muted">
+                Codes from this upload only
+              </li>
               {suggestions.map((s) => (
                 <li key={s.itemCode}>
                   <button
                     type="button"
                     className="flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-surface-muted"
-                    onClick={() => addLine(s.itemCode)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setItemCode(s.itemCode);
+                      setCodesOpen(false);
+                    }}
                   >
                     <span className="font-mono font-semibold">{s.itemCode}</span>
-                    <span className="text-xs text-text-muted">{s.itemName}</span>
+                    {s.itemName ? (
+                      <span className="text-xs text-text-muted">{s.itemName}</span>
+                    ) : null}
                   </button>
                 </li>
               ))}
+              {!codesLoading && suggestions.length === 0 && (
+                <li className="px-3 py-2 text-sm text-text-muted">No matching codes in this upload.</li>
+              )}
+              {codesHasMore && (
+                <li>
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-surface-muted"
+                    disabled={codesLoading}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => void loadCodes(itemCode.trim(), suggestions.length, true)}
+                  >
+                    {codesLoading ? "Loading…" : "More codes from this upload"}
+                  </button>
+                </li>
+              )}
+              {codesLoading && suggestions.length === 0 && (
+                <li className="px-3 py-2 text-sm text-text-muted">Loading codes…</li>
+              )}
             </ul>
           )}
         </div>
