@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import prisma from "@/lib/db";
 import {
   lookupOfficeFormsFields,
@@ -36,7 +37,7 @@ export async function createOfficeReportImport(input: {
     wholesaleByCode[seed.itemCode] = seed.wholesalePriceApproval;
   }
 
-  // Stay PENDING until chunked seeding finishes. Mid-import data must not be used for PDF.
+  // READY immediately. Lines are not copied from the workbook; the user adds codes.
   const created = await prisma.officeReportImport.create({
     data: {
       fileName: input.fileName,
@@ -96,7 +97,7 @@ export async function createOfficeReportImport(input: {
       },
     });
 
-    // Free parsed workbook ASAP — seeding continues in small HTTP batches.
+    // Inventory and image rows stay on this import for lookup. Report lines stay empty.
     parsed = null as unknown as typeof parsed;
 
     const importRecord = await prisma.officeReportImport.findUniqueOrThrow({
@@ -118,15 +119,18 @@ export async function createOfficeReportImport(input: {
   }
 }
 
+/** Old clients may still call seed. Never copy the workbook into the report list. */
+async function keepReportManual(importId: string) {
+  await prisma.officeReportImport.updateMany({
+    where: { id: importId, status: "PENDING" },
+    data: { status: "READY", errorMessage: null },
+  });
+}
+
 /**
- * Seed the next chunk of unique inventory originals into report lines.
- * Call repeatedly until `done` is true (Hostinger / Cloudflare safe).
+ * Does not insert report lines. Items appear only when a code is added by hand.
  */
-export async function seedOfficeReportLinesBatch(
-  reportId: string,
-  batchSize = SEED_BATCH
-) {
-  const take = Math.min(Math.max(batchSize, 50), 500);
+export async function seedOfficeReportLinesBatch(reportId: string, _batchSize = SEED_BATCH) {
   const report = await prisma.officeReport.findUnique({
     where: { id: reportId },
     include: { import: true },
@@ -135,130 +139,12 @@ export async function seedOfficeReportLinesBatch(
   if (report.import.status === "FAILED") {
     throw new Error(report.import.errorMessage || "Import failed.");
   }
-  if (report.import.status === "READY") {
-    return {
-      done: true,
-      seeded: report.import.seedProgress,
-      total: report.import.uniqueItemCount,
-      progress: report.import.seedProgress,
-    };
-  }
-
-  const offset = report.import.seedProgress;
-  const total = report.import.uniqueItemCount;
-  if (total <= 0) {
-    await prisma.officeReportImport.update({
-      where: { id: report.importId },
-      data: { status: "READY", seedProgress: 0, errorMessage: null },
-    });
-    return { done: true, seeded: 0, total: 0, progress: 0 };
-  }
-
-  const uniqueRows = await prisma.$queryRaw<
-    Array<{ itemCode: string; firstOrder: number | bigint }>
-  >`
-    SELECT itemCode as itemCode, MIN(sortOrder) as firstOrder
-    FROM OfficeReportInventoryItem
-    WHERE importId = ${report.importId}
-    GROUP BY itemCode
-    ORDER BY firstOrder ASC
-    LIMIT ${take} OFFSET ${offset}
-  `;
-
-  if (uniqueRows.length === 0) {
-    await prisma.officeReportImport.update({
-      where: { id: report.importId },
-      data: { status: "READY", seedProgress: total, errorMessage: null },
-    });
-    return { done: true, seeded: 0, total, progress: total };
-  }
-
-  const wholesaleByCode = safeJsonObject(report.import.iqsWholesaleByCode) as Record<
-    string,
-    string
-  >;
-  const codes = uniqueRows.map((row) => row.itemCode);
-  const codeVariants = [...new Set(codes.flatMap((c) => itemCodeMatchVariants(c)))];
-
-  const inventoryMatches = await prisma.officeReportInventoryItem.findMany({
-    where: { importId: report.importId, itemCode: { in: codes } },
-    orderBy: [{ itemCode: "asc" }, { sortOrder: "asc" }],
-  });
-  const imageMatches = await prisma.officeReportImageLink.findMany({
-    where: { importId: report.importId, itemCode: { in: codeVariants } },
-    orderBy: [{ itemCode: "asc" }, { sortOrder: "asc" }],
-  });
-
-  const invByCode = new Map<string, typeof inventoryMatches>();
-  for (const row of inventoryMatches) {
-    const list = invByCode.get(row.itemCode) ?? [];
-    list.push(row);
-    invByCode.set(row.itemCode, list);
-  }
-  const imgByCode = new Map<string, typeof imageMatches>();
-  for (const row of imageMatches) {
-    // Index under every match variant so IQS codes find Cloud Fare rows with
-    // different leading-zero padding.
-    for (const key of itemCodeMatchVariants(row.itemCode)) {
-      const list = imgByCode.get(key) ?? [];
-      list.push(row);
-      imgByCode.set(key, list);
-    }
-  }
-
-  const columnMap = safeJsonObject(report.import.columnMap) as unknown as OfficeFormsColumnMap;
-  const lineData = codes.map((itemCode, index) => {
-    const invRows = invByCode.get(itemCode) ?? [];
-    const imgRows = imgByCode.get(itemCode) ?? [];
-    const fields = lookupOfficeFormsFields(
-      { columnMap },
-      invRows.map((row) => ({
-        itemCode: row.itemCode,
-        payload: safeJsonObject(row.payload) as Record<string, string>,
-      })),
-      imgRows.map((row) => ({
-        itemCode: row.itemCode,
-        imageUrl: row.imageUrl,
-        fileName: row.fileName ?? undefined,
-      }))
-    );
-    return {
-      reportId,
-      sortOrder: offset + index + 1,
-      itemCode,
-      imageLink: fields.imageLink,
-      itemName: fields.itemName,
-      supplierName: fields.supplierName,
-      onHand: fields.onHand,
-      itemCost: fields.itemCost,
-      sellingPrice: fields.sellingPrice,
-      wholesalePriceApproval: wholesaleByCode[itemCode] ?? "",
-      lookupStatus: fields.lookupStatus,
-      lookupWarning:
-        invRows.length > 1
-          ? `Duplicate in source inventory (${invRows.length} rows). Original (first) row is used in the report/PDF.`
-          : fields.lookupWarning,
-    };
-  });
-
-  await prisma.officeReportLine.createMany({ data: lineData });
-
-  const nextProgress = offset + lineData.length;
-  const done = nextProgress >= total;
-  await prisma.officeReportImport.update({
-    where: { id: report.importId },
-    data: {
-      seedProgress: nextProgress,
-      status: done ? "READY" : "PENDING",
-      errorMessage: null,
-    },
-  });
-
+  await keepReportManual(report.importId);
   return {
-    done,
-    seeded: lineData.length,
-    total,
-    progress: nextProgress,
+    done: true,
+    seeded: 0,
+    total: report.import.uniqueItemCount,
+    progress: report.import.uniqueItemCount,
   };
 }
 
@@ -296,6 +182,10 @@ function formatIqsReportDate(raw: string): string {
 }
 
 export async function listOfficeReports() {
+  await prisma.officeReportImport.updateMany({
+    where: { status: "PENDING" },
+    data: { status: "READY", errorMessage: null },
+  });
   const reports = await prisma.officeReport.findMany({
     where: { import: { status: { in: ["READY", "PENDING"] } } },
     orderBy: { createdAt: "desc" },
@@ -381,6 +271,10 @@ export async function getOfficeReportDetail(
   });
   if (!report) return null;
   if (report.import.status === "FAILED") return null;
+  if (report.import.status === "PENDING") {
+    await keepReportManual(report.importId);
+    report.import.status = "READY";
+  }
 
   const lineCount = report._count.lines;
   const serialized = serializeReport(report);
@@ -414,6 +308,10 @@ export async function getOfficeReportPrintMeta(reportId: string) {
     },
   });
   if (!report) return null;
+  if (report.import.status === "PENDING") {
+    await keepReportManual(report.importId);
+    report.import.status = "READY";
+  }
   if (report.import.status !== "READY") return null;
   return {
     id: report.id,
@@ -450,6 +348,10 @@ export async function getOfficeReportDetailForPdf(
     },
   });
   if (!report) return null;
+  if (report.import.status === "PENDING") {
+    await keepReportManual(report.importId);
+    report.import.status = "READY";
+  }
   if (report.import.status !== "READY") return null;
 
   const uniqueLines = dedupeReportLinesKeepOriginal(report.lines);
@@ -792,8 +694,9 @@ export async function addOfficeReportLine(reportId: string, itemCodeRaw: string)
     itemCodeRaw
   );
 
+  const codeKeys = [...new Set(itemCodeMatchVariants(itemCode))];
   const existingLine = await prisma.officeReportLine.findFirst({
-    where: { reportId, itemCode },
+    where: { reportId, itemCode: { in: codeKeys.length > 0 ? codeKeys : [itemCode] } },
     select: { id: true },
   });
   if (existingLine) {
@@ -945,16 +848,27 @@ export async function deleteOfficeReport(reportId: string) {
   });
 }
 
+function currentUploadCodeFilter(query: string): Prisma.Sql {
+  const q = normalizeItemCode(query);
+  if (!q) return Prisma.empty;
+  const prefixes = [...new Set(itemCodeMatchVariants(q))].filter((code) => code.length >= 1).slice(0, 8);
+  const clauses = prefixes.map((prefix) => Prisma.sql`itemCode LIKE ${`${prefix}%`}`);
+  // Longer numeric tails still match when the sheet stored extra leading zeros.
+  if (/^\d{4,}$/.test(q)) clauses.push(Prisma.sql`itemCode LIKE ${`%${q}`}`);
+  if (clauses.length === 0) return Prisma.sql`AND itemCode = ${q}`;
+  return Prisma.sql`AND (${Prisma.join(clauses, " OR ")})`;
+}
+
 export async function searchOfficeItemCodes(
   importId: string,
   query: string,
   limit = 40,
   offset = 0
 ) {
-  const q = normalizeItemCode(query);
   const take = Math.min(Math.max(limit, 1), 80);
   const skip = Math.max(offset, 0);
 
+  await keepReportManual(importId);
   const importRecord = await prisma.officeReportImport.findUnique({
     where: { id: importId },
     select: { columnMap: true, status: true },
@@ -963,23 +877,35 @@ export async function searchOfficeItemCodes(
 
   const columnMap = safeJsonObject(importRecord.columnMap ?? "{}") as Partial<OfficeFormsColumnMap>;
   const descriptionKey = columnMap.description;
+  const codeFilter = currentUploadCodeFilter(query);
 
-  const rows = await prisma.officeReportInventoryItem.findMany({
-    where: {
-      importId,
-      ...(q ? { itemCode: { startsWith: q } } : {}),
-    },
-    distinct: ["itemCode"],
-    take,
-    skip,
-    orderBy: [{ itemCode: "asc" }, { sortOrder: "asc" }],
+  const rows = await prisma.$queryRaw<Array<{ itemCode: string }>>`
+    SELECT itemCode as itemCode
+    FROM OfficeReportInventoryItem
+    WHERE importId = ${importId}
+    ${codeFilter}
+    GROUP BY itemCode
+    ORDER BY itemCode ASC
+    LIMIT ${take} OFFSET ${skip}
+  `;
+
+  const codes = rows.map((row) => row.itemCode).filter(Boolean);
+  if (codes.length === 0) return [];
+
+  const details = await prisma.officeReportInventoryItem.findMany({
+    where: { importId, itemCode: { in: codes } },
+    orderBy: { sortOrder: "asc" },
     select: { itemCode: true, payload: true },
   });
+  const firstByCode = new Map<string, string>();
+  for (const row of details) {
+    if (!firstByCode.has(row.itemCode)) firstByCode.set(row.itemCode, row.payload);
+  }
 
-  return rows.map((row) => {
-    const payload = safeJsonObject(row.payload) as Record<string, string>;
+  return codes.map((itemCode) => {
+    const payload = safeJsonObject(firstByCode.get(itemCode) ?? "{}") as Record<string, string>;
     return {
-      itemCode: row.itemCode,
+      itemCode,
       itemName: (descriptionKey ? payload[descriptionKey] : "") || "",
     };
   });

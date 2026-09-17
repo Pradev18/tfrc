@@ -88,55 +88,9 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
     [report.id]
   );
 
-  const seeding = report.seed && !report.seed.done;
-
   useEffect(() => {
     setReport(initialReport);
   }, [initialReport]);
-
-  useEffect(() => {
-    if (!seeding) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        for (let i = 0; i < 2000 && !cancelled; i++) {
-          const res = await fetch(`/api/admin/reports/${report.id}/seed`, {
-            method: "POST",
-            cache: "no-store",
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || "Seeding failed");
-          if (cancelled) return;
-          setReport((prev) => ({
-            ...prev,
-            seed: {
-              status: data.done ? "READY" : "PENDING",
-              progress: data.progress ?? 0,
-              total: data.total ?? 0,
-              done: Boolean(data.done),
-            },
-            lineCount: data.progress ?? prev.lineCount,
-          }));
-          if (data.done) {
-            const refreshed = await fetch(
-              `/api/admin/reports/${report.id}/lines?page=1&pageSize=${report.pageSize}`,
-              { cache: "no-store" }
-            );
-            const body = await refreshed.json();
-            if (refreshed.ok && body.report) setReport(body.report);
-            return;
-          }
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Seeding failed");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [seeding, report.id, report.pageSize]);
 
   const rangeLabel = useMemo(() => {
     if (report.lineCount === 0) return "0 items";
@@ -146,6 +100,16 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
   }, [report.lineCount, report.page, report.pageSize]);
 
   const codeRequest = useRef(0);
+  const codePickerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!codesOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!codePickerRef.current?.contains(event.target as Node)) setCodesOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [codesOpen]);
 
   const loadCodes = useCallback(
     async (query: string, offset: number, append: boolean) => {
@@ -339,27 +303,12 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
             href={previewHref}
             target="_blank"
             rel="noreferrer"
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            aria-disabled={Boolean(seeding)}
-            onClick={(e) => {
-              if (seeding) e.preventDefault();
-            }}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white"
           >
             Print / PDF
           </a>
         </div>
       </div>
-
-      {seeding && (
-        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-          Seeding unique report rows in safe batches so Hostinger does not crash:{" "}
-          <strong>
-            {(report.seed?.progress ?? 0).toLocaleString()} /{" "}
-            {(report.seed?.total ?? 0).toLocaleString()}
-          </strong>
-          . Keep this tab open until it finishes.
-        </section>
-      )}
 
       <section className="rounded-xl border border-border bg-surface p-4 text-sm text-text-muted">
         <p>
@@ -379,8 +328,8 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
           ) : null}
         </p>
         <p className="mt-2">
-          Report and PDF use every unique inventory item code (first / original row only).
-          Duplicate source rows are listed separately and omitted from the template.
+          The report lists only the codes you add. Lookup uses the first matching row from this upload.
+          Duplicate source rows stay listed separately and are omitted from the PDF.
         </p>
         {report.import.duplicateItemCodes.length > 0 && (
           <div className="mt-3">
@@ -501,7 +450,7 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
         <p className="mt-1 text-sm text-text-muted">
           Open the list for codes from this Excel only, or type a code and add it. Older uploads are not shown.
         </p>
-        <div className="relative mt-3 flex flex-col gap-2 sm:flex-row">
+        <div ref={codePickerRef} className="relative mt-3 flex flex-col gap-2 sm:flex-row">
           <input
             className="w-full rounded-lg border border-border bg-white px-3 py-2 font-mono text-sm"
             value={itemCode}

@@ -251,16 +251,19 @@ export function ReportPrintClient({
       for (const page of pages) {
         const shadow = page.style.boxShadow;
         page.style.boxShadow = "none";
-        const canvas = await html2canvas(page, {
-          scale: 2,
-          backgroundColor: "#ffffff",
-          useCORS: true,
-          logging: false,
-        });
-        page.style.boxShadow = shadow;
-        if (added > 0) pdf.addPage();
-        pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, 297);
-        added += 1;
+        try {
+          const canvas = await html2canvas(page, {
+            scale: 2,
+            backgroundColor: "#ffffff",
+            useCORS: true,
+            logging: false,
+          });
+          if (added > 0) pdf.addPage();
+          pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, 297);
+          added += 1;
+        } finally {
+          page.style.boxShadow = shadow;
+        }
       }
     }
 
@@ -277,7 +280,12 @@ export function ReportPrintClient({
     link.href = url;
     link.download = file.name;
     link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  function pdfFileName() {
+    const date = (meta.reportDate || "").replace(/[^\w.-]+/g, "-").replace(/-+/g, "-");
+    return date ? `TFRC-report-${date}.pdf` : "TFRC-report.pdf";
   }
 
   async function handleDownloadPdf() {
@@ -287,11 +295,16 @@ export function ReportPrintClient({
     setDownloadNote("Making the PDF…");
     try {
       const blob = await buildPreviewPdf();
-      downloadPdfFile(new File([blob], "TFRC-report.pdf", { type: "application/pdf" }));
-      setDownloadNote("TFRC-report.pdf downloaded.");
+      const name = pdfFileName();
+      downloadPdfFile(new File([blob], name, { type: "application/pdf" }));
+      setDownloadNote(`${name} downloaded.`);
     } catch (e) {
       setDownloadNote(null);
-      setError(e instanceof Error ? e.message : "Could not make the PDF");
+      setError(
+        e instanceof Error
+          ? `${e.message} You can still use Print / Save PDF.`
+          : "Could not make the PDF. You can still use Print / Save PDF."
+      );
     } finally {
       setDownloading(false);
     }

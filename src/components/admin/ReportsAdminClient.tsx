@@ -27,24 +27,6 @@ type ReportListItem = {
   };
 };
 
-async function seedUntilReady(
-  reportId: string,
-  onProgress: (progress: number, total: number) => void
-) {
-  // ~66k / 250 ≈ 265 requests; each stays under Cloudflare/Hostinger limits.
-  for (let i = 0; i < 2000; i++) {
-    const res = await fetch(`/api/admin/reports/${reportId}/seed`, {
-      method: "POST",
-      cache: "no-store",
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Seeding failed");
-    onProgress(data.progress ?? 0, data.total ?? 0);
-    if (data.done) return;
-  }
-  throw new Error("Seeding timed out. Re-open the report to continue.");
-}
-
 export function ReportsAdminClient({
   initialReports,
 }: {
@@ -79,13 +61,6 @@ export function ReportsAdminClient({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
 
-      if (data.needsSeed && data.reportId) {
-        setProgressLabel("Building unique report rows (safe batches)…");
-        await seedUntilReady(data.reportId, (progress, total) => {
-          setProgressLabel(`Seeding report rows ${progress.toLocaleString()} / ${total.toLocaleString()}…`);
-        });
-      }
-
       router.push(`/admin/reports/${data.reportId}`);
       router.refresh();
     } catch (e) {
@@ -115,26 +90,6 @@ export function ReportsAdminClient({
       setError(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setDeletingId(null);
-    }
-  }
-
-  async function resumeSeed(reportId: string) {
-    if (uploading) return;
-    setUploading(true);
-    setError(null);
-    try {
-      await seedUntilReady(reportId, (progress, total) => {
-        setProgressLabel(`Seeding report rows ${progress.toLocaleString()} / ${total.toLocaleString()}…`);
-      });
-      await refresh();
-      router.push(`/admin/reports/${reportId}`);
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Seeding failed");
-      await refresh();
-    } finally {
-      setUploading(false);
-      setProgressLabel(null);
     }
   }
 
@@ -212,40 +167,23 @@ export function ReportsAdminClient({
                       <td className="px-4 py-3 text-text-muted">
                         {new Date(report.createdAt).toLocaleString()}
                       </td>
-                      <td className="px-4 py-3">
-                        {pending
-                          ? `${report.import.seedProgress ?? 0} / ${report.import.uniqueItemCount ?? "?"}`
-                          : report.lineCount}
-                      </td>
-                      <td className="px-4 py-3">{report.import.status}</td>
+                      <td className="px-4 py-3">{report.lineCount}</td>
+                      <td className="px-4 py-3">{pending ? "READY" : report.import.status}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-2">
-                          {pending ? (
-                            <button
-                              type="button"
-                              className="text-primary hover:underline disabled:opacity-50"
-                              disabled={uploading}
-                              onClick={() => void resumeSeed(report.id)}
-                            >
-                              Resume seed
-                            </button>
-                          ) : (
-                            <>
-                              <Link
-                                href={`/admin/reports/${report.id}`}
-                                className="text-primary hover:underline"
-                              >
-                                Edit
-                              </Link>
-                              <Link
-                                href={`/admin/reports/${report.id}/print`}
-                                className="text-primary hover:underline"
-                                target="_blank"
-                              >
-                                Print / PDF
-                              </Link>
-                            </>
-                          )}
+                          <Link
+                            href={`/admin/reports/${report.id}`}
+                            className="text-primary hover:underline"
+                          >
+                            Edit
+                          </Link>
+                          <Link
+                            href={`/admin/reports/${report.id}/print`}
+                            className="text-primary hover:underline"
+                            target="_blank"
+                          >
+                            Print / PDF
+                          </Link>
                           <button
                             type="button"
                             className="text-error hover:underline disabled:opacity-50"
