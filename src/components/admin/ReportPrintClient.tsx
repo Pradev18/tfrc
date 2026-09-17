@@ -6,7 +6,6 @@ import {
   REPORT_ROWS_PER_PAGE,
   TFRC_REPORT_LOGO_SRC,
 } from "@/lib/report/office-report-pdf-html";
-import { isOwnerWhatsAppHref } from "@/lib/report/owner-whatsapp";
 import {
   alternateImageUrls,
   isBrowserDisplayableImageUrl,
@@ -272,38 +271,46 @@ export function ReportPrintClient({
     return pdf.output("blob");
   }
 
+  function downloadPdfFile(file: File) {
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file.name;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   async function handleSendWhatsApp() {
     if (sendingWhatsApp || loading || lines.length === 0) return;
     setSendingWhatsApp(true);
     setError(null);
-    setWhatsAppNote("Preparing the PDF for +974 5504 9229 only…");
+    setWhatsAppNote("Making the PDF…");
     try {
       const blob = await buildPreviewPdf();
+      const file = new File([blob], "TFRC-report.pdf", { type: "application/pdf" });
+
       const form = new FormData();
-      form.append("file", blob, "TFRC-report.pdf");
+      form.append("file", file, file.name);
       const res = await fetch(`/api/admin/reports/${reportId}/whatsapp`, {
         method: "POST",
         body: form,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not prepare the WhatsApp copy");
-
-      if (data.sent) {
-        setWhatsAppNote("PDF copy sent to +974 5504 9229 only.");
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.sent) {
+        setWhatsAppNote("PDF file sent to +974 5504 9229 only.");
         return;
       }
 
-      if (typeof data.whatsappHref === "string" && isOwnerWhatsAppHref(data.whatsappHref)) {
-        window.open(data.whatsappHref, "_blank", "noopener,noreferrer");
-        setWhatsAppNote(
-          "WhatsApp opened for +974 5504 9229 only. Press Send so the owner receives the PDF copy."
-        );
-        return;
-      }
-      throw new Error("Could not open the owner WhatsApp number");
+      // WhatsApp chat links can only insert text, which is why a URL appeared.
+      // Hand the real PDF file to the already-locked owner chat instead.
+      downloadPdfFile(file);
+      window.open("https://web.whatsapp.com/send?phone=97455049229", "_blank", "noopener,noreferrer");
+      setWhatsAppNote(
+        "TFRC-report.pdf was downloaded. Drop that file into the +974 5504 9229 chat and send it. Do not send a link."
+      );
     } catch (e) {
       setWhatsAppNote(null);
-      setError(e instanceof Error ? e.message : "Could not send the PDF on WhatsApp");
+      setError(e instanceof Error ? e.message : "Could not make the PDF");
     } finally {
       setSendingWhatsApp(false);
     }
