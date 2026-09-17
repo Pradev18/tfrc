@@ -41,7 +41,7 @@ export async function createOfficeReportImport(input: {
     data: {
       fileName: input.fileName,
       fileSize: input.fileSize,
-      status: "PENDING",
+      status: "READY",
       inventorySheetName: parsed.inventorySheetName,
       imageSheetName: parsed.imageSheetName,
       iqsSheetName: parsed.iqsSheetName,
@@ -51,7 +51,7 @@ export async function createOfficeReportImport(input: {
       imageLinkCount: parsed.imageLinks.length,
       duplicateItemCodes: JSON.stringify(parsed.duplicateInventoryCodes),
       uniqueItemCount: uniqueCodes.size,
-      seedProgress: 0,
+      seedProgress: uniqueCodes.size,
       iqsWholesaleByCode: JSON.stringify(wholesaleByCode),
       createdByUserId: input.userId ?? null,
     },
@@ -108,7 +108,7 @@ export async function createOfficeReportImport(input: {
       report,
       seededLineCount: 0,
       uniqueItemCount: uniqueCodes.size,
-      needsSeed: uniqueCodes.size > 0,
+      needsSeed: false,
     };
   } catch (error) {
     await prisma.officeReportImport.delete({ where: { id: created.id } }).catch(() => null);

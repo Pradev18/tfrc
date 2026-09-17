@@ -150,10 +150,9 @@ export function ReportsAdminClient({
       <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
         <h2 className="text-base font-semibold text-text">Upload Excel File</h2>
         <p className="mt-1 text-sm text-text-muted">
-          Upload the Office Forms workbook. Unique inventory codes are seeded in small
-          batches (Hostinger/Cloudflare safe). Duplicates are listed separately and omitted
-          from the PDF. Print uses sectioned pages so the server never builds a huge HTML
-          file.
+          Upload the Office Forms workbook. The report starts empty. Search an item code
+          and add only the products you want. Duplicates stay listed separately and are
+          omitted from the PDF.
         </p>
         <label className="mt-4 inline-flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-border bg-surface-muted px-4 py-3 text-sm font-medium text-text hover:border-primary">
           <span>

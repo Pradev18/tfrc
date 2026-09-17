@@ -474,8 +474,7 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
       <section className="rounded-xl border border-border bg-surface p-4">
         <h2 className="text-base font-semibold text-text">Add item code</h2>
         <p className="mt-1 text-sm text-text-muted">
-          All unique inventory codes are loaded after upload. Add a missing code here if needed
-          (duplicates already on the report are rejected).
+          Type an item code and add it. Only codes you add appear in the report.
         </p>
         <div className="relative mt-3 flex flex-col gap-2 sm:flex-row">
           <input
@@ -566,8 +565,7 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
               {report.lines.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-4 py-8 text-center text-text-muted">
-                    No report rows yet. Re-upload the workbook to load all unique inventory
-                    item codes, or add a code manually above.
+                    No items yet. Enter an item code above and add it.
                   </td>
                 </tr>
               ) : (
