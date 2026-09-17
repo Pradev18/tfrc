@@ -42,6 +42,40 @@ type ReportLine = {
 const SECTION_ROWS = 100;
 const FETCH_PAGE_SIZE = 100;
 
+/** html2canvas and Print to PDF drop SVG logos. A PNG of the same mark prints. */
+async function ensureReportLogosArePng(root: ParentNode) {
+  const logos = Array.from(root.querySelectorAll("img.rp-logo")) as HTMLImageElement[];
+  await Promise.all(
+    logos.map(async (img) => {
+      const src = img.currentSrc || img.src;
+      if (!src || src.startsWith("data:image/png")) return;
+      const png = await rasterizeReportLogo(src);
+      if (png) img.src = png;
+    })
+  );
+}
+
+function rasterizeReportLogo(src: string): Promise<string | null> {
+  if (!src || src.startsWith("data:image/png")) return Promise.resolve(src);
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 480;
+      canvas.height = 288;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(null);
+        return;
+      }
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    image.onerror = () => resolve(null);
+    image.src = src;
+  });
+}
+
 async function waitForImages(root: ParentNode, timeoutMs = 30000) {
   const imgs = Array.from(root.querySelectorAll("img.product-img")) as HTMLImageElement[];
   await Promise.all(
@@ -134,6 +168,7 @@ export function ReportPrintClient({
   initialMeta: PrintMeta;
 }) {
   const [meta] = useState(initialMeta);
+  const [logoSrc, setLogoSrc] = useState(TFRC_REPORT_LOGO_SRC);
   const [sectionIndex, setSectionIndex] = useState(0);
   const [lines, setLines] = useState<ReportLine[]>([]);
   const [loading, setLoading] = useState(false);
@@ -204,6 +239,16 @@ export function ReportPrintClient({
     void loadSection(0);
   }, [loadSection]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void rasterizeReportLogo(TFRC_REPORT_LOGO_SRC).then((png) => {
+      if (!cancelled && png) setLogoSrc(png);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function inlineImagesForPdf(root: ParentNode) {
     const imgs = Array.from(root.querySelectorAll("img")) as HTMLImageElement[];
     await Promise.all(
@@ -245,6 +290,7 @@ export function ReportPrintClient({
       await new Promise((r) => window.requestAnimationFrame(() => r(undefined)));
       const root = document.querySelector(".report-print-root");
       if (!root) throw new Error("Preview is not ready");
+      await ensureReportLogosArePng(root);
       await inlineImagesForPdf(root);
       await waitForImages(root, 20000);
       const pages = Array.from(root.querySelectorAll(".report-page")) as HTMLElement[];
@@ -317,7 +363,10 @@ export function ReportPrintClient({
       // Give React a paint so proxied <img> nodes exist, then wait for loads.
       await new Promise((r) => window.requestAnimationFrame(() => r(undefined)));
       const root = document.querySelector(".report-print-root");
-      if (root) await waitForImages(root, 45000);
+      if (root) {
+        await ensureReportLogosArePng(root);
+        await waitForImages(root, 45000);
+      }
       await new Promise((r) => window.setTimeout(r, 400));
       window.print();
     } finally {
@@ -395,7 +444,7 @@ export function ReportPrintClient({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     className="rp-logo"
-                    src={TFRC_REPORT_LOGO_SRC}
+                    src={logoSrc}
                     alt="TFRC"
                     width={120}
                     height={72}
@@ -1008,7 +1057,12 @@ const REPORT_A4_CSS = `
       margin-bottom: 1.5mm;
       overflow: visible;
     }
-    .report-page .rp-logo { width: 18mm; height: 12mm; }
+    .report-page .rp-logo {
+      width: 26mm;
+      height: 16mm;
+      object-fit: contain;
+      overflow: visible;
+    }
     .report-page .rp-brand .rp-ar,
     .report-page .rp-brand .rp-tag { font-size: 7pt; margin: 0; }
     .report-page .rp-brand h1 { font-size: 10.5pt; margin: 0.4mm 0 0; }
