@@ -6,16 +6,51 @@ import {
   type OfficeFormsColumnMap,
   type ParsedImageLink,
   type ParsedInventoryRow,
+  type ParsedOfficeFormsWorkbook,
 } from "@/lib/report/office-forms-parser";
 import { normalizeItemCode } from "@/lib/report/office-forms-normalize";
 import {
   itemCodeMatchVariants,
   pickPreferredImageUrl,
 } from "@/lib/report/report-image-src";
+import {
+  deleteReportImportWorkbook,
+  readReportImportWorkbook,
+  saveReportImportWorkbook,
+} from "@/lib/report/office-report-upload-store";
 
-const BATCH = 500;
-/** Hostinger-safe: keep each seed request small so Cloudflare/proxy does not time out. */
+const INGEST_BATCH = 400;
+/** @deprecated kept for old seed route callers */
 const SEED_BATCH = 250;
+
+type CachedParse = {
+  parsed: ParsedOfficeFormsWorkbook;
+  uniqueItemCount: number;
+};
+
+const parseCache = new Map<string, CachedParse>();
+
+function sourceTotal(inventoryRowCount: number, imageLinkCount: number): number {
+  return Math.max(0, inventoryRowCount) + Math.max(0, imageLinkCount);
+}
+
+async function getCachedParse(importId: string): Promise<CachedParse> {
+  const hit = parseCache.get(importId);
+  if (hit) return hit;
+  const buffer = await readReportImportWorkbook(importId);
+  if (!buffer) {
+    throw new Error("Upload session expired. Please upload the Excel file again.");
+  }
+  const parsed = parseOfficeFormsWorkbook(buffer);
+  const uniqueItemCount = new Set(parsed.inventoryRows.map((row) => row.itemCode)).size;
+  const entry = { parsed, uniqueItemCount };
+  parseCache.set(importId, entry);
+  return entry;
+}
+
+function clearCachedParse(importId: string) {
+  parseCache.delete(importId);
+}
 
 export async function createOfficeReportImport(input: {
   fileName: string;
@@ -23,11 +58,10 @@ export async function createOfficeReportImport(input: {
   buffer: Buffer;
   userId?: string | null;
 }) {
-  let parsed;
+  let parsed: ParsedOfficeFormsWorkbook;
   try {
     parsed = parseOfficeFormsWorkbook(input.buffer);
   } catch (error) {
-    // Do not persist orphan FAILED imports — surface a clear validation error only.
     throw new Error(error instanceof Error ? error.message : "Failed to parse workbook");
   }
 
@@ -37,12 +71,12 @@ export async function createOfficeReportImport(input: {
     wholesaleByCode[seed.itemCode] = seed.wholesalePriceApproval;
   }
 
-  // READY immediately. Lines are not copied from the workbook; the user adds codes.
+  // PENDING until inventory + image rows are written in small HTTP batches.
   const created = await prisma.officeReportImport.create({
     data: {
       fileName: input.fileName,
       fileSize: input.fileSize,
-      status: "READY",
+      status: "PENDING",
       inventorySheetName: parsed.inventorySheetName,
       imageSheetName: parsed.imageSheetName,
       iqsSheetName: parsed.iqsSheetName,
@@ -52,37 +86,15 @@ export async function createOfficeReportImport(input: {
       imageLinkCount: parsed.imageLinks.length,
       duplicateItemCodes: JSON.stringify(parsed.duplicateInventoryCodes),
       uniqueItemCount: uniqueCodes.size,
-      seedProgress: uniqueCodes.size,
+      seedProgress: 0,
       iqsWholesaleByCode: JSON.stringify(wholesaleByCode),
       createdByUserId: input.userId ?? null,
     },
   });
 
   try {
-    for (let i = 0; i < parsed.inventoryRows.length; i += BATCH) {
-      const chunk = parsed.inventoryRows.slice(i, i + BATCH);
-      await prisma.officeReportInventoryItem.createMany({
-        data: chunk.map((row, offset) => ({
-          importId: created.id,
-          itemCode: row.itemCode,
-          payload: JSON.stringify(row.payload),
-          sortOrder: i + offset,
-        })),
-      });
-    }
-
-    for (let i = 0; i < parsed.imageLinks.length; i += BATCH) {
-      const chunk = parsed.imageLinks.slice(i, i + BATCH);
-      await prisma.officeReportImageLink.createMany({
-        data: chunk.map((row, offset) => ({
-          importId: created.id,
-          itemCode: row.itemCode,
-          imageUrl: row.imageUrl,
-          fileName: row.fileName ?? null,
-          sortOrder: i + offset,
-        })),
-      });
-    }
+    await saveReportImportWorkbook(created.id, input.buffer);
+    parseCache.set(created.id, { parsed, uniqueItemCount: uniqueCodes.size });
 
     const report = await prisma.officeReport.create({
       data: {
@@ -97,9 +109,6 @@ export async function createOfficeReportImport(input: {
       },
     });
 
-    // Inventory and image rows stay on this import for lookup. Report lines stay empty.
-    parsed = null as unknown as typeof parsed;
-
     const importRecord = await prisma.officeReportImport.findUniqueOrThrow({
       where: { id: created.id },
     });
@@ -110,8 +119,11 @@ export async function createOfficeReportImport(input: {
       seededLineCount: 0,
       uniqueItemCount: uniqueCodes.size,
       needsSeed: false,
+      needsIngest: sourceTotal(parsed.inventoryRows.length, parsed.imageLinks.length) > 0,
     };
   } catch (error) {
+    clearCachedParse(created.id);
+    await deleteReportImportWorkbook(created.id).catch(() => null);
     await prisma.officeReportImport.delete({ where: { id: created.id } }).catch(() => null);
     throw new Error(
       error instanceof Error ? error.message : "Failed to save imported workbook data"
@@ -119,16 +131,108 @@ export async function createOfficeReportImport(input: {
   }
 }
 
-/** Old clients may still call seed. Never copy the workbook into the report list. */
-async function keepReportManual(importId: string) {
-  await prisma.officeReportImport.updateMany({
-    where: { id: importId, status: "PENDING" },
-    data: { status: "READY", errorMessage: null },
+/**
+ * Write the next chunk of inventory / image source rows for lookup.
+ * Does not create report lines — those stay empty until codes are added.
+ */
+export async function ingestOfficeReportSourceBatch(
+  importId: string,
+  batchSize = INGEST_BATCH
+) {
+  const take = Math.min(Math.max(batchSize, 50), 800);
+  const importRecord = await prisma.officeReportImport.findUnique({
+    where: { id: importId },
   });
+  if (!importRecord) throw new Error("Import not found.");
+  if (importRecord.status === "FAILED") {
+    throw new Error(importRecord.errorMessage || "Import failed.");
+  }
+  if (importRecord.status === "READY") {
+    return {
+      done: true,
+      progress: importRecord.seedProgress,
+      total: sourceTotal(importRecord.inventoryRowCount, importRecord.imageLinkCount),
+      phase: "done" as const,
+    };
+  }
+
+  const total = sourceTotal(importRecord.inventoryRowCount, importRecord.imageLinkCount);
+  if (total <= 0) {
+    await prisma.officeReportImport.update({
+      where: { id: importId },
+      data: { status: "READY", seedProgress: 0, errorMessage: null },
+    });
+    clearCachedParse(importId);
+    await deleteReportImportWorkbook(importId).catch(() => null);
+    return { done: true, progress: 0, total: 0, phase: "done" as const };
+  }
+
+  const { parsed } = await getCachedParse(importId);
+  let progress = importRecord.seedProgress;
+  const inventoryTotal = parsed.inventoryRows.length;
+
+  if (progress < inventoryTotal) {
+    const start = progress;
+    const chunk = parsed.inventoryRows.slice(start, start + take);
+    if (chunk.length > 0) {
+      await prisma.officeReportInventoryItem.createMany({
+        data: chunk.map((row, offset) => ({
+          importId,
+          itemCode: row.itemCode,
+          payload: JSON.stringify(row.payload),
+          sortOrder: start + offset,
+        })),
+      });
+      progress = start + chunk.length;
+    } else {
+      progress = inventoryTotal;
+    }
+  } else {
+    const imageStart = progress - inventoryTotal;
+    const chunk = parsed.imageLinks.slice(imageStart, imageStart + take);
+    if (chunk.length > 0) {
+      await prisma.officeReportImageLink.createMany({
+        data: chunk.map((row, offset) => ({
+          importId,
+          itemCode: row.itemCode,
+          imageUrl: row.imageUrl,
+          fileName: row.fileName ?? null,
+          sortOrder: imageStart + offset,
+        })),
+      });
+      progress = inventoryTotal + imageStart + chunk.length;
+    } else {
+      progress = total;
+    }
+  }
+
+  const done = progress >= total;
+  await prisma.officeReportImport.update({
+    where: { id: importId },
+    data: {
+      seedProgress: progress,
+      status: done ? "READY" : "PENDING",
+      errorMessage: null,
+      inventoryRowCount: parsed.inventoryRows.length,
+      imageLinkCount: parsed.imageLinks.length,
+    },
+  });
+
+  if (done) {
+    clearCachedParse(importId);
+    await deleteReportImportWorkbook(importId).catch(() => null);
+  }
+
+  return {
+    done,
+    progress,
+    total,
+    phase: done ? ("done" as const) : progress < inventoryTotal ? ("inventory" as const) : ("images" as const),
+  };
 }
 
 /**
- * Does not insert report lines. Items appear only when a code is added by hand.
+ * Does not insert report lines. If source ingest is still PENDING, finish that instead.
  */
 export async function seedOfficeReportLinesBatch(reportId: string, _batchSize = SEED_BATCH) {
   const report = await prisma.officeReport.findUnique({
@@ -139,7 +243,15 @@ export async function seedOfficeReportLinesBatch(reportId: string, _batchSize = 
   if (report.import.status === "FAILED") {
     throw new Error(report.import.errorMessage || "Import failed.");
   }
-  await keepReportManual(report.importId);
+  if (report.import.status === "PENDING") {
+    const batch = await ingestOfficeReportSourceBatch(report.importId);
+    return {
+      done: batch.done,
+      seeded: 0,
+      total: batch.total,
+      progress: batch.progress,
+    };
+  }
   return {
     done: true,
     seeded: 0,
@@ -182,10 +294,6 @@ function formatIqsReportDate(raw: string): string {
 }
 
 export async function listOfficeReports() {
-  await prisma.officeReportImport.updateMany({
-    where: { status: "PENDING" },
-    data: { status: "READY", errorMessage: null },
-  });
   const reports = await prisma.officeReport.findMany({
     where: { import: { status: { in: ["READY", "PENDING"] } } },
     orderBy: { createdAt: "desc" },
@@ -271,16 +379,16 @@ export async function getOfficeReportDetail(
   });
   if (!report) return null;
   if (report.import.status === "FAILED") return null;
-  if (report.import.status === "PENDING") {
-    await keepReportManual(report.importId);
-    report.import.status = "READY";
-  }
 
   const lineCount = report._count.lines;
   const serialized = serializeReport(report);
-  const lines = await enrichLinesWithPreferredImages(
-    report.importId,
-    serialized.lines
+  const lines =
+    report.import.status === "READY"
+      ? await enrichLinesWithPreferredImages(report.importId, serialized.lines)
+      : serialized.lines;
+  const sourceTotalRows = sourceTotal(
+    report.import.inventoryRowCount,
+    report.import.imageLinkCount
   );
   return {
     ...serialized,
@@ -292,7 +400,7 @@ export async function getOfficeReportDetail(
     seed: {
       status: report.import.status,
       progress: report.import.seedProgress,
-      total: report.import.uniqueItemCount,
+      total: sourceTotalRows,
       done: report.import.status === "READY",
     },
   };
@@ -308,10 +416,6 @@ export async function getOfficeReportPrintMeta(reportId: string) {
     },
   });
   if (!report) return null;
-  if (report.import.status === "PENDING") {
-    await keepReportManual(report.importId);
-    report.import.status = "READY";
-  }
   if (report.import.status !== "READY") return null;
   return {
     id: report.id,
@@ -348,10 +452,6 @@ export async function getOfficeReportDetailForPdf(
     },
   });
   if (!report) return null;
-  if (report.import.status === "PENDING") {
-    await keepReportManual(report.importId);
-    report.import.status = "READY";
-  }
   if (report.import.status !== "READY") return null;
 
   const uniqueLines = dedupeReportLinesKeepOriginal(report.lines);
@@ -868,7 +968,6 @@ export async function searchOfficeItemCodes(
   const take = Math.min(Math.max(limit, 1), 80);
   const skip = Math.max(offset, 0);
 
-  await keepReportManual(importId);
   const importRecord = await prisma.officeReportImport.findUnique({
     where: { id: importId },
     select: { columnMap: true, status: true },

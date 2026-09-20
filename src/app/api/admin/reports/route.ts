@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
       seededLineCount: result.seededLineCount,
       uniqueItemCount: result.uniqueItemCount,
       needsSeed: result.needsSeed,
+      needsIngest: result.needsIngest,
     });
   } catch (e) {
     return NextResponse.json(

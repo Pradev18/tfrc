@@ -39,10 +39,44 @@ export function ReportsAdminClient({
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  async function readJson(res: Response): Promise<Record<string, unknown>> {
+    const text = await res.text();
+    try {
+      return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    } catch {
+      throw new Error(
+        res.status >= 500
+          ? `Server error (${res.status}). The Excel is fine — try again after redeploy, or upload in a stable connection.`
+          : `Upload failed (${res.status}). The server did not return a usable response.`
+      );
+    }
+  }
+
+  async function ingestUntilReady(
+    importId: string,
+    onProgress: (progress: number, total: number, phase: string) => void
+  ) {
+    for (let i = 0; i < 2000; i++) {
+      const res = await fetch(`/api/admin/reports/imports/${importId}/ingest`, {
+        method: "POST",
+        cache: "no-store",
+      });
+      const data = await readJson(res);
+      if (!res.ok) throw new Error(String(data.error || "Import failed"));
+      onProgress(
+        Number(data.progress ?? 0),
+        Number(data.total ?? 0),
+        String(data.phase || "")
+      );
+      if (data.done) return;
+    }
+    throw new Error("Import timed out. Re-open Reports and press Resume import.");
+  }
+
   async function refresh() {
     const res = await fetch("/api/admin/reports", { cache: "no-store" });
-    const data = await res.json();
-    if (res.ok) setReports(data.reports ?? []);
+    const data = await readJson(res);
+    if (res.ok) setReports((data.reports as ReportListItem[]) ?? []);
   }
 
   async function onUpload(file: File | null, inputEl?: HTMLInputElement | null) {
@@ -58,10 +92,20 @@ export function ReportsAdminClient({
         body: formData,
         cache: "no-store",
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
+      const data = await readJson(res);
+      if (!res.ok) throw new Error(String(data.error || "Upload failed"));
 
-      router.push(`/admin/reports/${data.reportId}`);
+      if (data.needsIngest && data.importId) {
+        setProgressLabel("Saving inventory for lookup…");
+        await ingestUntilReady(String(data.importId), (progress, total, phase) => {
+          const label = phase === "images" ? "image links" : "inventory rows";
+          setProgressLabel(
+            `Saving ${label} ${progress.toLocaleString()} / ${total.toLocaleString()}…`
+          );
+        });
+      }
+
+      router.push(`/admin/reports/${String(data.reportId)}`);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
@@ -70,6 +114,30 @@ export function ReportsAdminClient({
       setUploading(false);
       setProgressLabel(null);
       if (inputEl) inputEl.value = "";
+    }
+  }
+
+  async function resumeImport(importId: string, reportId: string) {
+    if (uploading) return;
+    setUploading(true);
+    setError(null);
+    try {
+      setProgressLabel("Resuming import…");
+      await ingestUntilReady(importId, (progress, total, phase) => {
+        const label = phase === "images" ? "image links" : "inventory rows";
+        setProgressLabel(
+          `Saving ${label} ${progress.toLocaleString()} / ${total.toLocaleString()}…`
+        );
+      });
+      await refresh();
+      router.push(`/admin/reports/${reportId}`);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Import failed");
+      await refresh();
+    } finally {
+      setUploading(false);
+      setProgressLabel(null);
     }
   }
 
@@ -82,8 +150,8 @@ export function ReportsAdminClient({
     setError(null);
     try {
       const res = await fetch(`/api/admin/reports/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Delete failed");
+      const data = await readJson(res);
+      if (!res.ok) throw new Error(String(data.error || "Delete failed"));
       await refresh();
       router.refresh();
     } catch (e) {
@@ -167,23 +235,45 @@ export function ReportsAdminClient({
                       <td className="px-4 py-3 text-text-muted">
                         {new Date(report.createdAt).toLocaleString()}
                       </td>
-                      <td className="px-4 py-3">{report.lineCount}</td>
-                      <td className="px-4 py-3">{pending ? "READY" : report.import.status}</td>
+                      <td className="px-4 py-3">
+                        {pending
+                          ? `${report.import.seedProgress ?? 0} / ${
+                              (report.import.inventoryRowCount ?? 0) +
+                              (report.import.imageLinkCount ?? 0)
+                            }`
+                          : report.lineCount}
+                      </td>
+                      <td className="px-4 py-3">{report.import.status}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-2">
-                          <Link
-                            href={`/admin/reports/${report.id}`}
-                            className="text-primary hover:underline"
-                          >
-                            Edit
-                          </Link>
-                          <Link
-                            href={`/admin/reports/${report.id}/print`}
-                            className="text-primary hover:underline"
-                            target="_blank"
-                          >
-                            Print / PDF
-                          </Link>
+                          {pending ? (
+                            <button
+                              type="button"
+                              className="text-primary hover:underline disabled:opacity-50"
+                              disabled={uploading}
+                              onClick={() =>
+                                void resumeImport(report.import.id, report.id)
+                              }
+                            >
+                              Resume import
+                            </button>
+                          ) : (
+                            <>
+                              <Link
+                                href={`/admin/reports/${report.id}`}
+                                className="text-primary hover:underline"
+                              >
+                                Edit
+                              </Link>
+                              <Link
+                                href={`/admin/reports/${report.id}/print`}
+                                className="text-primary hover:underline"
+                                target="_blank"
+                              >
+                                Print / PDF
+                              </Link>
+                            </>
+                          )}
                           <button
                             type="button"
                             className="text-error hover:underline disabled:opacity-50"

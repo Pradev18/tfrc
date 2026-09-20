@@ -88,9 +88,54 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
     [report.id]
   );
 
+  const ingesting = report.seed && !report.seed.done;
+
   useEffect(() => {
     setReport(initialReport);
   }, [initialReport]);
+
+  useEffect(() => {
+    if (!ingesting) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        for (let i = 0; i < 2000 && !cancelled; i++) {
+          const res = await fetch(
+            `/api/admin/reports/imports/${report.import.id}/ingest`,
+            { method: "POST", cache: "no-store" }
+          );
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Import failed");
+          if (cancelled) return;
+          setReport((prev) => ({
+            ...prev,
+            seed: {
+              status: data.done ? "READY" : "PENDING",
+              progress: data.progress ?? 0,
+              total: data.total ?? 0,
+              done: Boolean(data.done),
+            },
+          }));
+          if (data.done) {
+            const refreshed = await fetch(
+              `/api/admin/reports/${report.id}/lines?page=1&pageSize=${report.pageSize}`,
+              { cache: "no-store" }
+            );
+            const body = await refreshed.json();
+            if (refreshed.ok && body.report) setReport(body.report);
+            return;
+          }
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Import failed");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ingesting, report.id, report.import.id, report.pageSize]);
 
   const rangeLabel = useMemo(() => {
     if (report.lineCount === 0) return "0 items";
@@ -303,12 +348,27 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
             href={previewHref}
             target="_blank"
             rel="noreferrer"
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            aria-disabled={Boolean(ingesting)}
+            onClick={(e) => {
+              if (ingesting) e.preventDefault();
+            }}
           >
             Print / PDF
           </a>
         </div>
       </div>
+
+      {ingesting && (
+        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          Saving this Excel for lookup in safe batches:{" "}
+          <strong>
+            {(report.seed?.progress ?? 0).toLocaleString()} /{" "}
+            {(report.seed?.total ?? 0).toLocaleString()}
+          </strong>
+          . Keep this tab open until it finishes. The item list stays empty until you add codes.
+        </section>
+      )}
 
       <section className="rounded-xl border border-border bg-surface p-4 text-sm text-text-muted">
         <p>
@@ -468,13 +528,13 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
               }
               if (e.key === "Escape") setCodesOpen(false);
             }}
-            disabled={busy}
+            disabled={busy || Boolean(ingesting)}
             autoComplete="off"
           />
           <button
             type="button"
             className="rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold text-text"
-            disabled={busy}
+            disabled={busy || Boolean(ingesting)}
             onClick={() => setCodesOpen((open) => !open)}
           >
             Codes
@@ -482,7 +542,7 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
           <button
             type="button"
             className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-            disabled={busy || !itemCode.trim()}
+            disabled={busy || Boolean(ingesting) || !itemCode.trim()}
             onClick={() => {
               setCodesOpen(false);
               void addLine(itemCode);
