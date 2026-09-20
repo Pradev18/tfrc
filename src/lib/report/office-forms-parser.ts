@@ -5,7 +5,7 @@ import {
   normalizeHeader,
   normalizeItemCode,
 } from "@/lib/report/office-forms-normalize";
-import { pickPreferredImageUrl } from "@/lib/report/report-image-src";
+import { pickPreferredImageUrl, itemCodeMatchVariants } from "@/lib/report/report-image-src";
 import {
   assertExcelBuffer,
   explainExcelParseFailure,
@@ -170,6 +170,66 @@ function pickSheet(
   return best;
 }
 
+function isCloudImageSheetName(name: string): boolean {
+  const lower = name.toLowerCase().replace(/[\s_-]+/g, "");
+  return (
+    lower.includes("cloudfare") ||
+    lower.includes("cloudflare") ||
+    lower === "cloud" ||
+    (lower.includes("image") && lower.includes("link")) ||
+    lower.includes("r2")
+  );
+}
+
+function pickCloudImageSheet(
+  workbook: XLSX.WorkBook
+): { name: string; headerRow: number; headers: string[]; rows: unknown[][] } | null {
+  // Prefer a sheet named Cloud Fare / Cloudflare even when headers are unusual.
+  for (const name of workbook.SheetNames) {
+    if (!isCloudImageSheetName(name)) continue;
+    const ws = workbook.Sheets[name];
+    if (!ws) continue;
+    const rows = sheetRows(ws);
+    let headerRow = findHeaderRow(rows, scoreImageSheet);
+    if (headerRow < 0) {
+      // Named Cloud Fare sheet: accept the first non-empty row as headers.
+      for (let i = 0; i < Math.min(rows.length, 10); i++) {
+        const headers = (rows[i] ?? []).map((c) => cellToString(c));
+        if (headers.some((h) => h)) {
+          headerRow = i;
+          break;
+        }
+      }
+    }
+    if (headerRow < 0) continue;
+    const headers = (rows[headerRow] ?? []).map((c) => cellToString(c));
+    return { name, headerRow, headers, rows };
+  }
+
+  return pickSheet(
+    workbook,
+    ["cloud fare", "cloudfare", "cloudflare", "image", "r2"],
+    scoreImageSheet
+  );
+}
+
+function extractImageItemCodes(rawName: string, imageUrl: string): string[] {
+  const fromName = normalizeItemCode(
+    rawName.replace(/\.(jpe?g|png|webp|gif|emf|wmf|tif|tiff)$/i, "")
+  );
+  const fromUrlMatch = imageUrl.match(
+    /\/([0-9A-Za-z_-]+?)\.(jpe?g|png|webp|gif|emf|wmf|tif|tiff)(?:\?|#|$)/i
+  );
+  const fromUrlRaw = fromUrlMatch ? normalizeItemCode(fromUrlMatch[1]) : "";
+  const fromUrlDigits = fromUrlRaw.replace(/\D/g, "");
+  const seeds = [fromName, fromUrlRaw, fromUrlDigits].filter(Boolean);
+  const out = new Set<string>();
+  for (const seed of seeds) {
+    for (const variant of itemCodeMatchVariants(seed)) out.add(variant);
+  }
+  return [...out];
+}
+
 function buildColumnMap(headers: string[]): OfficeFormsColumnMap {
   const itemCodeIdx = findHeaderIndex(headers, ["item code", "itemcode"]);
   const descriptionIdx = findHeaderIndex(headers, ["description", "item name", "product name"]);
@@ -271,11 +331,7 @@ export function parseOfficeFormsWorkbook(
     );
   }
 
-  const imageSheet = pickSheet(
-    workbook,
-    ["cloud fare", "cloudfare", "cloudflare", "image", "r2"],
-    scoreImageSheet
-  );
+  const imageSheet = pickCloudImageSheet(workbook);
 
   const iqsSheet = pickSheet(
     workbook,
@@ -324,6 +380,7 @@ export function parseOfficeFormsWorkbook(
 
   const imageLinks: ParsedImageLink[] = [];
   const imageCounts = new Map<string, number>();
+  const imageSeen = new Set<string>();
   if (imageSheet) {
     let codeIdx = findHeaderIndex(imageSheet.headers, [
       "image code",
@@ -351,25 +408,28 @@ export function parseOfficeFormsWorkbook(
         const imageUrl = cellToString(row[linkIdx]);
         if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) continue;
 
-        // Keys may be plain codes or filenames like 015896000065.jpg / *.emf
-        const fromName = normalizeItemCode(
-          rawName.replace(/\.(jpe?g|png|webp|gif|emf|wmf|tif|tiff)$/i, "")
-        );
-        const fromUrlMatch = imageUrl.match(
-          /\/(?:0*)?(\d{6,})\.(jpe?g|png|webp|gif|emf|wmf|tif|tiff)(?:\?|#|$)/i
-        );
-        const fromUrl = fromUrlMatch ? normalizeItemCode(fromUrlMatch[1]) : "";
-        const itemCode = fromName || fromUrl;
-        if (!itemCode) continue;
-
-        imageCounts.set(itemCode, (imageCounts.get(itemCode) ?? 0) + 1);
-        imageLinks.push({
-          itemCode,
-          imageUrl,
-          fileName: rawName || undefined,
-        });
+        const codes = extractImageItemCodes(rawName, imageUrl);
+        if (codes.length === 0) continue;
+        // Index under every leading-zero variant so Item_Qty codes always resolve.
+        for (const itemCode of codes) {
+          const key = `${itemCode}||${imageUrl}`;
+          if (imageSeen.has(key)) continue;
+          imageSeen.add(key);
+          imageCounts.set(itemCode, (imageCounts.get(itemCode) ?? 0) + 1);
+          imageLinks.push({
+            itemCode,
+            imageUrl,
+            fileName: rawName || undefined,
+          });
+        }
       }
     }
+  }
+
+  if (imageSheet && imageLinks.length === 0) {
+    throw new Error(
+      `Excel problem in “${fileName}”: sheet “${imageSheet.name}” was found but no usable image links were read. Expected columns like Image Code / File Name and Image Link / URL.`
+    );
   }
 
   const { seedRows: iqsSeedRows, formMeta: iqsFormMeta } = extractIqsSeed(

@@ -518,7 +518,8 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
       <section className="rounded-xl border border-border bg-surface p-4">
         <h2 className="text-base font-semibold text-text">Add item code</h2>
         <p className="mt-1 text-sm text-text-muted">
-          Open the list for codes from this Excel only, or type a code and add it. Older uploads are not shown.
+          Open the list for codes from this Excel only, or type a code and add it.
+          Codes with a Cloud Fare / Cloudflare image link get that image automatically.
         </p>
         <div ref={codePickerRef} className="relative mt-3 flex flex-col gap-2 sm:flex-row">
           <input

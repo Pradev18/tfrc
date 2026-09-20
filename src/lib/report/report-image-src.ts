@@ -98,7 +98,7 @@ export function itemCodeMatchVariants(code: string): string[] {
   if (/^\d+$/.test(base)) {
     const stripped = base.replace(/^0+/, "") || "0";
     out.add(stripped);
-    for (const width of [11, 12, 13, 14]) {
+    for (const width of [10, 11, 12, 13, 14, 15]) {
       if (stripped.length < width) out.add(stripped.padStart(width, "0"));
     }
   }

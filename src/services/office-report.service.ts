@@ -686,7 +686,8 @@ async function enrichLinesWithPreferredImages<
       line.imageLink,
     ].filter(Boolean);
     const preferred = pickPreferredImageUrl([...new Set(candidates)]);
-    if (!preferred || preferred === line.imageLink) return line;
+    if (!preferred) return line;
+    if (preferred === line.imageLink) return line;
     return { ...line, imageLink: preferred };
   });
 }
@@ -745,14 +746,34 @@ async function findImageRows(importId: string, itemCode: string) {
       OR: prefixes.map((prefix) => ({ itemCode: { startsWith: prefix } })),
     },
     orderBy: { sortOrder: "asc" },
-    take: 40,
+    take: 80,
   });
   const wanted = new Set(variants.map((code) => code.toLowerCase()));
-  return candidates.filter((row) => {
+  const filtered = candidates.filter((row) => {
     const normalized = normalizeItemCode(row.itemCode).toLowerCase();
     if (wanted.has(normalized)) return true;
     return itemCodeMatchVariants(row.itemCode).some((code) => wanted.has(code.toLowerCase()));
   });
+  if (filtered.length > 0) return filtered;
+
+  // Last resort for numeric codes: match by shared digit core (leading-zero drift).
+  const stripped = itemCode.replace(/^0+/, "");
+  if (!/^\d{6,}$/.test(stripped)) return filtered;
+  const loose = await prisma.officeReportImageLink.findMany({
+    where: {
+      importId,
+      OR: [
+        { itemCode: stripped },
+        { itemCode: { endsWith: stripped } },
+        { itemCode: { contains: stripped } },
+      ],
+    },
+    orderBy: { sortOrder: "asc" },
+    take: 40,
+  });
+  return loose.filter((row) =>
+    itemCodeMatchVariants(row.itemCode).some((code) => wanted.has(code.toLowerCase()))
+  );
 }
 
 function wholesaleForCode(
@@ -797,16 +818,31 @@ async function resolveLookup(importId: string, itemCodeRaw: string) {
     fileName: row.fileName ?? undefined,
   }));
 
-  const fields = lookupOfficeFormsFields(
+  const lookedUp = lookupOfficeFormsFields(
     { columnMap },
     parsedInventory,
     parsedImages
   );
-  if (fields.lookupStatus === "not_found") {
+  if (lookedUp.lookupStatus === "not_found") {
     throw new Error(
       `Item code ${itemCode} was not found in the uploaded Item_Qty_in_Store data.`
     );
   }
+
+  // Compulsory: if Cloud Fare has any link for this code, the report line must carry it.
+  const preferredImage =
+    lookedUp.imageLink ||
+    pickPreferredImageUrl(parsedImages.map((row) => row.imageUrl).filter(Boolean));
+  const fields = {
+    ...lookedUp,
+    imageLink: preferredImage || lookedUp.imageLink,
+    lookupWarning:
+      !preferredImage && importRecord.imageLinkCount > 0 && parsedImages.length === 0
+        ? [lookedUp.lookupWarning, "No Cloud Fare / Cloudflare image link matched this item code."]
+            .filter(Boolean)
+            .join(" ")
+        : lookedUp.lookupWarning,
+  };
 
   const wholesaleByCode = safeJsonObject(importRecord.iqsWholesaleByCode) as Record<
     string,
