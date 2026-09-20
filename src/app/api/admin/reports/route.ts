@@ -5,6 +5,7 @@ import {
   listOfficeReports,
 } from "@/services/office-report.service";
 import { assertExcelBuffer } from "@/lib/report/excel-file-guard";
+import { sanitizeExcelUploadName } from "@/lib/report/office-report-upload-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
       return jsonError("No file uploaded. Choose an .xlsx or .xls Office Forms workbook.");
     }
 
-    const fileName = file.name || "workbook.xlsx";
+    const fileName = sanitizeExcelUploadName(file.name || "workbook.xlsx");
     const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
     if (!ALLOWED_EXTENSIONS.has(ext)) {
       return jsonError(

@@ -43,6 +43,12 @@ export const authConfig = {
       }
 
       if (isAdmin && !isLogin && !auth?.user) {
+        if (pathname.startsWith("/api/")) {
+          return NextResponse.json(
+            { error: "Unauthorized. Sign in again." },
+            { status: 401, headers: { "Cache-Control": "no-store" } }
+          );
+        }
         const loginUrl = new URL("/admin/login", request.url);
         loginUrl.searchParams.set(
           "callbackUrl",
@@ -54,6 +60,12 @@ export const authConfig = {
       if (isAdmin && !isLogin && auth?.user) {
         const roles = (auth.user as { roles?: string[] }).roles ?? [];
         if (!roles.some((role) => ADMIN_ROLES.has(role))) {
+          if (pathname.startsWith("/api/")) {
+            return NextResponse.json(
+              { error: "Forbidden. Sign in with an admin account." },
+              { status: 403, headers: { "Cache-Control": "no-store" } }
+            );
+          }
           return new NextResponse("Forbidden", {
             status: 403,
             headers: { "Cache-Control": "no-store" },

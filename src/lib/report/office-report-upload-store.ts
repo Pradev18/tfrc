@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile, unlink } from "fs/promises";
+import { mkdir, readFile, writeFile, unlink, readdir, rm } from "fs/promises";
 import path from "path";
+import { randomUUID } from "crypto";
 
 function storeDirectories(): string[] {
   const cwd = process.cwd();
@@ -11,14 +12,28 @@ function storeDirectories(): string[] {
   ];
 }
 
-export async function saveReportImportWorkbook(importId: string, buffer: Buffer): Promise<void> {
-  const filename = `${importId}.xlsx`;
+export function sanitizeExcelUploadName(fileName: string): string {
+  const raw = String(fileName || "workbook.xlsx").trim() || "workbook.xlsx";
+  const parts = raw.split(".");
+  const ext = (parts.length > 1 ? parts.pop() : "xlsx")!.toLowerCase();
+  const safeExt = ext === "xls" || ext === "xlsx" ? ext : "xlsx";
+  const base = parts
+    .join(".")
+    .replace(/['"`<>\\|?*\u0000-\u001f]/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 80);
+  return `${base || "workbook"}.${safeExt}`;
+}
+
+async function writeEverywhere(relativeName: string, buffer: Buffer): Promise<void> {
   let written = false;
   const errors: string[] = [];
   for (const dir of storeDirectories()) {
     try {
       await mkdir(dir, { recursive: true });
-      await writeFile(path.join(dir, filename), buffer);
+      await writeFile(path.join(dir, relativeName), buffer);
       written = true;
     } catch (error) {
       errors.push(`${dir}: ${error instanceof Error ? error.message : String(error)}`);
@@ -26,17 +41,15 @@ export async function saveReportImportWorkbook(importId: string, buffer: Buffer)
   }
   if (!written) {
     throw new Error(
-      `Could not store the workbook for import. ${errors[0] ?? "Upload directory is not writable."}`
+      `Could not store upload data. ${errors[0] ?? "Upload directory is not writable."}`
     );
   }
 }
 
-export async function readReportImportWorkbook(importId: string): Promise<Buffer | null> {
-  if (!/^[a-z0-9_-]+$/i.test(importId)) return null;
-  const filename = `${importId}.xlsx`;
+async function readFirst(relativeName: string): Promise<Buffer | null> {
   for (const dir of storeDirectories()) {
     try {
-      return await readFile(path.join(dir, filename));
+      return await readFile(path.join(dir, relativeName));
     } catch {
       // try next
     }
@@ -44,14 +57,137 @@ export async function readReportImportWorkbook(importId: string): Promise<Buffer
   return null;
 }
 
-export async function deleteReportImportWorkbook(importId: string): Promise<void> {
-  const filename = `${importId}.xlsx`;
+async function deleteEverywhere(relativeName: string): Promise<void> {
   await Promise.all(
     storeDirectories().map(async (dir) => {
       try {
-        await unlink(path.join(dir, filename));
+        await unlink(path.join(dir, relativeName));
       } catch {
-        // ignore missing
+        // ignore
+      }
+    })
+  );
+}
+
+export async function saveReportImportWorkbook(importId: string, buffer: Buffer): Promise<void> {
+  await writeEverywhere(`${importId}.xlsx`, buffer);
+}
+
+export async function readReportImportWorkbook(importId: string): Promise<Buffer | null> {
+  if (!/^[a-z0-9_-]+$/i.test(importId)) return null;
+  return readFirst(`${importId}.xlsx`);
+}
+
+export async function deleteReportImportWorkbook(importId: string): Promise<void> {
+  await deleteEverywhere(`${importId}.xlsx`);
+}
+
+type UploadMeta = {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  totalChunks: number;
+  received: number[];
+  createdAt: number;
+};
+
+export async function createReportUploadSession(input: {
+  fileName: string;
+  fileSize: number;
+  totalChunks: number;
+}): Promise<string> {
+  const id = randomUUID().replace(/-/g, "");
+  const meta: UploadMeta = {
+    id,
+    fileName: sanitizeExcelUploadName(input.fileName),
+    fileSize: input.fileSize,
+    totalChunks: input.totalChunks,
+    received: [],
+    createdAt: Date.now(),
+  };
+  await writeEverywhere(`${id}.meta.json`, Buffer.from(JSON.stringify(meta), "utf8"));
+  return id;
+}
+
+export async function saveReportUploadChunk(
+  uploadId: string,
+  index: number,
+  chunk: Buffer
+): Promise<UploadMeta> {
+  if (!/^[a-z0-9]+$/i.test(uploadId)) throw new Error("Invalid upload session.");
+  if (!Number.isInteger(index) || index < 0) throw new Error("Invalid chunk index.");
+  if (chunk.byteLength <= 0 || chunk.byteLength > 700_000) {
+    throw new Error("Chunk size is invalid.");
+  }
+
+  const raw = await readFirst(`${uploadId}.meta.json`);
+  if (!raw) throw new Error("Upload session expired. Choose the Excel file again.");
+  const meta = JSON.parse(raw.toString("utf8")) as UploadMeta;
+  if (index >= meta.totalChunks) throw new Error("Chunk index out of range.");
+
+  await writeEverywhere(`${uploadId}.part.${index}`, chunk);
+  if (!meta.received.includes(index)) {
+    meta.received.push(index);
+    meta.received.sort((a, b) => a - b);
+    await writeEverywhere(`${uploadId}.meta.json`, Buffer.from(JSON.stringify(meta), "utf8"));
+  }
+  return meta;
+}
+
+export async function assembleReportUpload(uploadId: string): Promise<{
+  fileName: string;
+  fileSize: number;
+  buffer: Buffer;
+}> {
+  if (!/^[a-z0-9]+$/i.test(uploadId)) throw new Error("Invalid upload session.");
+  const raw = await readFirst(`${uploadId}.meta.json`);
+  if (!raw) throw new Error("Upload session expired. Choose the Excel file again.");
+  const meta = JSON.parse(raw.toString("utf8")) as UploadMeta;
+  if (meta.received.length !== meta.totalChunks) {
+    throw new Error(
+      `Upload incomplete (${meta.received.length}/${meta.totalChunks} parts). Retry the upload.`
+    );
+  }
+
+  const parts: Buffer[] = [];
+  for (let i = 0; i < meta.totalChunks; i++) {
+    const part = await readFirst(`${uploadId}.part.${i}`);
+    if (!part) {
+      throw new Error(`Missing upload part ${i + 1}. Retry the upload.`);
+    }
+    parts.push(part);
+  }
+  const buffer = Buffer.concat(parts);
+  if (buffer.byteLength !== meta.fileSize) {
+    // Allow small mismatch only if metadata drifted; still require non-empty workbook.
+    if (buffer.byteLength <= 0) {
+      throw new Error("Assembled workbook is empty. Retry the upload.");
+    }
+  }
+  return { fileName: meta.fileName, fileSize: buffer.byteLength, buffer };
+}
+
+export async function deleteReportUploadSession(uploadId: string): Promise<void> {
+  if (!/^[a-z0-9]+$/i.test(uploadId)) return;
+  for (const dir of storeDirectories()) {
+    try {
+      const names = await readdir(dir);
+      await Promise.all(
+        names
+          .filter((name) => name === `${uploadId}.meta.json` || name.startsWith(`${uploadId}.part.`))
+          .map((name) => unlink(path.join(dir, name)).catch(() => null))
+      );
+    } catch {
+      // ignore
+    }
+  }
+  // Clean accidental nested folders if any
+  await Promise.all(
+    storeDirectories().map(async (dir) => {
+      try {
+        await rm(path.join(dir, uploadId), { recursive: true, force: true });
+      } catch {
+        // ignore
       }
     })
   );

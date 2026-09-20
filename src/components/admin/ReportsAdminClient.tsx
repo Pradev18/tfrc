@@ -33,6 +33,23 @@ type ReportListItem = {
 };
 
 const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
+/** Keep each JSON chunk small so Hostinger/Cloudflare WAF does not 403 the upload. */
+const UPLOAD_CHUNK_BYTES = 256 * 1024;
+
+function sanitizeClientExcelName(fileName: string): string {
+  const raw = String(fileName || "workbook.xlsx").trim() || "workbook.xlsx";
+  const parts = raw.split(".");
+  const ext = (parts.length > 1 ? parts.pop() : "xlsx")!.toLowerCase();
+  const safeExt = ext === "xls" || ext === "xlsx" ? ext : "xlsx";
+  const base = parts
+    .join(".")
+    .replace(/['"`<>\\|?*]/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 80);
+  return `${base || "workbook"}.${safeExt}`;
+}
 
 function validateExcelFile(file: File): string | null {
   const name = file.name || "workbook";
@@ -47,6 +64,16 @@ function validateExcelFile(file: File): string | null {
     return `Excel problem in “${name}”: file is too large (${Math.round(file.size / (1024 * 1024))} MB). Maximum is 30 MB.`;
   }
   return null;
+}
+
+function bufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const step = 0x8000;
+  for (let i = 0; i < bytes.length; i += step) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + step));
+  }
+  return btoa(binary);
 }
 
 export function ReportsAdminClient({
@@ -70,6 +97,7 @@ export function ReportsAdminClient({
       try {
         const res = await fetch(`/api/admin/reports/imports/${importId}/ingest`, {
           method: "POST",
+          credentials: "include",
           cache: "no-store",
         });
         const data = await readAdminJson(res, "Import failed");
@@ -119,6 +147,74 @@ export function ReportsAdminClient({
     if (res.ok) setReports((data.reports as ReportListItem[]) ?? []);
   }
 
+  async function uploadWorkbookChunked(file: File) {
+    const safeName = sanitizeClientExcelName(file.name);
+    const totalChunks = Math.max(1, Math.ceil(file.size / UPLOAD_CHUNK_BYTES));
+    setProgressLabel(`Preparing upload (0/${totalChunks})…`);
+
+    const initRes = await fetch("/api/admin/reports/upload", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "init",
+        fileName: safeName,
+        fileSize: file.size,
+        totalChunks,
+      }),
+    });
+    const initData = await readAdminJson(initRes, "Upload failed");
+    if (!initRes.ok) throw new Error(adminErrorMessage(initData, "Upload failed"));
+    const uploadId = String(initData.uploadId || "");
+    if (!uploadId) throw new Error("Upload session was not created. Retry.");
+
+    for (let index = 0; index < totalChunks; index++) {
+      const start = index * UPLOAD_CHUNK_BYTES;
+      const end = Math.min(file.size, start + UPLOAD_CHUNK_BYTES);
+      const slice = await file.slice(start, end).arrayBuffer();
+      setProgressLabel(
+        `Uploading workbook ${index + 1}/${totalChunks} (${Math.round(((index + 1) / totalChunks) * 100)}%)…`
+      );
+
+      let attempt = 0;
+      for (;;) {
+        attempt += 1;
+        const chunkRes = await fetch("/api/admin/reports/upload", {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "chunk",
+            uploadId,
+            index,
+            chunkBase64: bufferToBase64(slice),
+          }),
+        });
+        const chunkData = await readAdminJson(chunkRes, "Upload failed");
+        if (chunkRes.ok) break;
+        const message = adminErrorMessage(chunkData, "Upload failed");
+        if (attempt >= 4 || chunkRes.status === 401 || message.startsWith("Excel problem")) {
+          throw new Error(message);
+        }
+        await new Promise((r) => window.setTimeout(r, 800 * attempt));
+      }
+    }
+
+    setProgressLabel("Parsing workbook…");
+    const completeRes = await fetch("/api/admin/reports/upload", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "complete", uploadId }),
+    });
+    const completeData = await readAdminJson(completeRes, "Upload failed");
+    if (!completeRes.ok) throw new Error(adminErrorMessage(completeData, "Upload failed"));
+    return completeData;
+  }
+
   async function onUpload(file: File | null, inputEl?: HTMLInputElement | null) {
     if (!file || uploading) return;
     setError(null);
@@ -128,18 +224,17 @@ export function ReportsAdminClient({
       if (inputEl) inputEl.value = "";
       return;
     }
+    if (typeof window !== "undefined" && window.location.hostname === "vitanovaservices.com") {
+      setError(
+        "Open admin on https://www.vitanovaservices.com/admin/reports (with www), sign in again, then upload."
+      );
+      if (inputEl) inputEl.value = "";
+      return;
+    }
     setUploading(true);
-    setProgressLabel("Uploading & parsing workbook…");
+    setProgressLabel("Uploading workbook…");
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/admin/reports", {
-        method: "POST",
-        body: formData,
-        cache: "no-store",
-      });
-      const data = await readAdminJson(res, "Upload failed");
-      if (!res.ok) throw new Error(adminErrorMessage(data, "Upload failed"));
+      const data = await uploadWorkbookChunked(file);
 
       if (data.needsIngest && data.importId) {
         setProgressLabel("Saving inventory for lookup…");
@@ -238,7 +333,8 @@ export function ReportsAdminClient({
           />
         </label>
         <p className="mt-2 text-xs text-text-muted">
-          Supported: .xlsx / .xls · Max 30 MB · No external PDF service required
+          Supported: .xlsx / .xls · Max 30 MB · Large files upload in safe chunks
+          (use https://www.vitanovaservices.com — with www)
         </p>
         {progressLabel && (
           <p className="mt-3 text-sm font-medium text-primary">{progressLabel}</p>
