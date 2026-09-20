@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import {
+  adminErrorMessage,
+  readAdminJson,
+} from "@/lib/admin-fetch-json";
 
 type ReportListItem = {
   id: string;
@@ -23,9 +27,27 @@ type ReportListItem = {
     inventorySheetName: string | null;
     imageSheetName: string | null;
     iqsSheetName: string | null;
+    errorMessage?: string | null;
     createdAt: string;
   };
 };
+
+const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
+
+function validateExcelFile(file: File): string | null {
+  const name = file.name || "workbook";
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (ext !== "xlsx" && ext !== "xls") {
+    return `Excel problem in “${name}”: only .xlsx or .xls files are accepted.`;
+  }
+  if (file.size <= 0) {
+    return `Excel problem in “${name}”: the file is empty.`;
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return `Excel problem in “${name}”: file is too large (${Math.round(file.size / (1024 * 1024))} MB). Maximum is 30 MB.`;
+  }
+  return null;
+}
 
 export function ReportsAdminClient({
   initialReports,
@@ -39,49 +61,73 @@ export function ReportsAdminClient({
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  async function readJson(res: Response): Promise<Record<string, unknown>> {
-    const text = await res.text();
-    try {
-      return text ? (JSON.parse(text) as Record<string, unknown>) : {};
-    } catch {
-      throw new Error(
-        res.status >= 500
-          ? `Server error (${res.status}). The Excel is fine — try again after redeploy, or upload in a stable connection.`
-          : `Upload failed (${res.status}). The server did not return a usable response.`
-      );
-    }
-  }
-
   async function ingestUntilReady(
     importId: string,
     onProgress: (progress: number, total: number, phase: string) => void
   ) {
-    for (let i = 0; i < 2000; i++) {
-      const res = await fetch(`/api/admin/reports/imports/${importId}/ingest`, {
-        method: "POST",
-        cache: "no-store",
-      });
-      const data = await readJson(res);
-      if (!res.ok) throw new Error(String(data.error || "Import failed"));
-      onProgress(
-        Number(data.progress ?? 0),
-        Number(data.total ?? 0),
-        String(data.phase || "")
-      );
-      if (data.done) return;
+    let transientFails = 0;
+    for (let i = 0; i < 2500; i++) {
+      try {
+        const res = await fetch(`/api/admin/reports/imports/${importId}/ingest`, {
+          method: "POST",
+          cache: "no-store",
+        });
+        const data = await readAdminJson(res, "Import failed");
+        if (!res.ok) {
+          const message = adminErrorMessage(data, "Import failed");
+          const transient =
+            res.status >= 500 ||
+            message.toLowerCase().includes("timed out") ||
+            message.toLowerCase().includes("server error");
+          if (transient && transientFails < 8) {
+            transientFails += 1;
+            setProgressLabel(
+              `Server busy — retrying import (${transientFails}/8)…`
+            );
+            await new Promise((r) => window.setTimeout(r, 1200 * transientFails));
+            continue;
+          }
+          throw new Error(message);
+        }
+        transientFails = 0;
+        onProgress(
+          Number(data.progress ?? 0),
+          Number(data.total ?? 0),
+          String(data.phase || "")
+        );
+        if (data.done) return;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Import failed";
+        const excelProblem = message.startsWith("Excel problem");
+        if (!excelProblem && transientFails < 8) {
+          transientFails += 1;
+          setProgressLabel(
+            `Connection issue — retrying import (${transientFails}/8)…`
+          );
+          await new Promise((r) => window.setTimeout(r, 1200 * transientFails));
+          continue;
+        }
+        throw e instanceof Error ? e : new Error(message);
+      }
     }
     throw new Error("Import timed out. Re-open Reports and press Resume import.");
   }
 
   async function refresh() {
     const res = await fetch("/api/admin/reports", { cache: "no-store" });
-    const data = await readJson(res);
+    const data = await readAdminJson(res, "Failed to refresh reports");
     if (res.ok) setReports((data.reports as ReportListItem[]) ?? []);
   }
 
   async function onUpload(file: File | null, inputEl?: HTMLInputElement | null) {
     if (!file || uploading) return;
     setError(null);
+    const localError = validateExcelFile(file);
+    if (localError) {
+      setError(localError);
+      if (inputEl) inputEl.value = "";
+      return;
+    }
     setUploading(true);
     setProgressLabel("Uploading & parsing workbook…");
     try {
@@ -92,8 +138,8 @@ export function ReportsAdminClient({
         body: formData,
         cache: "no-store",
       });
-      const data = await readJson(res);
-      if (!res.ok) throw new Error(String(data.error || "Upload failed"));
+      const data = await readAdminJson(res, "Upload failed");
+      if (!res.ok) throw new Error(adminErrorMessage(data, "Upload failed"));
 
       if (data.needsIngest && data.importId) {
         setProgressLabel("Saving inventory for lookup…");
@@ -109,7 +155,7 @@ export function ReportsAdminClient({
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
-      await refresh();
+      await refresh().catch(() => null);
     } finally {
       setUploading(false);
       setProgressLabel(null);
@@ -134,7 +180,7 @@ export function ReportsAdminClient({
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import failed");
-      await refresh();
+      await refresh().catch(() => null);
     } finally {
       setUploading(false);
       setProgressLabel(null);
@@ -150,8 +196,8 @@ export function ReportsAdminClient({
     setError(null);
     try {
       const res = await fetch(`/api/admin/reports/${id}`, { method: "DELETE" });
-      const data = await readJson(res);
-      if (!res.ok) throw new Error(String(data.error || "Delete failed"));
+      const data = await readAdminJson(res, "Delete failed");
+      if (!res.ok) throw new Error(adminErrorMessage(data, "Delete failed"));
       await refresh();
       router.refresh();
     } catch (e) {
@@ -222,6 +268,7 @@ export function ReportsAdminClient({
               <tbody>
                 {reports.map((report) => {
                   const pending = report.import.status === "PENDING";
+                  const failed = report.import.status === "FAILED";
                   return (
                     <tr key={report.id} className="border-t border-border">
                       <td className="px-4 py-3">
@@ -230,6 +277,9 @@ export function ReportsAdminClient({
                           {report.import.inventorySheetName || "Inventory"} ·{" "}
                           {report.import.inventoryRowCount} source items
                         </p>
+                        {failed && report.import.errorMessage ? (
+                          <p className="mt-1 text-xs text-error">{report.import.errorMessage}</p>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3 text-text-muted">{report.import.fileName}</td>
                       <td className="px-4 py-3 text-text-muted">
@@ -257,7 +307,7 @@ export function ReportsAdminClient({
                             >
                               Resume import
                             </button>
-                          ) : (
+                          ) : failed ? null : (
                             <>
                               <Link
                                 href={`/admin/reports/${report.id}`}

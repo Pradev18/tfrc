@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { reportDisplaySrc, toProxiedReportImageSrc } from "@/lib/report/report-image-src";
+import { adminErrorMessage, readAdminJson, type AdminJson } from "@/lib/admin-fetch-json";
 
 type ReportLine = {
   id: string;
@@ -66,6 +67,12 @@ type DuplicateGroup = {
   }>;
 };
 
+function reportFromJson(data: AdminJson): ReportDetail | null {
+  return data.report && typeof data.report === "object"
+    ? (data.report as ReportDetail)
+    : null;
+}
+
 export function ReportEditorClient({ initialReport }: { initialReport: ReportDetail }) {
   const [report, setReport] = useState(initialReport);
   const [itemCode, setItemCode] = useState("");
@@ -104,15 +111,15 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
             `/api/admin/reports/imports/${report.import.id}/ingest`,
             { method: "POST", cache: "no-store" }
           );
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || "Import failed");
+          const data = await readAdminJson(res);
+          if (!res.ok) throw new Error(adminErrorMessage(data, "Import failed"));
           if (cancelled) return;
           setReport((prev) => ({
             ...prev,
             seed: {
               status: data.done ? "READY" : "PENDING",
-              progress: data.progress ?? 0,
-              total: data.total ?? 0,
+              progress: Number(data.progress ?? 0),
+              total: Number(data.total ?? 0),
               done: Boolean(data.done),
             },
           }));
@@ -121,8 +128,9 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
               `/api/admin/reports/${report.id}/lines?page=1&pageSize=${report.pageSize}`,
               { cache: "no-store" }
             );
-            const body = await refreshed.json();
-            if (refreshed.ok && body.report) setReport(body.report);
+            const body = await readAdminJson(refreshed);
+            const next = reportFromJson(body);
+            if (refreshed.ok && next) setReport(next);
             return;
           }
         }
@@ -165,7 +173,7 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
           `/api/admin/reports/imports/${report.import.id}/search?q=${encodeURIComponent(query)}&offset=${offset}`,
           { cache: "no-store" }
         );
-        const data = await res.json();
+        const data = await readAdminJson(res);
         if (requestId !== codeRequest.current) return;
         if (!res.ok) return;
         const batch = (data.results ?? []) as Array<{ itemCode: string; itemName: string }>;
@@ -206,9 +214,9 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
           `/api/admin/reports/${report.id}/lines?page=${page}&pageSize=${report.pageSize}`,
           { cache: "no-store" }
         );
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Failed to load page");
-        setReport(data.report);
+        const data = await readAdminJson(res);
+        if (!res.ok) throw new Error(adminErrorMessage(data, "Failed to load page"));
+        setReport(reportFromJson(data) ?? report);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load page");
       } finally {
@@ -230,9 +238,11 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
         `/api/admin/reports/imports/${report.import.id}/duplicates`,
         { cache: "no-store" }
       );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load duplicates");
-      setDuplicateGroups(data.groups ?? []);
+      const data = await readAdminJson(res);
+      if (!res.ok) throw new Error(adminErrorMessage(data, "Failed to load duplicates"));
+      setDuplicateGroups(
+        Array.isArray(data.groups) ? (data.groups as DuplicateGroup[]) : []
+      );
       setShowDuplicates(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load duplicates");
@@ -254,13 +264,13 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
         pageSize: report.pageSize,
       }),
     });
-    const data = await res.json();
+    const data = await readAdminJson(res);
     if (!res.ok) {
-      setError(data.error || "Failed to save");
+      setError(adminErrorMessage(data, "Failed to save"));
       setSaveState("idle");
       return;
     }
-    setReport(data.report);
+    setReport(reportFromJson(data) ?? report);
     setSaveState("saved");
     window.setTimeout(() => setSaveState("idle"), 1200);
   }
@@ -280,9 +290,9 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
           pageSize: report.pageSize,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Lookup failed");
-      setReport(data.report);
+      const data = await readAdminJson(res);
+      if (!res.ok) throw new Error(adminErrorMessage(data, "Lookup failed"));
+      setReport(reportFromJson(data) ?? report);
       setItemCode("");
       setSuggestions([]);
     } catch (e) {
@@ -306,12 +316,12 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
         pageSize: report.pageSize,
       }),
     });
-    const data = await res.json();
+    const data = await readAdminJson(res);
     if (!res.ok) {
-      setError(data.error || "Update failed");
+      setError(adminErrorMessage(data, "Update failed"));
       return;
     }
-    setReport(data.report);
+    setReport(reportFromJson(data) ?? report);
   }
 
   async function removeLine(lineId: string) {
@@ -321,12 +331,12 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
       `/api/admin/reports/${report.id}/lines/${lineId}?page=${report.page}&pageSize=${report.pageSize}`,
       { method: "DELETE" }
     );
-    const data = await res.json();
+    const data = await readAdminJson(res);
     if (!res.ok) {
-      setError(data.error || "Delete failed");
+      setError(adminErrorMessage(data, "Delete failed"));
       return;
     }
-    setReport(data.report);
+    setReport(reportFromJson(data) ?? report);
   }
 
   return (

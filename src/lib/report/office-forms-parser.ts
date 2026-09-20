@@ -6,6 +6,10 @@ import {
   normalizeItemCode,
 } from "@/lib/report/office-forms-normalize";
 import { pickPreferredImageUrl } from "@/lib/report/report-image-src";
+import {
+  assertExcelBuffer,
+  explainExcelParseFailure,
+} from "@/lib/report/excel-file-guard";
 
 export interface ParsedInventoryRow {
   itemCode: string;
@@ -208,17 +212,29 @@ function formatMoneyish(value: string): string {
   });
 }
 
-export function parseOfficeFormsWorkbook(buffer: Buffer): ParsedOfficeFormsWorkbook {
-  const workbook = XLSX.read(buffer, {
-    type: "buffer",
-    cellDates: false,
-    cellNF: false,
-    cellStyles: false,
-    dense: false,
-  });
+export function parseOfficeFormsWorkbook(
+  buffer: Buffer,
+  fileName = "workbook.xlsx"
+): ParsedOfficeFormsWorkbook {
+  assertExcelBuffer(buffer, fileName);
+
+  let workbook: XLSX.WorkBook;
+  try {
+    workbook = XLSX.read(buffer, {
+      type: "buffer",
+      cellDates: false,
+      cellNF: false,
+      cellStyles: false,
+      dense: false,
+    });
+  } catch (error) {
+    throw explainExcelParseFailure(error, fileName);
+  }
 
   if (!workbook.SheetNames.length) {
-    throw new Error("Workbook has no sheets.");
+    throw new Error(
+      `Excel problem in “${fileName}”: the workbook has no sheets. Open it in Excel and confirm the tabs are present.`
+    );
   }
 
   const inventory = pickSheet(
@@ -227,8 +243,19 @@ export function parseOfficeFormsWorkbook(buffer: Buffer): ParsedOfficeFormsWorkb
     scoreInventorySheet
   );
   if (!inventory) {
+    const sheetList = workbook.SheetNames.join(", ");
     throw new Error(
-      "Could not identify the Item_Qty_in_Store sheet. Expected headers like Item Code, Description, Supplier Name, Item Cost, Retail Price, and BOH/On Hand."
+      `Excel problem in “${fileName}”: could not find an Item_Qty_in_Store sheet. Expected headers like Item Code, Description, Supplier Name, Item Cost, Retail Price, and BOH/On Hand. Sheets found: ${sheetList || "(none)"}.`
+    );
+  }
+
+  let columnMap: OfficeFormsColumnMap;
+  try {
+    columnMap = buildColumnMap(inventory.headers);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Excel problem in “${fileName}” on sheet “${inventory.name}”: ${msg}`
     );
   }
 
@@ -244,7 +271,6 @@ export function parseOfficeFormsWorkbook(buffer: Buffer): ParsedOfficeFormsWorkb
     scoreIqsSheet
   );
 
-  const columnMap = buildColumnMap(inventory.headers);
   const inventoryRows: ParsedInventoryRow[] = [];
   const codeCounts = new Map<string, number>();
 
@@ -279,7 +305,9 @@ export function parseOfficeFormsWorkbook(buffer: Buffer): ParsedOfficeFormsWorkb
   }
 
   if (inventoryRows.length === 0) {
-    throw new Error("Item inventory sheet has no usable item rows.");
+    throw new Error(
+      `Excel problem in “${fileName}” on sheet “${inventory.name}”: no usable item rows with Item Code were found.`
+    );
   }
 
   const imageLinks: ParsedImageLink[] = [];

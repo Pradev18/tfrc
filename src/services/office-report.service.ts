@@ -18,6 +18,7 @@ import {
   readReportImportWorkbook,
   saveReportImportWorkbook,
 } from "@/lib/report/office-report-upload-store";
+import { explainExcelParseFailure } from "@/lib/report/excel-file-guard";
 
 const INGEST_BATCH = 400;
 /** @deprecated kept for old seed route callers */
@@ -34,14 +35,21 @@ function sourceTotal(inventoryRowCount: number, imageLinkCount: number): number 
   return Math.max(0, inventoryRowCount) + Math.max(0, imageLinkCount);
 }
 
-async function getCachedParse(importId: string): Promise<CachedParse> {
+async function getCachedParse(importId: string, fileName = "workbook.xlsx"): Promise<CachedParse> {
   const hit = parseCache.get(importId);
   if (hit) return hit;
   const buffer = await readReportImportWorkbook(importId);
   if (!buffer) {
-    throw new Error("Upload session expired. Please upload the Excel file again.");
+    throw new Error(
+      "Upload session expired or the server restarted before import finished. Upload the Excel file again."
+    );
   }
-  const parsed = parseOfficeFormsWorkbook(buffer);
+  let parsed: ParsedOfficeFormsWorkbook;
+  try {
+    parsed = parseOfficeFormsWorkbook(buffer, fileName);
+  } catch (error) {
+    throw explainExcelParseFailure(error, fileName);
+  }
   const uniqueItemCount = new Set(parsed.inventoryRows.map((row) => row.itemCode)).size;
   const entry = { parsed, uniqueItemCount };
   parseCache.set(importId, entry);
@@ -60,9 +68,9 @@ export async function createOfficeReportImport(input: {
 }) {
   let parsed: ParsedOfficeFormsWorkbook;
   try {
-    parsed = parseOfficeFormsWorkbook(input.buffer);
+    parsed = parseOfficeFormsWorkbook(input.buffer, input.fileName);
   } catch (error) {
-    throw new Error(error instanceof Error ? error.message : "Failed to parse workbook");
+    throw explainExcelParseFailure(error, input.fileName);
   }
 
   const uniqueCodes = new Set(parsed.inventoryRows.map((row) => row.itemCode));
@@ -156,79 +164,114 @@ export async function ingestOfficeReportSourceBatch(
     };
   }
 
-  const total = sourceTotal(importRecord.inventoryRowCount, importRecord.imageLinkCount);
-  if (total <= 0) {
+  try {
+    const { parsed } = await getCachedParse(importId, importRecord.fileName);
+    const inventoryTotal = parsed.inventoryRows.length;
+    const imageTotal = parsed.imageLinks.length;
+    const total = inventoryTotal + imageTotal;
+
+    if (total <= 0) {
+      await prisma.officeReportImport.update({
+        where: { id: importId },
+        data: { status: "READY", seedProgress: 0, errorMessage: null },
+      });
+      clearCachedParse(importId);
+      await deleteReportImportWorkbook(importId).catch(() => null);
+      return { done: true, progress: 0, total: 0, phase: "done" as const };
+    }
+
+    // Resume from what is already in the DB so a timed-out batch does not duplicate or die.
+    const [savedInventory, savedImages] = await Promise.all([
+      prisma.officeReportInventoryItem.count({ where: { importId } }),
+      prisma.officeReportImageLink.count({ where: { importId } }),
+    ]);
+    let progress =
+      savedInventory < inventoryTotal
+        ? savedInventory
+        : inventoryTotal + Math.min(savedImages, imageTotal);
+
+    if (progress < inventoryTotal) {
+      const start = progress;
+      const chunk = parsed.inventoryRows.slice(start, start + take);
+      if (chunk.length > 0) {
+        await prisma.officeReportInventoryItem.createMany({
+          data: chunk.map((row, offset) => ({
+            importId,
+            itemCode: row.itemCode,
+            payload: JSON.stringify(row.payload),
+            sortOrder: start + offset,
+          })),
+        });
+        progress = start + chunk.length;
+      } else {
+        progress = inventoryTotal;
+      }
+    } else {
+      const imageStart = Math.max(0, progress - inventoryTotal);
+      const chunk = parsed.imageLinks.slice(imageStart, imageStart + take);
+      if (chunk.length > 0) {
+        await prisma.officeReportImageLink.createMany({
+          data: chunk.map((row, offset) => ({
+            importId,
+            itemCode: row.itemCode,
+            imageUrl: row.imageUrl,
+            fileName: row.fileName ?? null,
+            sortOrder: imageStart + offset,
+          })),
+        });
+        progress = inventoryTotal + imageStart + chunk.length;
+      } else {
+        progress = total;
+      }
+    }
+
+    const done = progress >= total;
     await prisma.officeReportImport.update({
       where: { id: importId },
-      data: { status: "READY", seedProgress: 0, errorMessage: null },
+      data: {
+        seedProgress: progress,
+        status: done ? "READY" : "PENDING",
+        errorMessage: null,
+        inventoryRowCount: inventoryTotal,
+        imageLinkCount: imageTotal,
+      },
     });
-    clearCachedParse(importId);
-    await deleteReportImportWorkbook(importId).catch(() => null);
-    return { done: true, progress: 0, total: 0, phase: "done" as const };
-  }
 
-  const { parsed } = await getCachedParse(importId);
-  let progress = importRecord.seedProgress;
-  const inventoryTotal = parsed.inventoryRows.length;
-
-  if (progress < inventoryTotal) {
-    const start = progress;
-    const chunk = parsed.inventoryRows.slice(start, start + take);
-    if (chunk.length > 0) {
-      await prisma.officeReportInventoryItem.createMany({
-        data: chunk.map((row, offset) => ({
-          importId,
-          itemCode: row.itemCode,
-          payload: JSON.stringify(row.payload),
-          sortOrder: start + offset,
-        })),
-      });
-      progress = start + chunk.length;
-    } else {
-      progress = inventoryTotal;
+    if (done) {
+      clearCachedParse(importId);
+      await deleteReportImportWorkbook(importId).catch(() => null);
     }
-  } else {
-    const imageStart = progress - inventoryTotal;
-    const chunk = parsed.imageLinks.slice(imageStart, imageStart + take);
-    if (chunk.length > 0) {
-      await prisma.officeReportImageLink.createMany({
-        data: chunk.map((row, offset) => ({
-          importId,
-          itemCode: row.itemCode,
-          imageUrl: row.imageUrl,
-          fileName: row.fileName ?? null,
-          sortOrder: imageStart + offset,
-        })),
-      });
-      progress = inventoryTotal + imageStart + chunk.length;
-    } else {
-      progress = total;
+
+    return {
+      done,
+      progress,
+      total,
+      phase: done
+        ? ("done" as const)
+        : progress < inventoryTotal
+          ? ("inventory" as const)
+          : ("images" as const),
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to finish workbook import";
+    const fatal =
+      message.startsWith("Excel problem") ||
+      message.toLowerCase().includes("password") ||
+      message.toLowerCase().includes("encrypted") ||
+      message.toLowerCase().includes("not a valid excel") ||
+      message.toLowerCase().includes("upload session expired");
+    if (fatal) {
+      await prisma.officeReportImport
+        .update({
+          where: { id: importId },
+          data: { status: "FAILED", errorMessage: message.slice(0, 1000) },
+        })
+        .catch(() => null);
+      clearCachedParse(importId);
     }
+    throw error instanceof Error ? error : new Error(message);
   }
-
-  const done = progress >= total;
-  await prisma.officeReportImport.update({
-    where: { id: importId },
-    data: {
-      seedProgress: progress,
-      status: done ? "READY" : "PENDING",
-      errorMessage: null,
-      inventoryRowCount: parsed.inventoryRows.length,
-      imageLinkCount: parsed.imageLinks.length,
-    },
-  });
-
-  if (done) {
-    clearCachedParse(importId);
-    await deleteReportImportWorkbook(importId).catch(() => null);
-  }
-
-  return {
-    done,
-    progress,
-    total,
-    phase: done ? ("done" as const) : progress < inventoryTotal ? ("inventory" as const) : ("images" as const),
-  };
 }
 
 /**
@@ -295,7 +338,7 @@ function formatIqsReportDate(raw: string): string {
 
 export async function listOfficeReports() {
   const reports = await prisma.officeReport.findMany({
-    where: { import: { status: { in: ["READY", "PENDING"] } } },
+    where: { import: { status: { in: ["READY", "PENDING", "FAILED"] } } },
     orderBy: { createdAt: "desc" },
     include: {
       import: true,
@@ -321,6 +364,7 @@ export async function listOfficeReports() {
       inventorySheetName: report.import.inventorySheetName,
       imageSheetName: report.import.imageSheetName,
       iqsSheetName: report.import.iqsSheetName,
+      errorMessage: report.import.errorMessage,
       createdAt: report.import.createdAt.toISOString(),
     },
   }));

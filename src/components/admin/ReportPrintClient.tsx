@@ -6,6 +6,7 @@ import {
   REPORT_ROWS_PER_PAGE,
   TFRC_REPORT_LOGO_SRC,
 } from "@/lib/report/office-report-pdf-html";
+import { adminErrorMessage, readAdminJson } from "@/lib/admin-fetch-json";
 import {
   alternateImageUrls,
   isBrowserDisplayableImageUrl,
@@ -213,9 +214,9 @@ export function ReportPrintClient({
             `/api/admin/reports/${reportId}/lines?page=${page}&pageSize=${FETCH_PAGE_SIZE}`,
             { cache: "no-store" }
           );
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || "Failed to load report rows");
-          const batch = (data.report?.lines ?? []) as ReportLine[];
+          const data = await readAdminJson(res);
+          if (!res.ok) throw new Error(adminErrorMessage(data, "Failed to load report rows"));
+          const batch = (data.report as { lines?: ReportLine[] } | undefined)?.lines ?? [];
           if (batch.length === 0) break;
           for (const line of batch) {
             if (line.sortOrder > startRow && line.sortOrder <= endRow) {
