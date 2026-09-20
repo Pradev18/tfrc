@@ -94,7 +94,19 @@ function scoreInventorySheet(headers: string[]): number {
 function scoreImageSheet(headers: string[]): number {
   let score = 0;
   if (findHeaderIndex(headers, ["link", "image link", "url"]) >= 0) score += 4;
-  if (findHeaderIndex(headers, ["file name", "filename", "r2 key"]) >= 0) score += 2;
+  if (
+    findHeaderIndex(headers, [
+      "file name",
+      "filename",
+      "r2 key",
+      "image code",
+      "imagecode",
+      "item code",
+      "itemcode",
+    ]) >= 0
+  ) {
+    score += 2;
+  }
   if (headersInclude(headers, "batch")) score += 1;
   return score;
 }
@@ -313,22 +325,43 @@ export function parseOfficeFormsWorkbook(
   const imageLinks: ParsedImageLink[] = [];
   const imageCounts = new Map<string, number>();
   if (imageSheet) {
-    const codeIdx = findHeaderIndex(imageSheet.headers, [
+    let codeIdx = findHeaderIndex(imageSheet.headers, [
+      "image code",
+      "imagecode",
       "file name",
       "filename",
       "item code",
       "itemcode",
+      "r2 key",
     ]);
-    const linkIdx = findHeaderIndex(imageSheet.headers, ["link", "image link", "url"]);
+    const linkIdx = findHeaderIndex(imageSheet.headers, [
+      "image link",
+      "link",
+      "url",
+      "image url",
+    ]);
+    // Cloud Fare sometimes labels the key column oddly; fall back to first non-link column.
+    if (codeIdx < 0 && linkIdx >= 0) {
+      codeIdx = imageSheet.headers.findIndex((_, idx) => idx !== linkIdx);
+    }
     if (codeIdx >= 0 && linkIdx >= 0) {
       for (let r = imageSheet.headerRow + 1; r < imageSheet.rows.length; r++) {
         const row = imageSheet.rows[r] ?? [];
         const rawName = cellToString(row[codeIdx]);
-        // Cloud Fare keys are often filenames; strip image extensions for item-code match.
-        const itemCode = normalizeItemCode(rawName.replace(/\.(jpe?g|png|webp|gif)$/i, ""));
         const imageUrl = cellToString(row[linkIdx]);
-        if (!itemCode || !imageUrl) continue;
-        if (!/^https?:\/\//i.test(imageUrl)) continue;
+        if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) continue;
+
+        // Keys may be plain codes or filenames like 015896000065.jpg / *.emf
+        const fromName = normalizeItemCode(
+          rawName.replace(/\.(jpe?g|png|webp|gif|emf|wmf|tif|tiff)$/i, "")
+        );
+        const fromUrlMatch = imageUrl.match(
+          /\/(?:0*)?(\d{6,})\.(jpe?g|png|webp|gif|emf|wmf|tif|tiff)(?:\?|#|$)/i
+        );
+        const fromUrl = fromUrlMatch ? normalizeItemCode(fromUrlMatch[1]) : "";
+        const itemCode = fromName || fromUrl;
+        if (!itemCode) continue;
+
         imageCounts.set(itemCode, (imageCounts.get(itemCode) ?? 0) + 1);
         imageLinks.push({
           itemCode,
