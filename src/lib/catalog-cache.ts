@@ -211,6 +211,18 @@ export function getCachedProducts(
   }
   if (opts.shopSlug) {
     items = items.filter((product) => {
+      // The storefront category index is derived from the same definitions.
+      // Use identical matching here so a stale saved slug can never produce a
+      // category count with an empty product grid.
+      if (opts.shopDefs) {
+        const primary = resolvePrimaryShopCategory(
+          { name: product.name },
+          opts.shopDefs
+        );
+        if (opts.shopSlug === OTHER_SHOP_CATEGORY.slug) return primary == null;
+        return primary?.slug === opts.shopSlug;
+      }
+
       if (product.shopCategorySlug !== undefined) {
         if (opts.shopSlug === OTHER_SHOP_CATEGORY.slug) {
           return (
@@ -220,10 +232,7 @@ export function getCachedProducts(
         }
         return product.shopCategorySlug === opts.shopSlug;
       }
-      if (!opts.shopDefs) return true;
-      const primary = resolvePrimaryShopCategory({ name: product.name }, opts.shopDefs);
-      if (opts.shopSlug === OTHER_SHOP_CATEGORY.slug) return primary == null;
-      return primary?.slug === opts.shopSlug;
+      return true;
     });
   }
 

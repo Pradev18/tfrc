@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import { LayoutGrid } from "lucide-react";
 import { getEnvVisual } from "@/lib/env-visuals";
@@ -40,8 +41,20 @@ export function CategoryScroll({
 }: CategoryScrollProps) {
   const t = useT();
   const v = getEnvVisual(environmentSlug);
+  const [failedImageUrls, setFailedImageUrls] = useState<Set<string>>(
+    () => new Set()
+  );
 
   if (categories.length === 0 && !showAllProducts) return null;
+
+  const markImageFailed = (url: string) => {
+    setFailedImageUrls((current) => {
+      if (current.has(url)) return current;
+      const next = new Set(current);
+      next.add(url);
+      return next;
+    });
+  };
 
   const handleSelect = (slug: string) => {
     if (onSelect) {
@@ -108,7 +121,7 @@ export function CategoryScroll({
               aria-pressed={active}
             >
               <span className={imageClass} style={tileShadow(active)}>
-                {cat.imageUrl ? (
+                {cat.imageUrl && !failedImageUrls.has(cat.imageUrl) ? (
                   <Image
                     src={cat.imageUrl}
                     alt=""
@@ -117,6 +130,8 @@ export function CategoryScroll({
                     sizes="68px"
                     placeholder="blur"
                     blurDataURL={MEDIA_BLUR_DATA_URL}
+                    unoptimized
+                    onError={() => markImageFailed(cat.imageUrl!)}
                   />
                 ) : (
                   <span
@@ -152,7 +167,7 @@ export function CategoryScroll({
               className="store-category-card group w-[5.5rem] shrink-0"
             >
               <div className="relative aspect-square overflow-hidden rounded-xl bg-white">
-                {cat.imageUrl ? (
+                {cat.imageUrl && !failedImageUrls.has(cat.imageUrl) ? (
                   <Image
                     src={cat.imageUrl}
                     alt={cat.name}
@@ -161,6 +176,8 @@ export function CategoryScroll({
                     sizes="88px"
                     placeholder="blur"
                     blurDataURL={MEDIA_BLUR_DATA_URL}
+                    unoptimized
+                    onError={() => markImageFailed(cat.imageUrl!)}
                   />
                 ) : (
                   <div
