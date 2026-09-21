@@ -262,16 +262,17 @@ function templateCss(): string {
       font-size: 7.2pt; line-height: 1.2; height: 13mm;
     }
     .grid td { background: #fff; }
+    /* 180mm total: safely inside the A4 content box at print time. */
     .c-num { width: 7mm; text-align: center; font-weight: 700; }
-    .c-code { width: 32mm; white-space: nowrap; word-break: keep-all; font-family: ui-monospace, Consolas, monospace; font-size: 7.5pt; }
-    .c-link { width: 18mm; }
-    .c-img { width: 16mm; text-align: center; }
-    .c-name { width: 42mm; font-size: 8pt; line-height: 1.2; overflow-wrap: break-word; }
-    .c-supplier { width: 28mm; font-size: 7.5pt; line-height: 1.15; overflow-wrap: break-word; }
-    .c-onhand { width: 13mm; text-align: center; background: var(--onhand) !important; font-weight: 700; }
-    .c-cost { width: 16mm; text-align: right; background: var(--cost) !important; }
-    .c-sell { width: 16mm; text-align: right; background: var(--sell) !important; }
-    .c-ws { width: 18mm; background: var(--ws) !important; }
+    .c-code { width: 25mm; white-space: nowrap; word-break: keep-all; font-family: ui-monospace, Consolas, monospace; font-size: 7.5pt; }
+    .c-link { width: 15mm; }
+    .c-img { width: 15mm; text-align: center; }
+    .c-name { width: 39mm; font-size: 8pt; line-height: 1.2; overflow-wrap: break-word; }
+    .c-supplier { width: 25mm; font-size: 7.5pt; line-height: 1.15; overflow-wrap: break-word; }
+    .c-onhand { width: 12mm; text-align: center; background: var(--onhand) !important; font-weight: 700; }
+    .c-cost { width: 13mm; text-align: right; background: var(--cost) !important; }
+    .c-sell { width: 13mm; text-align: right; background: var(--sell) !important; }
+    .c-ws { width: 16mm; background: var(--ws) !important; }
     .c-img img {
       width: 14mm; height: 14mm; object-fit: contain; display: inline-block; background: #fff;
     }

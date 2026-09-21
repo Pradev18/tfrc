@@ -307,9 +307,10 @@ export function ReportPrintClient({
           const shadow = page.style.boxShadow;
           page.style.boxShadow = "none";
           try {
-            // scale 1.5 keeps quality while avoiding OOM on owner PCs / low-RAM devices
+            // Render near print resolution and keep flat text/table edges lossless.
+            // Pages are released immediately below to control peak memory.
             const canvas = await html2canvas(page, {
-              scale: 1.5,
+              scale: 2.5,
               backgroundColor: "#ffffff",
               useCORS: true,
               allowTaint: false,
@@ -317,7 +318,7 @@ export function ReportPrintClient({
               imageTimeout: 15000,
             });
             if (added > 0) pdf.addPage();
-            pdf.addImage(canvas.toDataURL("image/jpeg", 0.86), "JPEG", 0, 0, 210, 297);
+            pdf.addImage(canvas, "PNG", 0, 0, 210, 297, undefined, "FAST");
             added += 1;
             // free canvas memory sooner on constrained devices
             canvas.width = 0;
@@ -866,15 +867,16 @@ const REPORT_A4_CSS = `
     table-layout: fixed;
     font-size: 8pt;
   }
-  .rp-table col.col-num { width: 8mm; }
-  .rp-table col.col-code { width: 32mm; }
-  .rp-table col.col-link { width: 18mm; }
-  .rp-table col.col-img { width: 16mm; }
-  .rp-table col.col-name { width: 42mm; }
-  .rp-table col.col-supplier { width: 28mm; }
-  .rp-table col.col-onhand { width: 13mm; }
-  .rp-table col.col-cost { width: 14mm; }
-  .rp-table col.col-sell { width: 14mm; }
+  /* 180mm total: safely inside the 190mm print content box. */
+  .rp-table col.col-num { width: 7mm; }
+  .rp-table col.col-code { width: 25mm; }
+  .rp-table col.col-link { width: 15mm; }
+  .rp-table col.col-img { width: 15mm; }
+  .rp-table col.col-name { width: 39mm; }
+  .rp-table col.col-supplier { width: 25mm; }
+  .rp-table col.col-onhand { width: 12mm; }
+  .rp-table col.col-cost { width: 13mm; }
+  .rp-table col.col-sell { width: 13mm; }
   .rp-table col.col-ws { width: 16mm; }
 
   .rp-table th {
