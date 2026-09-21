@@ -1,17 +1,31 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { resolveEnvironment, isValidEnvironmentSlug } from "@/services/environment.service";
+import {
+  resolveEnvironment,
+  isValidEnvironmentSlug,
+  environmentFromCacheOrConfig,
+} from "@/services/environment.service";
 import { StoreHeader } from "@/components/public/StoreHeader";
 import { StoreFooter } from "@/components/store/StoreFooter";
 import { buildPageMetadata } from "@/lib/meta-seo";
 import { getEnvironmentHeroImages } from "@/services/category.service";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
+import { getEnvironmentConfig } from "@/lib/environments";
 
 export const revalidate = 60;
 
 interface LayoutProps {
   children: React.ReactNode;
   params: Promise<{ environment: string }>;
+}
+
+function isNextNotFound(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    (error as { digest?: string }).digest === "NEXT_NOT_FOUND"
+  );
 }
 
 export async function generateMetadata({ params }: LayoutProps): Promise<Metadata> {
@@ -43,13 +57,18 @@ export async function generateMetadata({ params }: LayoutProps): Promise<Metadat
 export default async function EnvironmentLayout({ children, params }: LayoutProps) {
   const { environment: slug } = await params;
 
-  let environment;
+  let environment = null;
   try {
-    if (!(await isValidEnvironmentSlug(slug))) notFound();
+    const valid = await isValidEnvironmentSlug(slug);
+    if (!valid && !getEnvironmentConfig(slug)) notFound();
     environment = await resolveEnvironment(slug);
   } catch (error) {
-    console.error("[store-layout] DB error:", error);
-    throw error;
+    if (isNextNotFound(error)) throw error;
+    console.error("[store-layout] soft-fail, serving without hard crash:", error);
+  }
+
+  if (!environment) {
+    environment = environmentFromCacheOrConfig(slug);
   }
 
   if (!environment) notFound();

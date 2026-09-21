@@ -119,11 +119,6 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
     isVariantPrimary: true,
   };
 
-  const env = await prisma.environment.findUnique({
-    where: { id: environmentId },
-    select: { name: true, slug: true, tagline: true, departmentSource: true },
-  });
-
   let defs = await getDbShopCategoryDefs(environmentId);
   if (defs.length === 0) {
     defs = getShopCategoryDefs(environmentSlug);
@@ -137,57 +132,67 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
     },
   });
 
-  // Auto-heal when products are mostly uncategorized (common for new catalogues
-  // and Excel imports without shop category columns).
+  // Public storefront must stay read-only. Never generate/sync categories on GET —
+  // those writes lock SQLite and crash /pawmart under load. Admin/import own healing.
   const mostlyUncategorized =
     totalActive > 0 && uncategorized / totalActive >= 0.45;
 
   if (mostlyUncategorized || defs.length === 0) {
-    const { generateShopCategories } = await import("@/services/catalogue-admin.service");
-    const { removeCachedEnvironment } = await import("@/lib/catalog-cache");
-    await generateShopCategories(environmentId, environmentSlug);
-    removeCachedEnvironment(environmentSlug);
-    defs = await getDbShopCategoryDefs(environmentId);
-  }
+    const fromCache = getShopCategoriesFromCache(environmentSlug);
+    if (fromCache.length > 0) return fromCache;
 
-  if (defs.length === 0) {
+    // In-memory name bucketing only (no DB writes).
     const sample = await prisma.product.findMany({
       where: baseWhere,
-      select: { name: true, googleCategory: true, fbCategory: true },
-      take: 3000,
+      select: {
+        name: true,
+        images: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
+      },
+      take: 5000,
       orderBy: { createdAt: "desc" },
     });
-    defs = getEffectiveShopCategoryDefs(
+    if (sample.length === 0) return [];
+
+    const derivedDefs = getEffectiveShopCategoryDefs(
       environmentSlug,
       sample.map((p) => p.name)
     );
-    if (defs.length > 0 || sample.length > 0) {
-      const { syncEnvironmentShopCategories } = await import("@/lib/shop-category-sync");
-      const { resolveCatalogueShopCategoryPack } = await import("@/lib/shop-categories");
-      const pack = resolveCatalogueShopCategoryPack({
-        slug: env?.slug ?? environmentSlug,
-        name: env?.name,
-        tagline: env?.tagline,
-        departmentSource: env?.departmentSource,
-        productNames: sample.map((p) => p.name),
-        products: sample,
-      });
-      if (pack.length > 0) {
-        await prisma.shopCategory.deleteMany({ where: { environmentId } });
-        await prisma.shopCategory.createMany({
-          data: pack.map((def, i) => ({
-            environmentId,
-            slug: def.slug,
-            name: def.name,
-            keywords: JSON.stringify(def.keywords),
-            sortOrder: def.sortOrder ?? i + 1,
-            isActive: true,
-          })),
-        });
-        await syncEnvironmentShopCategories(environmentId, pack);
-        defs = pack;
-      }
+    const pack = derivedDefs.length > 0 ? derivedDefs : defs;
+    if (pack.length === 0) return [];
+
+    const buckets = new Map<string, typeof sample>();
+    for (const def of pack) buckets.set(def.slug, []);
+    buckets.set(OTHER_SHOP_CATEGORY.slug, []);
+
+    for (const product of sample) {
+      const primary = resolvePrimaryShopCategory({ name: product.name }, pack);
+      const slug = primary?.slug ?? OTHER_SHOP_CATEGORY.slug;
+      buckets.get(slug)!.push(product);
     }
+
+    const items: ShopCategoryItem[] = pack
+      .map((def) => {
+        const matched = buckets.get(def.slug) ?? [];
+        if (matched.length === 0) return null;
+        return {
+          slug: def.slug,
+          name: def.name,
+          productCount: matched.length,
+          imageUrl: matched[0]?.images[0]?.url ?? null,
+        };
+      })
+      .filter(Boolean) as ShopCategoryItem[];
+
+    const other = buckets.get(OTHER_SHOP_CATEGORY.slug) ?? [];
+    if (other.length > 0) {
+      items.push({
+        slug: OTHER_SHOP_CATEGORY.slug,
+        name: OTHER_SHOP_CATEGORY.name,
+        productCount: other.length,
+        imageUrl: other[0]?.images[0]?.url ?? null,
+      });
+    }
+    return items;
   }
 
   if (defs.length === 0) return [];

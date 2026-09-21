@@ -35,7 +35,7 @@ export function enrichEnvironment(env: Environment): ParsedEnvironment {
   };
 }
 
-function environmentFromCacheOrConfig(slug: string): ParsedEnvironment | null {
+export function environmentFromCacheOrConfig(slug: string): ParsedEnvironment | null {
   const cached = getCachedEnvironment(slug);
   if (cached) {
     const env = {
