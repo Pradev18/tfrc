@@ -47,12 +47,11 @@ export async function GET(
       includeVariants: sp.get("allVariants") === "true",
     });
 
-    const isSearch = Boolean(sp.get("q"));
     return NextResponse.json(result, {
       headers: {
-        "Cache-Control": isSearch
-          ? "private, max-age=15"
-          : "public, max-age=120, s-maxage=300, stale-while-revalidate=900",
+        // The file cache already makes this route fast. CDN caching caused
+        // stale empty category feeds to survive catalogue updates/deployments.
+        "Cache-Control": "private, no-store, max-age=0",
       },
     });
   } catch (error) {
@@ -69,7 +68,7 @@ export async function GET(
       {
         status: 200,
         headers: {
-          "Cache-Control": "public, max-age=5",
+          "Cache-Control": "private, no-store, max-age=0",
         },
       }
     );

@@ -27,7 +27,10 @@ export interface InitialStoreFeed extends FeedPayload {
   shopSlug: string;
 }
 
-const FEED_CACHE_TTL_MS = 2 * 60_000;
+const FEED_CACHE_TTL_MS = 30_000;
+// Bust stale CDN responses created by older deployments. Current API responses
+// are no-store; this version prevents an already-cached empty feed from winning.
+const STORE_FEED_SCHEMA_VERSION = "20260921-2";
 const feedCache = new Map<string, { data: FeedPayload; storedAt: number }>();
 const prefetching = new Map<string, Promise<FeedPayload | null>>();
 
@@ -53,6 +56,7 @@ function buildFeedUrl(
   if (shopSlug) params.set("shop", shopSlug);
   if (onSaleOnly) params.set("sale", "true");
   if (includeVariants) params.set("allVariants", "true");
+  params.set("v", STORE_FEED_SCHEMA_VERSION);
   params.set("page", String(page));
   params.set("limit", String(STORE_PAGE_SIZE));
   return `/api/store/${environmentSlug}/products?${params.toString()}`;

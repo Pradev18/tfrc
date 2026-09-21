@@ -80,7 +80,10 @@ function getShopCategoriesFromCache(environmentSlug: string): ShopCategoryItem[]
   for (const def of defs) buckets.set(def.slug, []);
   buckets.set(OTHER_SHOP_CATEGORY.slug, []);
 
-  for (const product of cached.products) {
+  // Match the product grid: variants are represented by their primary card.
+  for (const product of cached.products.filter(
+    (item) => item.isVariantPrimary !== false
+  )) {
     const primary = resolvePrimaryShopCategory({ name: product.name }, defs);
     const slug = primary?.slug ?? OTHER_SHOP_CATEGORY.slug;
     buckets.get(slug)!.push(product);
