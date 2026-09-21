@@ -48,6 +48,13 @@ export async function POST(req: NextRequest, context: RouteContext) {
   const confirmPassword = String(body?.confirmPassword ?? "");
 
   try {
+    if (action === "lock-session") {
+      // Force password prompt again on the next catalogue open.
+      const res = NextResponse.json({ ok: true, unlocked: false });
+      clearCatalogueUnlockCookie(res, id);
+      return res;
+    }
+
     if (action === "unlock") {
       const state = await getCatalogueLockState(id);
       if (!state.exists) {

@@ -90,7 +90,7 @@ export function CatalogueLockControls({
           </h2>
           <p className="mt-1 text-sm text-text-muted">
             {localLocked
-              ? "Locked — manage / import / PDF need the password after this session expires."
+              ? "Locked — password is required every time someone opens this catalogue."
               : "Optional. Lock this catalogue so staff must enter a password before managing it."}
           </p>
         </div>
@@ -195,6 +195,26 @@ export function CatalogueUnlockGate({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unlocked, setUnlocked] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Clear any previous unlock cookie so every catalogue open asks again.
+    void fetch(`/api/admin/catalogues/${catalogueId}/lock`, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "lock-session" }),
+    })
+      .catch(() => null)
+      .finally(() => {
+        if (!cancelled) setReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogueId]);
 
   async function unlock() {
     if (busy) return;
@@ -230,8 +250,8 @@ export function CatalogueUnlockGate({
         <h2 className="text-lg font-semibold">Catalogue locked</h2>
       </div>
       <p className="mt-2 text-sm text-amber-900">
-        <strong>{catalogueName}</strong> is password protected. Enter the lock password to manage
-        products, import Excel, or download PDF.
+        <strong>{catalogueName}</strong> is password protected. Enter the password every time you
+        open this catalogue to manage products, import Excel, or download PDF.
       </p>
       <input
         type="password"
@@ -239,6 +259,7 @@ export function CatalogueUnlockGate({
         className="mt-4 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"
         placeholder="Lock password"
         value={password}
+        disabled={!ready || busy}
         onChange={(e) => setPassword(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") void unlock();
@@ -251,11 +272,11 @@ export function CatalogueUnlockGate({
       )}
       <button
         type="button"
-        disabled={busy || !password.trim()}
+        disabled={!ready || busy || !password.trim()}
         className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
         onClick={() => void unlock()}
       >
-        {busy ? "Checking…" : "Unlock"}
+        {busy ? "Checking…" : ready ? "Unlock" : "Preparing…"}
       </button>
     </div>
   );

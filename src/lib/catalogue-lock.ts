@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 
-const UNLOCK_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
+const UNLOCK_TTL_MS = 2 * 60 * 60 * 1000; // only while actively managing this visit
 const MIN_PASSWORD_LEN = 4;
 const MAX_PASSWORD_LEN = 128;
 

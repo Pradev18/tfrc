@@ -4,7 +4,6 @@ import { redirect, notFound } from "next/navigation";
 import { getCatalogueById } from "@/services/catalogue-admin.service";
 import { EditCatalogueForm } from "@/components/admin/EditCatalogueForm";
 import { CatalogueUnlockGate } from "@/components/admin/CatalogueLockControls";
-import { hasCatalogueUnlockCookie } from "@/lib/catalogue-lock";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -19,7 +18,6 @@ export default async function EditCataloguePage({ params }: PageProps) {
   if (!catalogue) notFound();
 
   const isLocked = Boolean(catalogue.isLocked);
-  const unlocked = !isLocked || (await hasCatalogueUnlockCookie(id));
 
   const form = (
     <EditCatalogueForm
@@ -47,7 +45,7 @@ export default async function EditCataloguePage({ params }: PageProps) {
         Changes reflect on the TFRC home page and store header for {catalogue.name}.
       </p>
       <div className="mt-8">
-        {isLocked && !unlocked ? (
+        {isLocked ? (
           <CatalogueUnlockGate catalogueId={id} catalogueName={catalogue.name}>
             {form}
           </CatalogueUnlockGate>

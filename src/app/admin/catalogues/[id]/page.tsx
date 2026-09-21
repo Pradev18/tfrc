@@ -8,7 +8,6 @@ import {
   CatalogueLockControls,
   CatalogueUnlockGate,
 } from "@/components/admin/CatalogueLockControls";
-import { hasCatalogueUnlockCookie } from "@/lib/catalogue-lock";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -23,7 +22,6 @@ export default async function ManageCataloguePage({ params }: PageProps) {
   if (!catalogue) notFound();
 
   const isLocked = Boolean(catalogue.isLocked);
-  const unlocked = !isLocked || (await hasCatalogueUnlockCookie(id));
 
   const manageBody = (
     <>
@@ -31,7 +29,7 @@ export default async function ManageCataloguePage({ params }: PageProps) {
         <CatalogueLockControls
           catalogueId={id}
           isLocked={isLocked}
-          unlocked={unlocked}
+          unlocked
         />
       </div>
 
@@ -80,7 +78,8 @@ export default async function ManageCataloguePage({ params }: PageProps) {
         </div>
       </div>
 
-      {isLocked && !unlocked ? (
+      {/* Locked catalogues always ask for password on every open (cookie is ignored for UI). */}
+      {isLocked ? (
         <CatalogueUnlockGate catalogueId={id} catalogueName={catalogue.name}>
           {manageBody}
         </CatalogueUnlockGate>
