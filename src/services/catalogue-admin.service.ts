@@ -58,10 +58,11 @@ export async function listCatalogues(includeInactive = true) {
 
   const usedBucketsByEnv = new Map<string, number>();
   for (const group of slugGroups) {
-    if (!group.shopCategorySlug || group._count._all <= 0) continue;
+    const environmentId = group.environmentId;
+    if (!environmentId || !group.shopCategorySlug || group._count._all <= 0) continue;
     usedBucketsByEnv.set(
-      group.environmentId,
-      (usedBucketsByEnv.get(group.environmentId) ?? 0) + 1
+      environmentId,
+      (usedBucketsByEnv.get(environmentId) ?? 0) + 1
     );
   }
 
