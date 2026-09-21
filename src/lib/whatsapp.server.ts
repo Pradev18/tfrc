@@ -8,6 +8,7 @@ import {
 } from "@/lib/whatsapp";
 
 const MEMORY_TTL_MS = 5 * 60_000;
+const STOREFRONT_DB_BUDGET_MS = 150;
 let memoryHit: { value: WhatsAppSettings; storedAt: number } | null = null;
 
 export const getWhatsAppSettings = cache(async function getWhatsAppSettings(): Promise<WhatsAppSettings> {
@@ -16,10 +17,15 @@ export const getWhatsAppSettings = cache(async function getWhatsAppSettings(): P
   }
 
   try {
-    const setting = await prisma.whatsAppSetting.findFirst({
-      where: { isActive: true },
-      orderBy: { updatedAt: "desc" },
-    });
+    const setting = await Promise.race([
+      prisma.whatsAppSetting.findFirst({
+        where: { isActive: true },
+        orderBy: { updatedAt: "desc" },
+      }),
+      new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), STOREFRONT_DB_BUDGET_MS);
+      }),
+    ]);
 
     const value = !setting
       ? DEFAULT_WHATSAPP_SETTINGS

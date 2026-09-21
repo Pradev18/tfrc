@@ -62,6 +62,13 @@ export interface ParsedOfficeFormsWorkbook {
   duplicateImageCodes: string[];
 }
 
+export type OfficeFormsSheetRows = Record<string, unknown[][]>;
+
+type RowWorkbook = {
+  SheetNames: string[];
+  Sheets: OfficeFormsSheetRows;
+};
+
 function sheetRows(ws: XLSX.WorkSheet): unknown[][] {
   return XLSX.utils.sheet_to_json<unknown[]>(ws, {
     header: 1,
@@ -138,7 +145,7 @@ function findHeaderRow(rows: unknown[][], minScore: (h: string[]) => number): nu
 }
 
 function pickSheet(
-  workbook: XLSX.WorkBook,
+  workbook: RowWorkbook,
   preferNames: string[],
   scorer: (headers: string[]) => number
 ): { name: string; headerRow: number; headers: string[]; rows: unknown[][] } | null {
@@ -152,9 +159,8 @@ function pickSheet(
   }> = [];
 
   for (const name of workbook.SheetNames) {
-    const ws = workbook.Sheets[name];
-    if (!ws) continue;
-    const rows = sheetRows(ws);
+    const rows = workbook.Sheets[name];
+    if (!rows) continue;
     const headerRow = findHeaderRow(rows, scorer);
     if (headerRow < 0) continue;
     const headers = (rows[headerRow] ?? []).map((c) => cellToString(c));
@@ -182,14 +188,13 @@ function isCloudImageSheetName(name: string): boolean {
 }
 
 function pickCloudImageSheet(
-  workbook: XLSX.WorkBook
+  workbook: RowWorkbook
 ): { name: string; headerRow: number; headers: string[]; rows: unknown[][] } | null {
   // Prefer a sheet named Cloud Fare / Cloudflare even when headers are unusual.
   for (const name of workbook.SheetNames) {
     if (!isCloudImageSheetName(name)) continue;
-    const ws = workbook.Sheets[name];
-    if (!ws) continue;
-    const rows = sheetRows(ws);
+    const rows = workbook.Sheets[name];
+    if (!rows) continue;
     let headerRow = findHeaderRow(rows, scoreImageSheet);
     if (headerRow < 0) {
       // Named Cloud Fare sheet: accept the first non-empty row as headers.
@@ -290,9 +295,9 @@ export function parseOfficeFormsWorkbook(
 ): ParsedOfficeFormsWorkbook {
   assertExcelBuffer(buffer, fileName);
 
-  let workbook: XLSX.WorkBook;
+  let xlsxWorkbook: XLSX.WorkBook;
   try {
-    workbook = XLSX.read(buffer, {
+    xlsxWorkbook = XLSX.read(buffer, {
       type: "buffer",
       cellDates: false,
       cellNF: false,
@@ -302,6 +307,28 @@ export function parseOfficeFormsWorkbook(
   } catch (error) {
     throw explainExcelParseFailure(error, fileName);
   }
+
+  const sheets: OfficeFormsSheetRows = {};
+  for (const name of xlsxWorkbook.SheetNames) {
+    const worksheet = xlsxWorkbook.Sheets[name];
+    if (worksheet) sheets[name] = sheetRows(worksheet);
+  }
+
+  return parseOfficeFormsSheetRows(sheets, fileName);
+}
+
+/**
+ * Parse already-decoded worksheet rows. Heavy XLSX decoding can run in a
+ * worker thread, leaving this deterministic normalization step on the server.
+ */
+export function parseOfficeFormsSheetRows(
+  sheets: OfficeFormsSheetRows,
+  fileName = "workbook.xlsx"
+): ParsedOfficeFormsWorkbook {
+  const workbook: RowWorkbook = {
+    SheetNames: Object.keys(sheets),
+    Sheets: sheets,
+  };
 
   if (!workbook.SheetNames.length) {
     throw new Error(

@@ -1,9 +1,14 @@
 import { Prisma } from "@prisma/client";
+import fs from "node:fs";
+import path from "node:path";
+import { Worker } from "node:worker_threads";
 import prisma from "@/lib/db";
 import {
   lookupOfficeFormsFields,
   parseOfficeFormsWorkbook,
+  parseOfficeFormsSheetRows,
   type OfficeFormsColumnMap,
+  type OfficeFormsSheetRows,
   type ParsedImageLink,
   type ParsedInventoryRow,
   type ParsedOfficeFormsWorkbook,
@@ -58,6 +63,71 @@ function yieldEventLoop(ms = 0): Promise<void> {
   });
 }
 
+const PARSE_WORKER_TIMEOUT_MS = 120_000;
+
+/**
+ * XLSX decoding is CPU-heavy and synchronous. Run it outside the Next.js
+ * process event loop so a 70k-row workbook cannot freeze public requests.
+ */
+function decodeWorkbookOffThread(buffer: Buffer): Promise<OfficeFormsSheetRows> {
+  const workerPath = path.join(
+    process.cwd(),
+    "scripts",
+    "office-report-parse-worker.cjs"
+  );
+  if (!fs.existsSync(workerPath)) {
+    return Promise.reject(new Error("Report parser worker is unavailable."));
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const worker = new Worker(workerPath, {
+      workerData: { buffer },
+    });
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      void worker.terminate();
+      reject(new Error("Excel decoding timed out."));
+    }, PARSE_WORKER_TIMEOUT_MS);
+
+    function finish() {
+      clearTimeout(timeout);
+      void worker.terminate();
+    }
+
+    worker.once(
+      "message",
+      (message: { ok?: boolean; sheets?: OfficeFormsSheetRows; error?: string }) => {
+        if (settled) return;
+        settled = true;
+        finish();
+        if (!message.ok || !message.sheets) {
+          reject(new Error(message.error || "Excel decoding failed."));
+          return;
+        }
+        resolve(message.sheets);
+      }
+    );
+    worker.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      finish();
+      reject(error);
+    });
+    worker.once("exit", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (code === 0) {
+        reject(new Error("Excel parser worker exited without a result."));
+      } else {
+        reject(new Error(`Excel parser worker exited with code ${code}.`));
+      }
+    });
+  });
+}
+
 async function getCachedParse(importId: string, fileName = "workbook.xlsx"): Promise<CachedParse> {
   const hit = parseCache.get(importId);
   if (hit) return hit;
@@ -69,8 +139,19 @@ async function getCachedParse(importId: string, fileName = "workbook.xlsx"): Pro
   }
   await yieldEventLoop();
   let parsed: ParsedOfficeFormsWorkbook;
+  let decodedSheets: OfficeFormsSheetRows | null = null;
   try {
-    parsed = parseOfficeFormsWorkbook(buffer, fileName);
+    decodedSheets = await decodeWorkbookOffThread(buffer);
+  } catch (error) {
+    // Development or unusual deployment layouts may omit the worker script.
+    // Keep the import functional, but production normally stays off-thread.
+    console.warn("[reports] parser worker unavailable; using inline fallback:", error);
+  }
+
+  try {
+    parsed = decodedSheets
+      ? parseOfficeFormsSheetRows(decodedSheets, fileName)
+      : parseOfficeFormsWorkbook(buffer, fileName);
   } catch (error) {
     throw explainExcelParseFailure(error, fileName);
   }
