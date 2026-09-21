@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { reportDisplaySrc, toProxiedReportImageSrc } from "@/lib/report/report-image-src";
+import { toProxiedReportImageSrc, isBrowserDisplayableImageUrl } from "@/lib/report/report-image-src";
 import { adminErrorMessage, readAdminJson, type AdminJson } from "@/lib/admin-fetch-json";
+import { adminNotify } from "@/lib/admin-notify";
 
 type ReportLine = {
   id: string;
@@ -89,6 +90,7 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[] | null>(null);
   const [duplicatesLoading, setDuplicatesLoading] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const previewHref = useMemo(
     () => `/admin/reports/${report.id}/print`,
@@ -133,10 +135,13 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
             if (refreshed.ok && next) setReport(next);
             return;
           }
+          await new Promise((r) => window.setTimeout(r, 45));
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Import failed");
+          const message = e instanceof Error ? e.message : "Import failed";
+          setError(message);
+          adminNotify(message);
         }
       }
     })();
@@ -154,6 +159,9 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
 
   const codeRequest = useRef(0);
   const codePickerRef = useRef<HTMLDivElement | null>(null);
+  const addQueueRef = useRef(Promise.resolve());
+  const reportRef = useRef(report);
+  reportRef.current = report;
 
   useEffect(() => {
     if (!codesOpen) return;
@@ -198,7 +206,7 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
     const handle = window.setTimeout(() => {
       if (cancelled) return;
       void loadCodes(itemCode.trim(), 0, false);
-    }, 180);
+    }, 250);
     return () => {
       cancelled = true;
       window.clearTimeout(handle);
@@ -275,28 +283,82 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
     window.setTimeout(() => setSaveState("idle"), 1200);
   }
 
-  async function addLine(code: string) {
+  function queueAddLine(code: string) {
     const trimmed = code.trim();
-    if (!trimmed || busy) return;
+    if (!trimmed || ingesting) return;
+    addQueueRef.current = addQueueRef.current
+      .then(async () => {
+        setBusy(true);
+        setError(null);
+        setNotice(null);
+        const current = reportRef.current;
+        const res = await fetch(`/api/admin/reports/${current.id}/lines`, {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            itemCode: trimmed,
+            page: current.page,
+            pageSize: current.pageSize,
+          }),
+        });
+        const data = await readAdminJson(res);
+        if (!res.ok) throw new Error(adminErrorMessage(data, "Could not add item"));
+        const next = reportFromJson(data);
+        if (next) {
+          setReport(next);
+          reportRef.current = next;
+        }
+        setItemCode("");
+        setCodesOpen(true);
+        if (data.alreadyExists) {
+          const msg = `“${String(data.itemCode || trimmed)}” is already on this report.`;
+          setNotice(msg);
+        } else {
+          setNotice(`Added “${String(data.itemCode || trimmed)}”. Click another code to add more.`);
+          window.setTimeout(() => setNotice(null), 1800);
+        }
+      })
+      .catch((e) => {
+        const message = e instanceof Error ? e.message : "Could not add item";
+        setError(message);
+        adminNotify(message);
+      })
+      .finally(() => {
+        setBusy(false);
+      });
+  }
+
+  async function addLine(code: string) {
+    queueAddLine(code);
+  }
+
+  async function clearAllLines() {
+    if (busy || ingesting || report.lineCount === 0) return;
+    if (
+      !window.confirm(
+        `Clear all ${report.lineCount} selected item(s) from this report?\n\nThe Excel upload stays — you can pick a fresh list for the next PDF.`
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
-      const res = await fetch(`/api/admin/reports/${report.id}/lines`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          itemCode: trimmed,
-          page: report.page,
-          pageSize: report.pageSize,
-        }),
-      });
+      const res = await fetch(
+        `/api/admin/reports/${report.id}/lines?all=1&pageSize=${report.pageSize}`,
+        { method: "DELETE", credentials: "include", cache: "no-store" }
+      );
       const data = await readAdminJson(res);
-      if (!res.ok) throw new Error(adminErrorMessage(data, "Lookup failed"));
-      setReport(reportFromJson(data) ?? report);
-      setItemCode("");
-      setSuggestions([]);
+      if (!res.ok) throw new Error(adminErrorMessage(data, "Could not clear items"));
+      setReport(reportFromJson(data) ?? { ...report, lines: [], lineCount: 0, page: 1 });
+      setNotice("Report list cleared. Select codes for the next PDF.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Lookup failed");
+      const message = e instanceof Error ? e.message : "Could not clear items";
+      setError(message);
+      adminNotify(message);
     } finally {
       setBusy(false);
     }
@@ -309,6 +371,8 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
     setError(null);
     const res = await fetch(`/api/admin/reports/${report.id}/lines/${lineId}`, {
       method: "PATCH",
+      credentials: "include",
+      cache: "no-store",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...patch,
@@ -318,7 +382,9 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
     });
     const data = await readAdminJson(res);
     if (!res.ok) {
-      setError(adminErrorMessage(data, "Update failed"));
+      const message = adminErrorMessage(data, "Update failed");
+      setError(message);
+      adminNotify(message);
       return;
     }
     setReport(reportFromJson(data) ?? report);
@@ -329,11 +395,13 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
     setError(null);
     const res = await fetch(
       `/api/admin/reports/${report.id}/lines/${lineId}?page=${report.page}&pageSize=${report.pageSize}`,
-      { method: "DELETE" }
+      { method: "DELETE", credentials: "include", cache: "no-store" }
     );
     const data = await readAdminJson(res);
     if (!res.ok) {
-      setError(adminErrorMessage(data, "Delete failed"));
+      const message = adminErrorMessage(data, "Delete failed");
+      setError(message);
+      adminNotify(message);
       return;
     }
     setReport(reportFromJson(data) ?? report);
@@ -398,8 +466,10 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
           ) : null}
         </p>
         <p className="mt-2">
-          The report lists only the codes you add. Lookup uses the first matching row from this upload.
-          Duplicate source rows stay listed separately and are omitted from the PDF.
+          Upload once (even 70k rows). Then pick only the codes you need — click a code in the
+          list to add it instantly. Download PDF for those rows, add more (or clear and start
+          fresh), download again. Catalogue and the public shop stay separate and should keep
+          working while you do this.
         </p>
         {report.import.duplicateItemCodes.length > 0 && (
           <div className="mt-3">
@@ -516,16 +586,28 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
       </section>
 
       <section className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-base font-semibold text-text">Add item code</h2>
-        <p className="mt-1 text-sm text-text-muted">
-          Open the list for codes from this Excel only, or type a code and add it.
-          Codes with a Cloud Fare / Cloudflare image link get that image automatically.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-base font-semibold text-text">Add item code</h2>
+            <p className="mt-1 text-sm text-text-muted">
+              Click any code in the list — it is added automatically. Use{" "}
+              <span className="font-semibold text-text">Add</span> only if you type a code by hand.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-text disabled:opacity-50"
+            disabled={busy || Boolean(ingesting) || report.lineCount === 0}
+            onClick={() => void clearAllLines()}
+          >
+            Clear selected items
+          </button>
+        </div>
         <div ref={codePickerRef} className="relative mt-3 flex flex-col gap-2 sm:flex-row">
           <input
             className="w-full rounded-lg border border-border bg-white px-3 py-2 font-mono text-sm"
             value={itemCode}
-            placeholder="Type a code or choose from this upload"
+            placeholder="Type a code or open Codes…"
             onChange={(e) => {
               setItemCode(e.target.value);
               setCodesOpen(true);
@@ -562,19 +644,25 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
             {busy ? "Looking up…" : "Add"}
           </button>
           {codesOpen && (
-            <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto rounded-lg border border-border bg-white shadow-lg sm:right-40">
-              <li className="sticky top-0 border-b border-border bg-white px-3 py-2 text-xs text-text-muted">
-                Codes from this upload only
+            <ul
+              className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-auto rounded-lg border border-border bg-white shadow-lg sm:right-40"
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              <li className="sticky top-0 z-10 border-b border-border bg-white px-3 py-2 text-xs font-medium text-text">
+                Click any code — it adds immediately (no Add button needed)
               </li>
               {suggestions.map((s) => (
                 <li key={s.itemCode}>
                   <button
                     type="button"
-                    className="flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-surface-muted"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      setItemCode(s.itemCode);
-                      setCodesOpen(false);
+                    className="flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-surface-muted disabled:opacity-60"
+                    disabled={Boolean(ingesting)}
+                    onPointerDown={(e) => {
+                      // Add on pointer-down so the row cannot unmount before click fires.
+                      if (e.button !== 0) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      queueAddLine(s.itemCode);
                     }}
                   >
                     <span className="font-mono font-semibold">{s.itemCode}</span>
@@ -593,8 +681,12 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
                     type="button"
                     className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-surface-muted"
                     disabled={codesLoading}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => void loadCodes(itemCode.trim(), suggestions.length, true)}
+                    onPointerDown={(e) => {
+                      if (e.button !== 0) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void loadCodes(itemCode.trim(), suggestions.length, true);
+                    }}
                   >
                     {codesLoading ? "Loading…" : "More codes from this upload"}
                   </button>
@@ -608,7 +700,16 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
         </div>
       </section>
 
-      {error && <p className="text-sm text-error">{error}</p>}
+      {notice && (
+        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          {notice}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {error}
+        </p>
+      )}
 
       <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 text-sm">
@@ -670,16 +771,29 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
                         <div className="space-y-1">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={reportDisplaySrc(line.imageLink)}
+                            src={
+                              isBrowserDisplayableImageUrl(line.imageLink)
+                                ? line.imageLink
+                                : toProxiedReportImageSrc(line.imageLink)
+                            }
                             alt=""
-                            className="h-12 w-12 rounded border border-border object-contain bg-white"
+                            width={48}
+                            height={48}
+                            loading="lazy"
+                            decoding="async"
+                            fetchPriority="low"
+                            className="h-12 w-12 rounded border border-border bg-white object-contain"
                             onError={(e) => {
                               const img = e.currentTarget;
                               const proxied = toProxiedReportImageSrc(line.imageLink);
-                              if (img.getAttribute("src") === proxied || img.src.includes("/api/admin/reports/image-proxy")) {
-                                img.style.display = "none";
+                              if (
+                                img.dataset.fallback === "1" ||
+                                img.src.includes("/api/admin/reports/image-proxy")
+                              ) {
+                                img.style.visibility = "hidden";
                                 return;
                               }
+                              img.dataset.fallback = "1";
                               img.src = proxied;
                             }}
                           />
@@ -687,9 +801,10 @@ export function ReportEditorClient({ initialReport }: { initialReport: ReportDet
                             href={line.imageLink}
                             target="_blank"
                             rel="noreferrer"
-                            className="block max-w-[140px] truncate text-[11px] text-blue-700 underline"
+                            className="block max-w-[100px] truncate text-[10px] text-blue-700 underline"
+                            title={line.imageLink}
                           >
-                            {line.imageLink}
+                            Open image
                           </a>
                         </div>
                       ) : (

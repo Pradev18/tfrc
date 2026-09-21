@@ -54,7 +54,12 @@ async function ensureSqlitePragmas() {
   try {
     await prisma.$queryRawUnsafe("PRAGMA journal_mode=WAL;");
     await prisma.$queryRawUnsafe("PRAGMA synchronous=NORMAL;");
-    await prisma.$queryRawUnsafe("PRAGMA busy_timeout=15000;");
+    await prisma.$queryRawUnsafe("PRAGMA busy_timeout=20000;");
+    await prisma.$queryRawUnsafe("PRAGMA temp_store=MEMORY;");
+    // Faster reads on Hostinger without waiting for a full DB rewrite.
+    await prisma.$queryRawUnsafe("PRAGMA cache_size=-65536;"); // ~64MB
+    await prisma.$queryRawUnsafe("PRAGMA mmap_size=134217728;"); // 128MB
+    await prisma.$queryRawUnsafe("PRAGMA wal_autocheckpoint=2000;");
   } catch (error) {
     console.warn("[db] Could not apply SQLite pragmas:", error);
   }

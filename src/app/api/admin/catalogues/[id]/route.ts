@@ -7,8 +7,8 @@ import {
   getCatalogueById,
   updateCatalogue,
   deleteCatalogue,
-  generateShopCategories,
 } from "@/services/catalogue-admin.service";
+import { requireCatalogueUnlocked } from "@/lib/catalogue-lock";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -19,6 +19,9 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   if (error) return error;
 
   const { id } = await context.params;
+  const lockError = await requireCatalogueUnlocked(id);
+  if (lockError) return lockError;
+
   const catalogue = await getCatalogueById(id);
   if (!catalogue) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ catalogue });
@@ -29,6 +32,9 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   if (error) return error;
 
   const { id } = await context.params;
+  const lockError = await requireCatalogueUnlocked(id);
+  if (lockError) return lockError;
+
   try {
     const body = await req.json();
     const previous = await getCatalogueById(id);
@@ -62,6 +68,9 @@ export async function DELETE(_req: NextRequest, context: RouteContext) {
   if (error) return error;
 
   const { id } = await context.params;
+  const lockError = await requireCatalogueUnlocked(id);
+  if (lockError) return lockError;
+
   try {
     const deleted = await deleteCatalogue(id, session!.user?.id);
     await touchSiteRevision();

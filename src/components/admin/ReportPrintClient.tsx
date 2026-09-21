@@ -7,6 +7,7 @@ import {
   TFRC_REPORT_LOGO_SRC,
 } from "@/lib/report/office-report-pdf-html";
 import { adminErrorMessage, readAdminJson } from "@/lib/admin-fetch-json";
+import { adminNotify } from "@/lib/admin-notify";
 import {
   alternateImageUrls,
   isBrowserDisplayableImageUrl,
@@ -274,49 +275,79 @@ export function ReportPrintClient({
     );
   }
 
-  async function buildPreviewPdf(): Promise<Blob> {
+  async function buildPreviewPdf(
+    onProgress?: (note: string) => void
+  ): Promise<Blob> {
     const html2canvas = (await import("html2canvas")).default;
     const { jsPDF } = await import("jspdf");
     const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
     let added = 0;
     const startSection = sectionIndex;
     let loadedSection = sectionIndex;
+    const blobUrls: string[] = [];
 
-    for (let section = 0; section < sectionCount; section++) {
-      if (section !== loadedSection) {
-        await loadSection(section);
-        loadedSection = section;
+    try {
+      for (let section = 0; section < sectionCount; section++) {
+        onProgress?.(
+          `Building PDF section ${section + 1} of ${sectionCount}…`
+        );
+        if (section !== loadedSection) {
+          await loadSection(section);
+          loadedSection = section;
+        }
+        await new Promise((r) => window.setTimeout(r, 100));
+        await new Promise((r) => window.requestAnimationFrame(() => r(undefined)));
+        const root = document.querySelector(".report-print-root");
+        if (!root) throw new Error("Preview is not ready");
+        await ensureReportLogosArePng(root);
+        await inlineImagesForPdf(root);
+        await waitForImages(root, 25000);
+        const pages = Array.from(root.querySelectorAll(".report-page")) as HTMLElement[];
+        for (const page of pages) {
+          const shadow = page.style.boxShadow;
+          page.style.boxShadow = "none";
+          try {
+            // scale 1.5 keeps quality while avoiding OOM on owner PCs / low-RAM devices
+            const canvas = await html2canvas(page, {
+              scale: 1.5,
+              backgroundColor: "#ffffff",
+              useCORS: true,
+              allowTaint: false,
+              logging: false,
+              imageTimeout: 15000,
+            });
+            if (added > 0) pdf.addPage();
+            pdf.addImage(canvas.toDataURL("image/jpeg", 0.86), "JPEG", 0, 0, 210, 297);
+            added += 1;
+            // free canvas memory sooner on constrained devices
+            canvas.width = 0;
+            canvas.height = 0;
+          } finally {
+            page.style.boxShadow = shadow;
+          }
+          await new Promise((r) => window.setTimeout(r, 30));
+        }
+        // Revoke blob URLs from this section before loading the next
+        root.querySelectorAll("img").forEach((img) => {
+          const src = (img as HTMLImageElement).src;
+          if (src.startsWith("blob:")) {
+            blobUrls.push(src);
+          }
+        });
       }
-      await new Promise((r) => window.setTimeout(r, 80));
-      await new Promise((r) => window.requestAnimationFrame(() => r(undefined)));
-      const root = document.querySelector(".report-print-root");
-      if (!root) throw new Error("Preview is not ready");
-      await ensureReportLogosArePng(root);
-      await inlineImagesForPdf(root);
-      await waitForImages(root, 20000);
-      const pages = Array.from(root.querySelectorAll(".report-page")) as HTMLElement[];
-      for (const page of pages) {
-        const shadow = page.style.boxShadow;
-        page.style.boxShadow = "none";
+    } finally {
+      for (const url of blobUrls) {
         try {
-          const canvas = await html2canvas(page, {
-            scale: 2,
-            backgroundColor: "#ffffff",
-            useCORS: true,
-            logging: false,
-          });
-          if (added > 0) pdf.addPage();
-          pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, 297);
-          added += 1;
-        } finally {
-          page.style.boxShadow = shadow;
+          URL.revokeObjectURL(url);
+        } catch {
+          // ignore
         }
       }
+      if (loadedSection !== startSection) {
+        await loadSection(startSection).catch(() => null);
+      }
     }
 
-    if (loadedSection !== startSection) {
-      await loadSection(startSection);
-    }
     if (added === 0) throw new Error("Add items before downloading the PDF");
     return pdf.output("blob");
   }
@@ -326,8 +357,14 @@ export function ReportPrintClient({
     const link = document.createElement("a");
     link.href = url;
     link.download = file.name;
+    link.rel = "noopener";
+    link.style.display = "none";
+    document.body.appendChild(link);
     link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+    window.setTimeout(() => {
+      link.remove();
+      URL.revokeObjectURL(url);
+    }, 8000);
   }
 
   function pdfFileName() {
@@ -336,31 +373,53 @@ export function ReportPrintClient({
   }
 
   async function handleDownloadPdf() {
-    if (downloading || loading || lines.length === 0) return;
+    if (downloading || loading || meta.lineCount === 0) return;
     setDownloading(true);
     setError(null);
     setDownloadNote("Making the PDF…");
     try {
-      const blob = await buildPreviewPdf();
+      if (lines.length === 0) {
+        await loadSection(0);
+      }
+      const blob = await buildPreviewPdf((note) => setDownloadNote(note));
       const name = pdfFileName();
-      downloadPdfFile(new File([blob], name, { type: "application/pdf" }));
-      setDownloadNote(`${name} downloaded.`);
+      // Prefer File when available; fall back to Blob for older browsers.
+      try {
+        downloadPdfFile(new File([blob], name, { type: "application/pdf" }));
+      } catch {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = name;
+        link.rel = "noopener";
+        document.body.appendChild(link);
+        link.click();
+        window.setTimeout(() => {
+          link.remove();
+          URL.revokeObjectURL(url);
+        }, 8000);
+      }
+      setDownloadNote(`${name} downloaded. If nothing appeared, check your Downloads folder or browser download bar.`);
     } catch (e) {
       setDownloadNote(null);
-      setError(
+      const message =
         e instanceof Error
-          ? `${e.message} You can still use Print / Save PDF.`
-          : "Could not make the PDF. You can still use Print / Save PDF."
-      );
+          ? `${e.message} Try “Print / Save PDF” as a backup on this device.`
+          : "Could not make the PDF. Try “Print / Save PDF” as a backup on this device.";
+      setError(message);
+      adminNotify(message);
     } finally {
       setDownloading(false);
     }
   }
 
   async function handlePrint() {
-    if (printing || lines.length === 0) return;
+    if (printing || meta.lineCount === 0) return;
     setPrinting(true);
     try {
+      if (lines.length === 0) {
+        await loadSection(0);
+      }
       // Give React a paint so proxied <img> nodes exist, then wait for loads.
       await new Promise((r) => window.requestAnimationFrame(() => r(undefined)));
       const root = document.querySelector(".report-print-root");
@@ -408,7 +467,7 @@ export function ReportPrintClient({
           <button
             type="button"
             className="btn-primary"
-            disabled={loading || printing || downloading || lines.length === 0}
+            disabled={loading || printing || downloading || meta.lineCount === 0}
             onClick={() => void handlePrint()}
           >
             {printing ? "Preparing…" : "Print / Save PDF"}
@@ -416,7 +475,7 @@ export function ReportPrintClient({
           <button
             type="button"
             className="btn-primary"
-            disabled={loading || printing || downloading || lines.length === 0}
+            disabled={loading || printing || downloading || meta.lineCount === 0}
             onClick={() => void handleDownloadPdf()}
           >
             {downloading ? "Downloading…" : "Download PDF"}

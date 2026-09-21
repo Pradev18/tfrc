@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { announceSiteDataUpdate } from "@/components/LiveDataRefresh";
+import { adminNotify } from "@/lib/admin-notify";
 
 interface ImportError {
   row: number;
@@ -66,12 +67,16 @@ export function CatalogueImportForm({
 
     const extension = nextFile.name.split(".").pop()?.toLowerCase() ?? "";
     if (!ALLOWED_EXTENSIONS.has(extension)) {
-      setError("Choose a Meta catalogue Excel file (.xlsx or .xls).");
+      const message = "Choose a Meta catalogue Excel file (.xlsx or .xls).";
+      setError(message);
+      adminNotify(message);
       if (inputRef.current) inputRef.current.value = "";
       return;
     }
     if (nextFile.size === 0 || nextFile.size > MAX_IMPORT_BYTES) {
-      setError("The selected file must be between 1 byte and 25 MB.");
+      const message = "The selected file must be between 1 byte and 25 MB.";
+      setError(message);
+      adminNotify(message);
       if (inputRef.current) inputRef.current.value = "";
       return;
     }
@@ -121,10 +126,11 @@ export function CatalogueImportForm({
         } else {
           setPreviewedSignature("");
           setValidatedSignature("");
-          setError(
+          const message =
             data.errorSummary ||
-              "Validation failed. Download the Meta template, match those columns, then choose the file again."
-          );
+            "Validation failed. Download the Meta template, match those columns, then choose the file again.";
+          setError(message);
+          adminNotify(message);
           setProgress("");
         }
       } else if (response.ok && data.applied) {
@@ -139,16 +145,19 @@ export function CatalogueImportForm({
         setValidatedSignature("");
         setPreviewedSignature("");
         const firstIssue = data.errors?.[0];
-        setError(
+        const message =
           data.errorSummary ||
-            (firstIssue
-              ? `Nothing was changed. Row ${firstIssue.row}: ${firstIssue.message}`
-              : "Nothing was changed because the import failed validation.")
-        );
+          (firstIssue
+            ? `Nothing was changed. Row ${firstIssue.row}: ${firstIssue.message}`
+            : "Nothing was changed because the import failed validation.");
+        setError(message);
+        adminNotify(message);
         setProgress("");
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Import failed");
+      const message = cause instanceof Error ? cause.message : "Import failed";
+      setError(message);
+      adminNotify(message);
       setProgress("");
     } finally {
       requestInFlightRef.current = false;

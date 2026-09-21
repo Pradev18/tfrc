@@ -7,6 +7,7 @@ import {
   adminErrorMessage,
   readAdminJson,
 } from "@/lib/admin-fetch-json";
+import { adminNotify } from "@/lib/admin-notify";
 
 type ReportListItem = {
   id: string;
@@ -35,6 +36,12 @@ type ReportListItem = {
 const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
 /** Keep each JSON chunk small so Hostinger/Cloudflare WAF does not 403 the upload. */
 const UPLOAD_CHUNK_BYTES = 256 * 1024;
+/** Short pause between ingest POSTs — long enough for shop reads, not crawl-speed. */
+const INGEST_YIELD_MS = 45;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
 
 function sanitizeClientExcelName(fileName: string): string {
   const raw = String(fileName || "workbook.xlsx").trim() || "workbook.xlsx";
@@ -124,6 +131,7 @@ export function ReportsAdminClient({
           String(data.phase || "")
         );
         if (data.done) return;
+        await sleep(INGEST_YIELD_MS);
       } catch (e) {
         const message = e instanceof Error ? e.message : "Import failed";
         const excelProblem = message.startsWith("Excel problem");
@@ -202,7 +210,7 @@ export function ReportsAdminClient({
       }
     }
 
-    setProgressLabel("Parsing workbook…");
+    setProgressLabel("Finishing upload…");
     const completeRes = await fetch("/api/admin/reports/upload", {
       method: "POST",
       credentials: "include",
@@ -237,8 +245,12 @@ export function ReportsAdminClient({
       const data = await uploadWorkbookChunked(file);
 
       if (data.needsIngest && data.importId) {
-        setProgressLabel("Saving inventory for lookup…");
+        setProgressLabel("Preparing workbook (site stays online)…");
         await ingestUntilReady(String(data.importId), (progress, total, phase) => {
+          if (!total) {
+            setProgressLabel("Parsing workbook on server…");
+            return;
+          }
           const label = phase === "images" ? "image links" : "inventory rows";
           setProgressLabel(
             `Saving ${label} ${progress.toLocaleString()} / ${total.toLocaleString()}…`
@@ -249,7 +261,9 @@ export function ReportsAdminClient({
       router.push(`/admin/reports/${String(data.reportId)}`);
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
+      const message = e instanceof Error ? e.message : "Upload failed";
+      setError(message);
+      adminNotify(message);
       await refresh().catch(() => null);
     } finally {
       setUploading(false);
@@ -274,7 +288,9 @@ export function ReportsAdminClient({
       router.push(`/admin/reports/${reportId}`);
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Import failed");
+      const message = e instanceof Error ? e.message : "Import failed";
+      setError(message);
+      adminNotify(message);
       await refresh().catch(() => null);
     } finally {
       setUploading(false);
@@ -296,7 +312,9 @@ export function ReportsAdminClient({
       await refresh();
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Delete failed");
+      const message = e instanceof Error ? e.message : "Delete failed";
+      setError(message);
+      adminNotify(message);
     } finally {
       setDeletingId(null);
     }

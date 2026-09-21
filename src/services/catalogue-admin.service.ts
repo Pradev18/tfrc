@@ -4,6 +4,7 @@ import { buildConfigFromEnvironment, getEnvironmentCardImage } from "@/lib/envir
 import { type ShopCategoryDef } from "@/lib/shop-categories";
 import { removeCachedEnvironment } from "@/lib/catalog-cache";
 import type { EnvironmentStatus } from "@prisma/client";
+import { isCatalogueLockedFromSettings } from "@/lib/catalogue-lock";
 
 export interface CreateCatalogueInput {
   name: string;
@@ -39,6 +40,7 @@ export async function listCatalogues(includeInactive = true) {
     cardImage: getEnvironmentCardImage(env),
     productCount: env._count.products,
     shopCategoryCount: env._count.shopCategories,
+    isLocked: isCatalogueLockedFromSettings(env.settings),
   }));
 }
 
@@ -55,6 +57,7 @@ export async function getCatalogueById(id: string) {
     ...env,
     config: buildConfigFromEnvironment(env),
     cardImage: getEnvironmentCardImage(env),
+    isLocked: isCatalogueLockedFromSettings(env.settings),
   };
 }
 

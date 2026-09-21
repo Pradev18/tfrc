@@ -11,6 +11,7 @@ import {
   type ShopCategoryItem,
 } from "@/components/store/CategoryScroll";
 import { ALL_PRODUCTS_CATEGORY_SLUG } from "@/lib/store-category-navigation";
+import { adminNotify } from "@/lib/admin-notify";
 
 const PAGE_SIZE_OPTIONS = [15, 30, 50] as const;
 
@@ -184,17 +185,51 @@ export function ManageCataloguePanel({
     setError("");
     try {
       const url = `/api/admin/catalogues/${catalogueId}/pdf${autoPrint ? "?print=1" : ""}`;
-      const popup = window.open(url, "_blank", "noopener,noreferrer");
-      if (!popup) {
-        window.location.href = url;
+      const res = await fetch(url, {
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Cache-Control": "no-store" },
+      });
+      if (!res.ok) {
+        let message = `Could not prepare catalogue PDF (error ${res.status}).`;
+        try {
+          const data = (await res.json()) as { error?: string };
+          if (data.error) message = data.error;
+        } catch {
+          // non-JSON error body
+        }
+        setError(message);
+        adminNotify(message);
+        return;
       }
+      const html = await res.text();
+      if (!html || html.length < 80) {
+        const message = "Catalogue PDF came back empty. Try again in a moment.";
+        setError(message);
+        adminNotify(message);
+        return;
+      }
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const blobUrl = URL.createObjectURL(blob);
+      const popup = window.open(blobUrl, "_blank", "noopener,noreferrer");
+      if (!popup) {
+        adminNotify(
+          "Popup was blocked. Allow popups for this site, then try Download PDF again. Opening in this tab now…"
+        );
+        window.location.href = blobUrl;
+        return;
+      }
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 120_000);
       setMessage(
         autoPrint
-          ? "Catalogue PDF opened — logo, size options, and 9 product cards per page."
+          ? "Catalogue PDF opened — use the browser print dialog to save/download."
           : "Catalogue PDF preview opened."
       );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not generate catalogue PDF");
+      const message =
+        cause instanceof Error ? cause.message : "Could not generate catalogue PDF";
+      setError(message);
+      adminNotify(message);
     } finally {
       setPdfLoading(false);
     }

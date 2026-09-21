@@ -2,12 +2,22 @@ import { mkdir, readFile, writeFile, unlink, readdir, rm } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 
+/** Read/delete still check legacy paths so older uploads remain findable. */
 function storeDirectories(): string[] {
   const cwd = process.cwd();
   return [
     path.join(cwd, "uploads", "report-imports"),
+    path.join("/tmp", "vitanova-report-imports"),
     path.join(cwd, "public", "uploads", "report-imports"),
     path.join(cwd, ".next", "standalone", "uploads", "report-imports"),
+  ];
+}
+
+/** Prefer one durable dir + /tmp — avoid 4× write amplification on every chunk. */
+function writeDirectories(): string[] {
+  const cwd = process.cwd();
+  return [
+    path.join(cwd, "uploads", "report-imports"),
     path.join("/tmp", "vitanova-report-imports"),
   ];
 }
@@ -30,7 +40,7 @@ export function sanitizeExcelUploadName(fileName: string): string {
 async function writeEverywhere(relativeName: string, buffer: Buffer): Promise<void> {
   let written = false;
   const errors: string[] = [];
-  for (const dir of storeDirectories()) {
+  for (const dir of writeDirectories()) {
     try {
       await mkdir(dir, { recursive: true });
       await writeFile(path.join(dir, relativeName), buffer);

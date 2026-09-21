@@ -20,7 +20,13 @@ import {
 } from "@/lib/report/office-report-upload-store";
 import { explainExcelParseFailure } from "@/lib/report/excel-file-guard";
 
-const INGEST_BATCH = 400;
+/**
+ * Balanced for Hostinger single-process:
+ * - Enough rows per HTTP call to finish 70k without endless round-trips
+ * - Sub-batches + event-loop yields so storefront can still answer
+ */
+const INGEST_SUB_BATCH = 280;
+const INGEST_ROWS_PER_REQUEST = 1120;
 /** @deprecated kept for old seed route callers */
 const SEED_BATCH = 250;
 
@@ -35,6 +41,17 @@ function sourceTotal(inventoryRowCount: number, imageLinkCount: number): number 
   return Math.max(0, inventoryRowCount) + Math.max(0, imageLinkCount);
 }
 
+/** Let storefront / other requests run between heavy SQLite bursts. */
+function yieldEventLoop(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof setImmediate === "function") {
+      setImmediate(resolve);
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
 async function getCachedParse(importId: string, fileName = "workbook.xlsx"): Promise<CachedParse> {
   const hit = parseCache.get(importId);
   if (hit) return hit;
@@ -44,12 +61,14 @@ async function getCachedParse(importId: string, fileName = "workbook.xlsx"): Pro
       "Upload session expired or the server restarted before import finished. Upload the Excel file again."
     );
   }
+  await yieldEventLoop();
   let parsed: ParsedOfficeFormsWorkbook;
   try {
     parsed = parseOfficeFormsWorkbook(buffer, fileName);
   } catch (error) {
     throw explainExcelParseFailure(error, fileName);
   }
+  await yieldEventLoop();
   const uniqueItemCount = new Set(parsed.inventoryRows.map((row) => row.itemCode)).size;
   const entry = { parsed, uniqueItemCount };
   parseCache.set(importId, entry);
@@ -60,60 +79,44 @@ function clearCachedParse(importId: string) {
   parseCache.delete(importId);
 }
 
+/**
+ * Fast path: save workbook only. Full XLSX parse runs on first ingest so upload
+ * complete does not freeze the Node process (storefront / admin) for 70k+ rows.
+ */
 export async function createOfficeReportImport(input: {
   fileName: string;
   fileSize: number;
   buffer: Buffer;
   userId?: string | null;
 }) {
-  let parsed: ParsedOfficeFormsWorkbook;
-  try {
-    parsed = parseOfficeFormsWorkbook(input.buffer, input.fileName);
-  } catch (error) {
-    throw explainExcelParseFailure(error, input.fileName);
-  }
-
-  const uniqueCodes = new Set(parsed.inventoryRows.map((row) => row.itemCode));
-  const wholesaleByCode: Record<string, string> = {};
-  for (const seed of parsed.iqsSeedRows) {
-    wholesaleByCode[seed.itemCode] = seed.wholesalePriceApproval;
-  }
-
-  // PENDING until inventory + image rows are written in small HTTP batches.
   const created = await prisma.officeReportImport.create({
     data: {
       fileName: input.fileName,
       fileSize: input.fileSize,
       status: "PENDING",
-      inventorySheetName: parsed.inventorySheetName,
-      imageSheetName: parsed.imageSheetName,
-      iqsSheetName: parsed.iqsSheetName,
-      inventoryHeaders: JSON.stringify(parsed.inventoryHeaders),
-      columnMap: JSON.stringify(parsed.columnMap),
-      inventoryRowCount: parsed.inventoryRows.length,
-      imageLinkCount: parsed.imageLinks.length,
-      duplicateItemCodes: JSON.stringify(parsed.duplicateInventoryCodes),
-      uniqueItemCount: uniqueCodes.size,
+      inventorySheetName: null,
+      imageSheetName: null,
+      iqsSheetName: null,
+      inventoryHeaders: "[]",
+      columnMap: "{}",
+      inventoryRowCount: 0,
+      imageLinkCount: 0,
+      duplicateItemCodes: "[]",
+      uniqueItemCount: 0,
       seedProgress: 0,
-      iqsWholesaleByCode: JSON.stringify(wholesaleByCode),
+      iqsWholesaleByCode: "{}",
       createdByUserId: input.userId ?? null,
     },
   });
 
   try {
     await saveReportImportWorkbook(created.id, input.buffer);
-    parseCache.set(created.id, { parsed, uniqueItemCount: uniqueCodes.size });
 
     const report = await prisma.officeReport.create({
       data: {
         importId: created.id,
         createdByUserId: input.userId ?? null,
-        tfrcLabel: parsed.iqsFormMeta.tfrcLabel || "TFRC",
-        customerName: parsed.iqsFormMeta.customerName,
-        requestedBy: parsed.iqsFormMeta.requestedBy,
-        shopBranch: parsed.iqsFormMeta.shopBranch,
-        notes: parsed.iqsFormMeta.notes,
-        reportDate: formatIqsReportDate(parsed.iqsFormMeta.reportDate),
+        tfrcLabel: "TFRC",
       },
     });
 
@@ -125,9 +128,9 @@ export async function createOfficeReportImport(input: {
       importRecord,
       report,
       seededLineCount: 0,
-      uniqueItemCount: uniqueCodes.size,
+      uniqueItemCount: 0,
       needsSeed: false,
-      needsIngest: sourceTotal(parsed.inventoryRows.length, parsed.imageLinks.length) > 0,
+      needsIngest: true,
     };
   } catch (error) {
     clearCachedParse(created.id);
@@ -139,15 +142,55 @@ export async function createOfficeReportImport(input: {
   }
 }
 
+async function syncImportMetaFromParse(
+  importId: string,
+  parsed: ParsedOfficeFormsWorkbook,
+  uniqueItemCount: number
+) {
+  const wholesaleByCode: Record<string, string> = {};
+  for (const seed of parsed.iqsSeedRows) {
+    wholesaleByCode[seed.itemCode] = seed.wholesalePriceApproval;
+  }
+
+  await prisma.officeReportImport.update({
+    where: { id: importId },
+    data: {
+      inventorySheetName: parsed.inventorySheetName,
+      imageSheetName: parsed.imageSheetName,
+      iqsSheetName: parsed.iqsSheetName,
+      inventoryHeaders: JSON.stringify(parsed.inventoryHeaders),
+      columnMap: JSON.stringify(parsed.columnMap),
+      inventoryRowCount: parsed.inventoryRows.length,
+      imageLinkCount: parsed.imageLinks.length,
+      duplicateItemCodes: JSON.stringify(parsed.duplicateInventoryCodes),
+      uniqueItemCount,
+      iqsWholesaleByCode: JSON.stringify(wholesaleByCode),
+      errorMessage: null,
+    },
+  });
+
+  await prisma.officeReport.updateMany({
+    where: { importId },
+    data: {
+      tfrcLabel: parsed.iqsFormMeta.tfrcLabel || "TFRC",
+      customerName: parsed.iqsFormMeta.customerName,
+      requestedBy: parsed.iqsFormMeta.requestedBy,
+      shopBranch: parsed.iqsFormMeta.shopBranch,
+      notes: parsed.iqsFormMeta.notes,
+      reportDate: formatIqsReportDate(parsed.iqsFormMeta.reportDate),
+    },
+  });
+}
+
 /**
  * Write the next chunk of inventory / image source rows for lookup.
- * Does not create report lines — those stay empty until codes are added.
+ * One HTTP call writes several sub-batches (with yields) so 70k imports finish
+ * without locking the shop the whole time — and without endless tiny round-trips.
  */
 export async function ingestOfficeReportSourceBatch(
   importId: string,
-  batchSize = INGEST_BATCH
+  _batchSize = INGEST_ROWS_PER_REQUEST
 ) {
-  const take = Math.min(Math.max(batchSize, 50), 800);
   const importRecord = await prisma.officeReportImport.findUnique({
     where: { id: importId },
   });
@@ -165,7 +208,18 @@ export async function ingestOfficeReportSourceBatch(
   }
 
   try {
-    const { parsed } = await getCachedParse(importId, importRecord.fileName);
+    const { parsed, uniqueItemCount } = await getCachedParse(importId, importRecord.fileName);
+
+    const needsMeta =
+      !importRecord.inventorySheetName ||
+      importRecord.inventoryRowCount !== parsed.inventoryRows.length ||
+      importRecord.imageLinkCount !== parsed.imageLinks.length;
+
+    if (needsMeta) {
+      await syncImportMetaFromParse(importId, parsed, uniqueItemCount);
+      await yieldEventLoop();
+    }
+
     const inventoryTotal = parsed.inventoryRows.length;
     const imageTotal = parsed.imageLinks.length;
     const total = inventoryTotal + imageTotal;
@@ -180,7 +234,7 @@ export async function ingestOfficeReportSourceBatch(
       return { done: true, progress: 0, total: 0, phase: "done" as const };
     }
 
-    // Resume from what is already in the DB so a timed-out batch does not duplicate or die.
+    // Always resume from DB counts so a crashed mid-request cannot duplicate rows.
     const [savedInventory, savedImages] = await Promise.all([
       prisma.officeReportInventoryItem.count({ where: { importId } }),
       prisma.officeReportImageLink.count({ where: { importId } }),
@@ -190,39 +244,59 @@ export async function ingestOfficeReportSourceBatch(
         ? savedInventory
         : inventoryTotal + Math.min(savedImages, imageTotal);
 
-    if (progress < inventoryTotal) {
-      const start = progress;
-      const chunk = parsed.inventoryRows.slice(start, start + take);
-      if (chunk.length > 0) {
-        await prisma.officeReportInventoryItem.createMany({
-          data: chunk.map((row, offset) => ({
-            importId,
-            itemCode: row.itemCode,
-            payload: JSON.stringify(row.payload),
-            sortOrder: start + offset,
-          })),
-        });
-        progress = start + chunk.length;
+    const requestEnd = Math.min(progress + INGEST_ROWS_PER_REQUEST, total);
+    let phase: "inventory" | "images" | "done" =
+      progress < inventoryTotal ? "inventory" : "images";
+
+    while (progress < requestEnd) {
+      const take = Math.min(INGEST_SUB_BATCH, requestEnd - progress);
+
+      if (progress < inventoryTotal) {
+        const start = progress;
+        const chunk = parsed.inventoryRows.slice(
+          start,
+          Math.min(start + take, inventoryTotal)
+        );
+        if (chunk.length > 0) {
+          await prisma.officeReportInventoryItem.createMany({
+            data: chunk.map((row, offset) => ({
+              importId,
+              itemCode: row.itemCode,
+              payload: JSON.stringify(row.payload),
+              sortOrder: start + offset,
+            })),
+          });
+          progress = start + chunk.length;
+          phase = "inventory";
+        } else {
+          progress = inventoryTotal;
+        }
       } else {
-        progress = inventoryTotal;
+        const imageStart = progress - inventoryTotal;
+        const chunk = parsed.imageLinks.slice(
+          imageStart,
+          Math.min(imageStart + take, imageTotal)
+        );
+        if (chunk.length > 0) {
+          await prisma.officeReportImageLink.createMany({
+            data: chunk.map((row, offset) => ({
+              importId,
+              itemCode: row.itemCode,
+              imageUrl: row.imageUrl,
+              fileName: row.fileName ?? null,
+              sortOrder: imageStart + offset,
+            })),
+          });
+          progress = inventoryTotal + imageStart + chunk.length;
+          phase = "images";
+        } else {
+          progress = total;
+        }
       }
-    } else {
-      const imageStart = Math.max(0, progress - inventoryTotal);
-      const chunk = parsed.imageLinks.slice(imageStart, imageStart + take);
-      if (chunk.length > 0) {
-        await prisma.officeReportImageLink.createMany({
-          data: chunk.map((row, offset) => ({
-            importId,
-            itemCode: row.itemCode,
-            imageUrl: row.imageUrl,
-            fileName: row.fileName ?? null,
-            sortOrder: imageStart + offset,
-          })),
-        });
-        progress = inventoryTotal + imageStart + chunk.length;
-      } else {
-        progress = total;
-      }
+
+      // Let storefront / admin requests run between SQLite write bursts.
+      await yieldEventLoop();
+      await new Promise((r) => setTimeout(r, 8));
     }
 
     const done = progress >= total;
@@ -234,23 +308,21 @@ export async function ingestOfficeReportSourceBatch(
         errorMessage: null,
         inventoryRowCount: inventoryTotal,
         imageLinkCount: imageTotal,
+        uniqueItemCount,
       },
     });
 
     if (done) {
       clearCachedParse(importId);
       await deleteReportImportWorkbook(importId).catch(() => null);
+      phase = "done";
     }
 
     return {
       done,
       progress,
       total,
-      phase: done
-        ? ("done" as const)
-        : progress < inventoryTotal
-          ? ("inventory" as const)
-          : ("images" as const),
+      phase,
     };
   } catch (error) {
     const message =
@@ -866,7 +938,9 @@ export async function addOfficeReportLine(reportId: string, itemCodeRaw: string)
   });
   if (!report) throw new Error("Report not found.");
   if (report.import.status !== "READY") {
-    throw new Error("Report import is not ready. Upload a valid workbook first.");
+    throw new Error(
+      "Excel is still being prepared for lookup. Wait until the progress finishes, then add codes."
+    );
   }
 
   const { itemCode, fields, wholesalePriceApproval } = await resolveLookup(
@@ -880,9 +954,12 @@ export async function addOfficeReportLine(reportId: string, itemCodeRaw: string)
     select: { id: true },
   });
   if (existingLine) {
-    throw new Error(
-      `Item code ${itemCode} is already on this report. Duplicates are listed separately and omitted from the PDF.`
-    );
+    return {
+      id: existingLine.id,
+      itemCode,
+      alreadyExists: true as const,
+      lookupStatus: "ok" as string,
+    };
   }
 
   const agg = await prisma.officeReportLine.aggregate({
@@ -908,7 +985,22 @@ export async function addOfficeReportLine(reportId: string, itemCodeRaw: string)
     },
   });
 
-  return created;
+  return {
+    id: created.id,
+    itemCode,
+    alreadyExists: false as const,
+    lookupStatus: created.lookupStatus,
+  };
+}
+
+export async function clearOfficeReportLines(reportId: string) {
+  const report = await prisma.officeReport.findUnique({
+    where: { id: reportId },
+    select: { id: true },
+  });
+  if (!report) throw new Error("Report not found.");
+  const result = await prisma.officeReportLine.deleteMany({ where: { reportId } });
+  return { deleted: result.count };
 }
 
 export async function updateOfficeReportMeta(
@@ -1058,33 +1150,30 @@ export async function searchOfficeItemCodes(
   const descriptionKey = columnMap.description;
   const codeFilter = currentUploadCodeFilter(query);
 
-  const rows = await prisma.$queryRaw<Array<{ itemCode: string }>>`
-    SELECT itemCode as itemCode
-    FROM OfficeReportInventoryItem
-    WHERE importId = ${importId}
-    ${codeFilter}
-    GROUP BY itemCode
-    ORDER BY itemCode ASC
-    LIMIT ${take} OFFSET ${skip}
+  // One query: first row per code (by sortOrder) — avoids a second findMany over 70k.
+  const rows = await prisma.$queryRaw<
+    Array<{ itemCode: string; payload: string }>
+  >`
+    SELECT i.itemCode as itemCode, i.payload as payload
+    FROM OfficeReportInventoryItem i
+    INNER JOIN (
+      SELECT itemCode, MIN(sortOrder) AS minSort
+      FROM OfficeReportInventoryItem
+      WHERE importId = ${importId}
+      ${codeFilter}
+      GROUP BY itemCode
+      ORDER BY itemCode ASC
+      LIMIT ${take} OFFSET ${skip}
+    ) first
+      ON first.itemCode = i.itemCode AND first.minSort = i.sortOrder
+    WHERE i.importId = ${importId}
+    ORDER BY i.itemCode ASC
   `;
 
-  const codes = rows.map((row) => row.itemCode).filter(Boolean);
-  if (codes.length === 0) return [];
-
-  const details = await prisma.officeReportInventoryItem.findMany({
-    where: { importId, itemCode: { in: codes } },
-    orderBy: { sortOrder: "asc" },
-    select: { itemCode: true, payload: true },
-  });
-  const firstByCode = new Map<string, string>();
-  for (const row of details) {
-    if (!firstByCode.has(row.itemCode)) firstByCode.set(row.itemCode, row.payload);
-  }
-
-  return codes.map((itemCode) => {
-    const payload = safeJsonObject(firstByCode.get(itemCode) ?? "{}") as Record<string, string>;
+  return rows.map((row) => {
+    const payload = safeJsonObject(row.payload ?? "{}") as Record<string, string>;
     return {
-      itemCode,
+      itemCode: row.itemCode,
       itemName: (descriptionKey ? payload[descriptionKey] : "") || "",
     };
   });

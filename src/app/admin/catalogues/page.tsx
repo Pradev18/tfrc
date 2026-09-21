@@ -57,6 +57,11 @@ export default async function CataloguesListPage() {
                 >
                   {cat.status === "ACTIVE" ? "Live" : "Draft — not on website"}
                 </span>
+                {cat.isLocked ? (
+                  <span className="ml-2 mt-2 inline-block rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
+                    Locked
+                  </span>
+                ) : null}
               </div>
             </div>
           </Link>

@@ -3,6 +3,7 @@ import { requireAdminSession } from "@/lib/admin-auth";
 import { getCataloguePdfPayload } from "@/services/catalogue-pdf.service";
 import { assembleCataloguePdfHtml } from "@/lib/catalogue-pdf-build";
 import { getSiteUrl } from "@/lib/site-config";
+import { requireCatalogueUnlocked } from "@/lib/catalogue-lock";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -17,6 +18,9 @@ export async function GET(req: NextRequest, context: RouteContext) {
   if (error) return error;
 
   const { id } = await context.params;
+  const lockError = await requireCatalogueUnlocked(id);
+  if (lockError) return lockError;
+
   const payload = await getCataloguePdfPayload(id);
   if (!payload) {
     return NextResponse.json({ error: "Catalogue not found" }, { status: 404 });

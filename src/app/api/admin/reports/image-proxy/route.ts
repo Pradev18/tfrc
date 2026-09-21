@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_BYTES = 8 * 1024 * 1024; // 8MB
-const FETCH_TIMEOUT_MS = 20000;
+const FETCH_TIMEOUT_MS = 8000;
 
 const ALLOWED_HOSTS = new Set([
   "pub-c34decbe8eba4a2fa17498e94b1d07b5.r2.dev",

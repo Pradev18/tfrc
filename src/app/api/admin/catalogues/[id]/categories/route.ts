@@ -9,6 +9,7 @@ import { persistRuntimeCatalogueDataSafely } from "@/lib/persist-runtime-data.se
 import { syncEnvironmentShopCategories } from "@/lib/shop-category-sync";
 import { getShopCategoryDefsForEnvironment } from "@/services/shop-category.service";
 import { OTHER_SHOP_CATEGORY } from "@/lib/shop-categories";
+import { requireCatalogueUnlocked } from "@/lib/catalogue-lock";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -32,6 +33,9 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   if (error) return error;
 
   const { id } = await context.params;
+  const lockError = await requireCatalogueUnlocked(id);
+  if (lockError) return lockError;
+
   const catalogue = await getCatalogueById(id);
   if (!catalogue) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -142,6 +146,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
   if (error) return error;
 
   const { id } = await context.params;
+  const lockError = await requireCatalogueUnlocked(id);
+  if (lockError) return lockError;
+
   const catalogue = await getCatalogueById(id);
   if (!catalogue) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -191,6 +198,9 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
+  const lockError = await requireCatalogueUnlocked(id);
+  if (lockError) return lockError;
+
   const catalogue = await getCatalogueById(id);
   if (!catalogue) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -228,6 +238,9 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
+  const lockError = await requireCatalogueUnlocked(id);
+  if (lockError) return lockError;
+
   const catalogue = await getCatalogueById(id);
   if (!catalogue) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

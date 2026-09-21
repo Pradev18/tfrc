@@ -1,23 +1,23 @@
 import prisma from "@/lib/db";
 import { refreshCatalogCacheFromDatabase } from "@/lib/catalog-cache-refresh.server";
-import { sqlitePathFromUrl, syncSqliteFileToReplicas } from "@/lib/sqlite-paths";
+import { sqlitePathFromUrl, syncSqliteFileToEssentialReplicas } from "@/lib/sqlite-paths";
 
 /**
- * After admin writes, force SQLite + catalogue cache onto every known path
- * so Hostinger workers and fallback reads cannot keep serving pre-import data.
+ * After admin catalogue writes, refresh cache + essential DB replicas.
+ * Uses PASSIVE WAL checkpoint so storefront reads are not frozen (unlike TRUNCATE).
  */
 export async function persistRuntimeCatalogueData(): Promise<void> {
   try {
-    await prisma.$queryRawUnsafe("PRAGMA wal_checkpoint(TRUNCATE);");
+    await prisma.$queryRawUnsafe("PRAGMA wal_checkpoint(PASSIVE);");
   } catch (error) {
     console.warn("[persist] WAL checkpoint skipped:", error);
   }
 
   const active = sqlitePathFromUrl(process.env.DATABASE_URL);
   if (active) {
-    const synced = syncSqliteFileToReplicas(active);
+    const synced = syncSqliteFileToEssentialReplicas(active);
     if (synced.length) {
-      console.log(`[persist] Synced SQLite to ${synced.length} replica(s)`);
+      console.log(`[persist] Synced SQLite to ${synced.length} essential replica(s)`);
     }
   }
 

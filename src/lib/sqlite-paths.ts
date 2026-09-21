@@ -53,6 +53,7 @@ export function pickNewestSqlitePath(preferredRelative = "prod.db"): string | nu
   return best?.path ?? null;
 }
 
+/** Full fan-out copy (expensive). Prefer syncSqliteFileToEssentialReplicas for hot paths. */
 export function syncSqliteFileToReplicas(sourcePath: string): string[] {
   const synced: string[] = [];
   const source = path.resolve(sourcePath);
@@ -76,6 +77,43 @@ export function syncSqliteFileToReplicas(sourcePath: string): string[] {
       synced.push(dest);
     } catch (error) {
       console.warn(`[sqlite] Could not sync replica ${dest}:`, error);
+    }
+  }
+  return synced;
+}
+
+/**
+ * Copy only the Hostinger-critical DB locations. Avoids blocking the app while
+ * cloning prod.db to every historical candidate path on every admin save.
+ */
+export function syncSqliteFileToEssentialReplicas(sourcePath: string): string[] {
+  const synced: string[] = [];
+  const source = path.resolve(sourcePath);
+  if (!fs.existsSync(source)) return synced;
+  if (path.basename(source).toLowerCase() === "dev.db") return synced;
+
+  const cwd = process.cwd();
+  const basename = path.basename(source);
+  const essentials = [
+    path.join(cwd, "prisma", basename),
+    path.join(cwd, ".next", "standalone", "prisma", basename),
+    path.join(cwd, ".next", "standalone", basename),
+    path.join("/tmp", `vitanova-${basename}`),
+  ];
+
+  const seen = new Set<string>([source]);
+  for (const candidate of essentials) {
+    const dest = path.resolve(candidate);
+    if (seen.has(dest)) continue;
+    seen.add(dest);
+    try {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      const temporary = `${dest}.${process.pid}.tmp`;
+      fs.copyFileSync(source, temporary);
+      fs.renameSync(temporary, dest);
+      synced.push(dest);
+    } catch (error) {
+      console.warn(`[sqlite] Could not sync essential replica ${dest}:`, error);
     }
   }
   return synced;

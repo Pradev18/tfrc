@@ -3,6 +3,7 @@ import { requireAdminSession } from "@/lib/admin-auth";
 import { getCatalogueById } from "@/services/catalogue-admin.service";
 import prisma from "@/lib/db";
 import { OTHER_SHOP_CATEGORY } from "@/lib/shop-categories";
+import { requireCatalogueUnlocked } from "@/lib/catalogue-lock";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -13,6 +14,9 @@ export async function GET(req: NextRequest, context: RouteContext) {
   if (error) return error;
 
   const { id } = await context.params;
+  const lockError = await requireCatalogueUnlocked(id);
+  if (lockError) return lockError;
+
   const catalogue = await getCatalogueById(id);
   if (!catalogue) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

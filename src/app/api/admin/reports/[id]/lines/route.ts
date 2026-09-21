@@ -3,6 +3,7 @@ import { requireAdminSession } from "@/lib/admin-auth";
 import prisma from "@/lib/db";
 import {
   addOfficeReportLine,
+  clearOfficeReportLines,
   getOfficeReportDetail,
 } from "@/services/office-report.service";
 
@@ -57,10 +58,45 @@ export async function POST(
       page: lastPage,
       pageSize,
     });
-    return NextResponse.json({ report, addedLineId: created.id });
+    return NextResponse.json({
+      report,
+      addedLineId: created.id,
+      alreadyExists: created.alreadyExists,
+      itemCode: created.itemCode,
+    });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to add item" },
+      { status: 400 }
+    );
+  }
+}
+
+/** Clear selected report rows so owner can start a fresh PDF selection. */
+export async function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { error } = await requireAdminSession();
+    if (error) return error;
+    const { id } = await context.params;
+    if (req.nextUrl.searchParams.get("all") !== "1") {
+      return NextResponse.json(
+        { error: "Pass ?all=1 to clear every selected report row." },
+        { status: 400 }
+      );
+    }
+    const pageSize = Number(req.nextUrl.searchParams.get("pageSize") || "100");
+    await clearOfficeReportLines(id);
+    const report = await getOfficeReportDetail(id, {
+      page: 1,
+      pageSize: Number.isFinite(pageSize) ? pageSize : 100,
+    });
+    return NextResponse.json({ report, cleared: true });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Failed to clear report rows" },
       { status: 400 }
     );
   }

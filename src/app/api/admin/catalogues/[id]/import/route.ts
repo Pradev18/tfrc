@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { getCatalogueById } from "@/services/catalogue-admin.service";
 import { importCatalogueExcel } from "@/services/catalogue-import.service";
 import { touchSiteRevision } from "@/lib/site-revision.server";
+import { requireCatalogueUnlocked } from "@/lib/catalogue-lock";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -20,6 +22,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
   if (error) return error;
 
   const { id } = await context.params;
+  const lockError = await requireCatalogueUnlocked(id);
+  if (lockError) return lockError;
+
   const catalogue = await getCatalogueById(id);
   if (!catalogue) return NextResponse.json({ error: "Catalogue not found" }, { status: 404 });
 
@@ -57,15 +62,24 @@ export async function POST(req: NextRequest, context: RouteContext) {
     });
 
     if (!preview && result.applied) {
-      await touchSiteRevision();
-      revalidatePath("/", "layout");
-      revalidatePath(`/${catalogue.slug}`);
-      revalidatePath(`/${catalogue.slug}`, "layout");
-      revalidatePath(`/admin/catalogues/${id}`);
-      revalidatePath("/admin/catalogues");
-      revalidatePath("/admin/imports");
-      revalidatePath("/sitemap.xml");
-      revalidatePath("/api/store/" + catalogue.slug + "/products");
+      // Defer cache bust so the HTTP response returns while storefront can keep serving.
+      const slug = catalogue.slug;
+      after(() => {
+        void touchSiteRevision()
+          .then(() => {
+            revalidatePath("/", "layout");
+            revalidatePath(`/${slug}`);
+            revalidatePath(`/${slug}`, "layout");
+            revalidatePath(`/admin/catalogues/${id}`);
+            revalidatePath("/admin/catalogues");
+            revalidatePath("/admin/imports");
+            revalidatePath("/sitemap.xml");
+            revalidatePath("/api/store/" + slug + "/products");
+          })
+          .catch((err) => {
+            console.warn("[catalogue-import] deferred revalidate failed", err);
+          });
+      });
     }
 
     return NextResponse.json(result, {
