@@ -62,7 +62,9 @@ export function ProductCard({
   const primaryImage =
     selectedProduct.images.find((image) => image.isPrimary) ?? selectedProduct.images[0];
   const inStock = selectedProduct.inventory?.isInStock ?? true;
-  const hasVideo = selectedProduct.videos.length > 0;
+  // Build-time catalog caches created before video export was added may omit
+  // this relation. Never let a stale cache payload crash the whole storefront.
+  const hasVideo = (selectedProduct.videos?.length ?? 0) > 0;
   const productPath = `/${environmentSlug}/product/${selectedProduct.slug}${
     selectedVariantId ? "?sizeSelected=1" : ""
   }`;

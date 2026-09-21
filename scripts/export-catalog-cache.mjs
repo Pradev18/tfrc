@@ -29,10 +29,13 @@ for (const env of envs) {
   const products = await prisma.product.findMany({
     where: { environmentId: env.id, status: "ACTIVE", deletedAt: null },
     include: {
-      images: { orderBy: { sortOrder: "asc" }, take: 2 },
+      images: { orderBy: { sortOrder: "asc" }, take: 8 },
+      videos: { orderBy: { sortOrder: "asc" }, take: 2 },
       prices: true,
       brand: { select: { id: true, name: true, slug: true } },
       inventory: { select: { isInStock: true } },
+      category: { select: { id: true, name: true, slug: true } },
+      subcategory: { select: { id: true, name: true, slug: true } },
     },
     orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
   });

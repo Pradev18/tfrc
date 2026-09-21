@@ -60,7 +60,12 @@ function loadCart(): CartItem[] {
 
 function saveCart(items: CartItem[]) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // Private/restricted browser profiles can deny storage. The cart remains
+    // usable in memory and must never take down the storefront.
+  }
 }
 
 export function CartProvider({ children }: { children: React.ReactNode }) {

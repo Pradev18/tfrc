@@ -248,8 +248,16 @@ export function getCachedProducts(
   return {
     items: slice.map((item) => ({
       ...item,
+      images: item.images ?? [],
+      videos: item.videos ?? [],
+      prices: item.prices ?? [],
       sizeVariants: item.variantGroupKey
-        ? siblingsByGroup.get(item.variantGroupKey) ?? []
+        ? (siblingsByGroup.get(item.variantGroupKey) ?? []).map((variant) => ({
+            ...variant,
+            images: variant.images ?? [],
+            videos: variant.videos ?? [],
+            prices: variant.prices ?? [],
+          }))
         : [],
     })),
     total: items.length,
