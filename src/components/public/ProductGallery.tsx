@@ -52,12 +52,26 @@ export function ProductGallery({ images, videos = [], productName }: ProductGall
   const [activeIndex, setActiveIndex] = useState(0);
 
   const [showVideo, setShowVideo] = useState(false);
+  const [failedImageUrls, setFailedImageUrls] = useState<Set<string>>(
+    () => new Set()
+  );
 
 
 
   const hasVideo = videos.length > 0;
 
   const activeImage = images[activeIndex];
+  const activeImageAvailable =
+    Boolean(activeImage?.url) && !failedImageUrls.has(activeImage?.url ?? "");
+
+  function markImageFailed(url: string) {
+    setFailedImageUrls((current) => {
+      if (current.has(url)) return current;
+      const next = new Set(current);
+      next.add(url);
+      return next;
+    });
+  }
 
 
 
@@ -103,15 +117,21 @@ export function ProductGallery({ images, videos = [], productName }: ProductGall
 
             >
 
-              <Image
-                src={img.url}
-                alt=""
-                fill
-                className="object-contain p-1"
-                sizes="64px"
-                placeholder="blur"
-                blurDataURL={MEDIA_BLUR_DATA_URL}
-              />
+              {!failedImageUrls.has(img.url) ? (
+                <Image
+                  src={img.url}
+                  alt=""
+                  fill
+                  className="object-contain p-1"
+                  sizes="64px"
+                  placeholder="blur"
+                  blurDataURL={MEDIA_BLUR_DATA_URL}
+                  unoptimized
+                  onError={() => markImageFailed(img.url)}
+                />
+              ) : (
+                <MediaFallback />
+              )}
 
             </button>
 
@@ -177,7 +197,7 @@ export function ProductGallery({ images, videos = [], productName }: ProductGall
 
             />
 
-          ) : activeImage ? (
+          ) : activeImageAvailable && activeImage ? (
 
             <Image
 
@@ -194,6 +214,8 @@ export function ProductGallery({ images, videos = [], productName }: ProductGall
               priority
               placeholder="blur"
               blurDataURL={MEDIA_BLUR_DATA_URL}
+              unoptimized
+              onError={() => markImageFailed(activeImage.url)}
 
             />
 

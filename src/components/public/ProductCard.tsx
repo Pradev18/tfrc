@@ -57,10 +57,13 @@ export function ProductCard({
   );
   const selectedProduct =
     variants.find((variant) => variant.id === selectedVariantId) ?? product;
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const v = getEnvVisual(environmentSlug);
   const { pricing } = mapProductPrices(selectedProduct);
   const primaryImage =
     selectedProduct.images.find((image) => image.isPrimary) ?? selectedProduct.images[0];
+  const showPrimaryImage =
+    Boolean(primaryImage?.url) && failedImageUrl !== primaryImage?.url;
   const inStock = selectedProduct.inventory?.isInStock ?? true;
   // Build-time catalog caches created before video export was added may omit
   // this relation. Never let a stale cache payload crash the whole storefront.
@@ -116,7 +119,7 @@ export function ProductCard({
         aria-label={`View ${title}`}
       >
         <div className="relative overflow-hidden bg-white" style={{ aspectRatio: "1 / 1" }}>
-          {primaryImage ? (
+          {showPrimaryImage && primaryImage ? (
             <Image
               src={primaryImage.url}
               alt={primaryImage.altText || title}
@@ -125,6 +128,8 @@ export function ProductCard({
               sizes="(max-width: 640px) 50vw, 25vw"
               placeholder="blur"
               blurDataURL={MEDIA_BLUR_DATA_URL}
+              unoptimized
+              onError={() => setFailedImageUrl(primaryImage.url)}
             />
           ) : (
             <MediaFallback />
