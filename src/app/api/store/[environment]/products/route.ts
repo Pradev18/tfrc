@@ -52,17 +52,26 @@ export async function GET(
       headers: {
         "Cache-Control": isSearch
           ? "private, max-age=15"
-          : "public, max-age=60, s-maxage=120, stale-while-revalidate=600",
+          : "public, max-age=120, s-maxage=300, stale-while-revalidate=900",
       },
     });
   } catch (error) {
     console.error("[store-products]", error);
+    // Never hard-crash the shop UI — empty feed is better than Application error.
     return NextResponse.json(
       {
-        error: "Failed to load products",
-        detail: error instanceof Error ? error.message : String(error),
+        items: [],
+        total: 0,
+        page: 1,
+        limit: STORE_PAGE_SIZE,
+        totalPages: 0,
       },
-      { status: 500 }
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "public, max-age=5",
+        },
+      }
     );
   }
 }

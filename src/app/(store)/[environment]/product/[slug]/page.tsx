@@ -140,8 +140,8 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
 
   const v = getEnvVisual(envSlug);
   const [related, variants, waSettings] = await Promise.all([
-    getRelatedProducts(product, 8, environment.id),
-    getProductVariantFamily(product),
+    getRelatedProducts(product, 8, environment.id).catch(() => []),
+    getProductVariantFamily(product).catch(() => []),
     getWhatsAppSettings(),
   ]);
 

@@ -310,30 +310,32 @@ export async function generateShopCategories(environmentId: string, slug: string
 }
 
 export async function getLandingPortalsFromDb() {
-  const envs = await prisma.environment.findMany({
-    where: { status: "ACTIVE" },
-    orderBy: { sortOrder: "asc" },
-  });
-
-  return envs
-    .filter((env) => !env.slug.startsWith("replace-persist-"))
-    .map((env) => {
-      const image =
-        getEnvironmentCardImage(env) ||
-        `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-          `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f8f5f0"/><stop offset="1" stop-color="#e9e1d7"/></linearGradient></defs><circle cx="128" cy="128" r="116" fill="url(#g)" stroke="#8b3a8f" stroke-width="6"/><text x="128" y="145" text-anchor="middle" font-family="Arial,sans-serif" font-size="64" font-weight="700" fill="#5f2763">${env.name
-            .split(/\s+/)
-            .map((word) => word[0] ?? "")
-            .join("")
-            .slice(0, 2)
-            .toUpperCase()
-            .replace(/[^A-Z0-9]/g, "") || "TF"}</text></svg>`
-        )}`;
-      return {
-        slug: env.slug,
-        displayName: env.name,
-        tagline: env.tagline ?? "",
-        image,
-      };
-    });
+  try {
+    const { getActiveEnvironments } = await import("@/services/environment.service");
+    const envs = await getActiveEnvironments();
+    return envs
+      .filter((env) => !env.slug.startsWith("replace-persist-"))
+      .map((env) => {
+        const image =
+          getEnvironmentCardImage(env) ||
+          `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+            `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f8f5f0"/><stop offset="1" stop-color="#e9e1d7"/></linearGradient></defs><circle cx="128" cy="128" r="116" fill="url(#g)" stroke="#8b3a8f" stroke-width="6"/><text x="128" y="145" text-anchor="middle" font-family="Arial,sans-serif" font-size="64" font-weight="700" fill="#5f2763">${env.name
+              .split(/\s+/)
+              .map((word) => word[0] ?? "")
+              .join("")
+              .slice(0, 2)
+              .toUpperCase()
+              .replace(/[^A-Z0-9]/g, "") || "TF"}</text></svg>`
+          )}`;
+        return {
+          slug: env.slug,
+          displayName: env.name,
+          tagline: env.tagline ?? "",
+          image,
+        };
+      });
+  } catch (error) {
+    console.error("[landing] portals failed:", error);
+    return [];
+  }
 }

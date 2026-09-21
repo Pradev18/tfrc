@@ -150,16 +150,19 @@ export async function getRootCategoryCovers(environmentSlug?: string): Promise<R
 
 /** Hero collage for environment */
 export async function getEnvironmentHeroImages(environmentSlug: string): Promise<string[]> {
+  const { getCachedEnvironment } = await import("@/lib/catalog-cache");
+  const cached = getCachedEnvironment(environmentSlug);
+  const fromCache = (cached?.products ?? [])
+    .map((p) => p.images[0]?.url)
+    .filter(Boolean)
+    .slice(0, 4) as string[];
+  if (fromCache.length > 0) return fromCache;
+
   try {
     return await getEnvironmentShowcaseImages(environmentSlug, 4);
   } catch (error) {
     console.error("[categories] hero images failed:", error);
-    const { getCachedEnvironment } = await import("@/lib/catalog-cache");
-    const cached = getCachedEnvironment(environmentSlug);
-    return (cached?.products ?? [])
-      .map((p) => p.images[0]?.url)
-      .filter(Boolean)
-      .slice(0, 4) as string[];
+    return [];
   }
 }
 
@@ -168,21 +171,34 @@ export async function getEnvironmentShowcaseImages(
   environmentSlug: string,
   limit = 8
 ): Promise<string[]> {
-  const environmentId = await getEnvironmentIdBySlug(environmentSlug);
-  if (!environmentId) return [];
+  const { getCachedEnvironment } = await import("@/lib/catalog-cache");
+  const cached = getCachedEnvironment(environmentSlug);
+  const fromCache = (cached?.products ?? [])
+    .map((p) => p.images[0]?.url)
+    .filter(Boolean)
+    .slice(0, limit) as string[];
+  if (fromCache.length > 0) return fromCache;
 
-  const products = await prisma.product.findMany({
-    where: {
-      environmentId,
-      status: "ACTIVE",
-      images: { some: {} },
-    },
-    include: { images: { orderBy: { sortOrder: "asc" }, take: 1 } },
-    take: limit,
-    orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
-  });
+  try {
+    const environmentId = await getEnvironmentIdBySlug(environmentSlug);
+    if (!environmentId) return [];
 
-  return products.map((p) => p.images[0]?.url).filter(Boolean) as string[];
+    const products = await prisma.product.findMany({
+      where: {
+        environmentId,
+        status: "ACTIVE",
+        images: { some: {} },
+      },
+      include: { images: { orderBy: { sortOrder: "asc" }, take: 1 } },
+      take: limit,
+      orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
+    });
+
+    return products.map((p) => p.images[0]?.url).filter(Boolean) as string[];
+  } catch (error) {
+    console.error("[categories] showcase images failed:", error);
+    return [];
+  }
 }
 
 /** Cover images for each department source */

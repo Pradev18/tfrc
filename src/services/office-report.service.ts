@@ -22,11 +22,13 @@ import { explainExcelParseFailure } from "@/lib/report/excel-file-guard";
 
 /**
  * Balanced for Hostinger single-process:
- * - Enough rows per HTTP call to finish 70k without endless round-trips
- * - Sub-batches + event-loop yields so storefront can still answer
+ * - Smaller bursts so storefront stays instant during 70k imports
+ * - Sub-batches + event-loop yields so shop never waits on SQLite locks
  */
-const INGEST_SUB_BATCH = 280;
-const INGEST_ROWS_PER_REQUEST = 1120;
+const INGEST_SUB_BATCH = 80;
+const INGEST_ROWS_PER_REQUEST = 320;
+/** Pause between sub-batches so public cache reads stay unblocked */
+const INGEST_YIELD_MS = 25;
 /** @deprecated kept for old seed route callers */
 const SEED_BATCH = 250;
 
@@ -42,8 +44,12 @@ function sourceTotal(inventoryRowCount: number, imageLinkCount: number): number 
 }
 
 /** Let storefront / other requests run between heavy SQLite bursts. */
-function yieldEventLoop(): Promise<void> {
+function yieldEventLoop(ms = 0): Promise<void> {
   return new Promise((resolve) => {
+    if (ms > 0) {
+      setTimeout(resolve, ms);
+      return;
+    }
     if (typeof setImmediate === "function") {
       setImmediate(resolve);
     } else {
@@ -217,7 +223,7 @@ export async function ingestOfficeReportSourceBatch(
 
     if (needsMeta) {
       await syncImportMetaFromParse(importId, parsed, uniqueItemCount);
-      await yieldEventLoop();
+      await yieldEventLoop(INGEST_YIELD_MS);
     }
 
     const inventoryTotal = parsed.inventoryRows.length;
@@ -295,7 +301,7 @@ export async function ingestOfficeReportSourceBatch(
       }
 
       // Let storefront / admin requests run between SQLite write bursts.
-      await yieldEventLoop();
+      await yieldEventLoop(INGEST_YIELD_MS);
       await new Promise((r) => setTimeout(r, 8));
     }
 

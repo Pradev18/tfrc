@@ -25,8 +25,22 @@ export interface CachedProduct {
   variantGroupKey?: string | null;
   variantLabel?: string | null;
   isVariantPrimary?: boolean;
+  shopCategorySlug?: string | null;
+  condition?: string | null;
+  gtin?: string | null;
+  weight?: string | null;
+  dimensions?: string | null;
+  shippingInfo?: string | null;
+  googleCategory?: string | null;
+  fbCategory?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  brandId?: string | null;
+  categoryId?: string | null;
+  subcategoryId?: string | null;
   createdAt: string;
   images: Array<{ url: string; sortOrder?: number; isPrimary?: boolean }>;
+  videos?: Array<{ url: string; sortOrder?: number }>;
   prices: Array<{
     type: string;
     amount: number;
@@ -36,6 +50,8 @@ export interface CachedProduct {
   }>;
   brand: CachedBrand | null;
   inventory: { isInStock: boolean } | null;
+  category?: { id: string; name: string; slug: string } | null;
+  subcategory?: { id: string; name: string; slug: string } | null;
 }
 
 export interface CachedEnvironment {
@@ -193,9 +209,19 @@ export function getCachedProducts(
   if (opts.inStock) {
     items = items.filter((p) => p.inventory?.isInStock === true);
   }
-  if (opts.shopSlug && opts.shopDefs) {
+  if (opts.shopSlug) {
     items = items.filter((product) => {
-      const primary = resolvePrimaryShopCategory({ name: product.name }, opts.shopDefs!);
+      if (product.shopCategorySlug !== undefined) {
+        if (opts.shopSlug === OTHER_SHOP_CATEGORY.slug) {
+          return (
+            !product.shopCategorySlug ||
+            product.shopCategorySlug === OTHER_SHOP_CATEGORY.slug
+          );
+        }
+        return product.shopCategorySlug === opts.shopSlug;
+      }
+      if (!opts.shopDefs) return true;
+      const primary = resolvePrimaryShopCategory({ name: product.name }, opts.shopDefs);
       if (opts.shopSlug === OTHER_SHOP_CATEGORY.slug) return primary == null;
       return primary?.slug === opts.shopSlug;
     });

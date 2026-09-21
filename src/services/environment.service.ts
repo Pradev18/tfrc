@@ -90,6 +90,13 @@ export function environmentFromCacheOrConfig(slug: string): ParsedEnvironment | 
 }
 
 export const getActiveEnvironments = cache(async function getActiveEnvironments() {
+  const cacheHit = loadCatalogCache();
+  if (cacheHit && Object.keys(cacheHit.environments).length > 0) {
+    return Object.keys(cacheHit.environments)
+      .map((slug) => environmentFromCacheOrConfig(slug))
+      .filter(Boolean) as ParsedEnvironment[];
+  }
+
   try {
     const envs = await prisma.environment.findMany({
       where: { status: "ACTIVE" },
@@ -100,30 +107,31 @@ export const getActiveEnvironments = cache(async function getActiveEnvironments(
     console.error("[env] getActiveEnvironments prisma failed:", error);
   }
 
-  const cache = loadCatalogCache();
-  if (cache) {
-    return Object.keys(cache.environments)
-      .map((slug) => environmentFromCacheOrConfig(slug))
-      .filter(Boolean) as ParsedEnvironment[];
-  }
-
-  return ENVIRONMENT_CONFIGS.map((cfg) => environmentFromCacheOrConfig(cfg.slug)!);
+  return ENVIRONMENT_CONFIGS.map((cfg) => environmentFromCacheOrConfig(cfg.slug)!).filter(
+    Boolean
+  );
 });
 
 export const getEnvironmentBySlug = cache(async function getEnvironmentBySlug(slug: string) {
+  const fromCache = environmentFromCacheOrConfig(slug);
+  if (fromCache) return fromCache;
+
   try {
     const env = await prisma.environment.findUnique({ where: { slug } });
     if (!env || env.status !== "ACTIVE") return null;
     return enrichEnvironment(env);
   } catch (error) {
     console.error("[env] getEnvironmentBySlug prisma failed:", error);
-    return environmentFromCacheOrConfig(slug);
+    return null;
   }
 });
 
 export const getEnvironmentIdBySlug = cache(async function getEnvironmentIdBySlug(
   slug: string
 ): Promise<string | null> {
+  const cachedId = getCachedEnvironment(slug)?.id;
+  if (cachedId) return cachedId;
+
   try {
     const env = await prisma.environment.findUnique({
       where: { slug },
@@ -133,7 +141,7 @@ export const getEnvironmentIdBySlug = cache(async function getEnvironmentIdBySlu
     return env.id;
   } catch (error) {
     console.error("[env] getEnvironmentIdBySlug prisma failed:", error);
-    return getCachedEnvironment(slug)?.id ?? null;
+    return null;
   }
 });
 

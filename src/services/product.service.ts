@@ -442,10 +442,82 @@ function collectCategoryIds(cat: {
   return ids;
 }
 
+function hydrateProductFromCache(
+  hit: NonNullable<ReturnType<typeof getCachedEnvironment>>["products"][number],
+  environmentSlug: string,
+  environmentName: string,
+  environmentId: string
+): ProductWithRelations {
+  return {
+    ...hit,
+    status: ProductStatus.ACTIVE,
+    deletedAt: null,
+    environmentId,
+    shopCategorySlug: hit.shopCategorySlug ?? null,
+    condition: hit.condition ?? "new",
+    gtin: hit.gtin ?? null,
+    weight: hit.weight ?? null,
+    dimensions: hit.dimensions ?? null,
+    shippingInfo: hit.shippingInfo ?? null,
+    googleCategory: hit.googleCategory ?? null,
+    fbCategory: hit.fbCategory ?? null,
+    seoTitle: hit.seoTitle ?? null,
+    seoDescription: hit.seoDescription ?? null,
+    brandId: hit.brandId ?? hit.brand?.id ?? null,
+    categoryId: hit.categoryId ?? hit.category?.id ?? null,
+    subcategoryId: hit.subcategoryId ?? hit.subcategory?.id ?? null,
+    videos: (hit.videos ?? []).map((video, index) => ({
+      id: `cache-video-${hit.id}-${index}`,
+      url: video.url,
+      sortOrder: video.sortOrder ?? index,
+      productId: hit.id,
+    })),
+    images: hit.images.map((image, index) => ({
+      id: `cache-img-${hit.id}-${index}`,
+      url: image.url,
+      sortOrder: image.sortOrder ?? index,
+      isPrimary: image.isPrimary ?? index === 0,
+      productId: hit.id,
+      alt: null,
+    })),
+    category: hit.category ?? null,
+    subcategory: hit.subcategory ?? null,
+    environment: { id: environmentId, slug: environmentSlug, name: environmentName },
+    tags: [],
+    createdAt: new Date(hit.createdAt),
+    updatedAt: new Date(hit.createdAt),
+    prices: hit.prices.map((p, index) => ({
+      id: `cache-price-${hit.id}-${index}`,
+      productId: hit.id,
+      type: p.type,
+      amount: p.amount,
+      currency: p.currency,
+      saleStart: p.saleStart ? new Date(p.saleStart) : null,
+      saleEnd: p.saleEnd ? new Date(p.saleEnd) : null,
+    })),
+    inventory: hit.inventory
+      ? {
+          id: `cache-inv-${hit.id}`,
+          productId: hit.id,
+          isInStock: hit.inventory.isInStock,
+          quantity: null,
+        }
+      : null,
+  } as unknown as ProductWithRelations;
+}
+
 export const getProductBySlug = cache(async function getProductBySlug(
   slug: string,
   environmentSlug?: string
 ) {
+  if (environmentSlug) {
+    const cached = getCachedEnvironment(environmentSlug);
+    const hit = cached?.products.find((p) => p.slug === slug);
+    if (hit && cached) {
+      return hydrateProductFromCache(hit, environmentSlug, cached.name, cached.id);
+    }
+  }
+
   try {
     const environmentId = environmentSlug
       ? await getEnvironmentIdBySlug(environmentSlug)
@@ -465,29 +537,7 @@ export const getProductBySlug = cache(async function getProductBySlug(
     console.error("[products] getProductBySlug prisma failed:", error);
   }
 
-  if (!environmentSlug) return null;
-  const cached = getCachedEnvironment(environmentSlug);
-  const hit = cached?.products.find((p) => p.slug === slug);
-  if (!hit) return null;
-
-  return {
-    ...hit,
-    status: ProductStatus.ACTIVE,
-    deletedAt: null,
-    environmentId: cached!.id,
-    videos: [],
-    category: null,
-    subcategory: null,
-    environment: { slug: environmentSlug, name: cached!.name },
-    tags: [],
-    createdAt: new Date(hit.createdAt),
-    updatedAt: new Date(hit.createdAt),
-    prices: hit.prices.map((p) => ({
-      ...p,
-      saleStart: p.saleStart ? new Date(p.saleStart) : null,
-      saleEnd: p.saleEnd ? new Date(p.saleEnd) : null,
-    })),
-  } as unknown as ProductWithRelations;
+  return null;
 });
 
 export async function getProductVariantFamily(
@@ -495,27 +545,70 @@ export async function getProductVariantFamily(
 ): Promise<ProductWithRelations[]> {
   if (!product.variantGroupKey) return [];
 
-  const variants = await prisma.product.findMany({
-    where: {
-      environmentId: product.environmentId,
-      variantGroupKey: product.variantGroupKey,
-      status: ProductStatus.ACTIVE,
-      deletedAt: null,
-    },
-    include: productInclude,
-  });
+  const environmentSlug =
+    product.environment?.slug ??
+    (await getProductEnvironmentSlug(product.id).catch(() => null));
 
-  return variants.sort((a, b) =>
-    compareVariantLabels(a.variantLabel, b.variantLabel)
-  );
+  if (environmentSlug) {
+    const cached = getCachedEnvironment(environmentSlug);
+    if (cached) {
+      return cached.products
+        .filter((item) => item.variantGroupKey === product.variantGroupKey)
+        .sort((a, b) =>
+          compareVariantLabels(a.variantLabel ?? null, b.variantLabel ?? null)
+        )
+        .map((hit) =>
+          hydrateProductFromCache(hit, environmentSlug, cached.name, cached.id)
+        );
+    }
+  }
+
+  try {
+    const variants = await prisma.product.findMany({
+      where: {
+        environmentId: product.environmentId,
+        variantGroupKey: product.variantGroupKey,
+        status: ProductStatus.ACTIVE,
+        deletedAt: null,
+      },
+      include: productInclude,
+    });
+
+    return variants.sort((a, b) =>
+      compareVariantLabels(a.variantLabel, b.variantLabel)
+    );
+  } catch (error) {
+    console.error("[products] getProductVariantFamily prisma failed:", error);
+    return [];
+  }
 }
 
 export async function getProductEnvironmentSlug(productId: string): Promise<string | null> {
-  const product = await prisma.product.findUnique({
-    where: { id: productId },
-    include: { environment: { select: { slug: true } } },
-  });
-  return product?.environment?.slug ?? null;
+  // Scan warm catalog cache first (instant, no SQLite).
+  try {
+    const { loadCatalogCache } = await import("@/lib/catalog-cache");
+    const catalog = loadCatalogCache();
+    if (catalog) {
+      for (const env of Object.values(catalog.environments)) {
+        if (env.products.some((product) => product.id === productId)) {
+          return env.slug;
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: { environment: { select: { slug: true } } },
+    });
+    return product?.environment?.slug ?? null;
+  } catch (error) {
+    console.error("[products] getProductEnvironmentSlug prisma failed:", error);
+    return null;
+  }
 }
 
 export async function getRelatedProducts(
@@ -525,6 +618,39 @@ export async function getRelatedProducts(
 ) {
   const envId = environmentId ?? product.environmentId ?? undefined;
   const excludeId = product.id;
+  const environmentSlug = product.environment?.slug;
+
+  if (environmentSlug) {
+    const cached = getCachedEnvironment(environmentSlug);
+    if (cached?.products.length) {
+      const related = cached.products
+        .filter((item) => {
+          if (item.id === excludeId) return false;
+          if (item.isVariantPrimary === false) return false;
+          if (
+            product.variantGroupKey &&
+            item.variantGroupKey === product.variantGroupKey
+          ) {
+            return false;
+          }
+          if (product.shopCategorySlug) {
+            return item.shopCategorySlug === product.shopCategorySlug;
+          }
+          if (product.brandId && item.brandId) {
+            return item.brandId === product.brandId;
+          }
+          if (product.brand?.slug && item.brand?.slug) {
+            return item.brand.slug === product.brand.slug;
+          }
+          return true;
+        })
+        .slice(0, limit)
+        .map((hit) =>
+          hydrateProductFromCache(hit, environmentSlug, cached.name, cached.id)
+        );
+      if (related.length > 0) return related;
+    }
+  }
 
   const baseWhere: Prisma.ProductWhereInput = {
     status: ProductStatus.ACTIVE,
@@ -557,30 +683,33 @@ export async function getRelatedProducts(
   ];
   if (!shopFilter && fallbackAffinity.length === 0) return [];
 
-  // One indexed query, then rank exact taxonomy matches in memory. This keeps
-  // recommendations in the same exclusive shop category without sequential DB calls.
-  const matches = await prisma.product.findMany({
-    where: {
-      ...baseWhere,
-      ...(shopFilter ?? { OR: fallbackAffinity }),
-    },
-    include: productListInclude,
-    orderBy: [{ isFeatured: "desc" }, { isBestseller: "desc" }, { createdAt: "desc" }],
-    take: Math.max(limit * 4, 24),
-  });
+  try {
+    const matches = await prisma.product.findMany({
+      where: {
+        ...baseWhere,
+        ...(shopFilter ?? { OR: fallbackAffinity }),
+      },
+      include: productListInclude,
+      orderBy: [{ isFeatured: "desc" }, { isBestseller: "desc" }, { createdAt: "desc" }],
+      take: Math.max(limit * 4, 24),
+    });
 
-  return matches
-    .map((item, index) => ({
-      item,
-      index,
-      score:
-        (item.subcategoryId && item.subcategoryId === product.subcategoryId ? 4 : 0) +
-        (item.categoryId && item.categoryId === product.categoryId ? 2 : 0) +
-        (item.brandId && item.brandId === product.brandId ? 1 : 0),
-    }))
-    .sort((a, b) => b.score - a.score || a.index - b.index)
-    .slice(0, limit)
-    .map(({ item }) => item);
+    return matches
+      .map((item, index) => ({
+        item,
+        index,
+        score:
+          (item.subcategoryId && item.subcategoryId === product.subcategoryId ? 4 : 0) +
+          (item.categoryId && item.categoryId === product.categoryId ? 2 : 0) +
+          (item.brandId && item.brandId === product.brandId ? 1 : 0),
+      }))
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .slice(0, limit)
+      .map(({ item }) => item);
+  } catch (error) {
+    console.error("[products] getRelatedProducts prisma failed:", error);
+    return [];
+  }
 }
 
 export async function getFeaturedProducts(limit = 8, environmentSlug?: string) {
