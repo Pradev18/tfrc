@@ -16,7 +16,11 @@ import {
 } from "@/lib/store-catalog-filter";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
 import type { ShopCategoryItem } from "@/components/store/CategoryScroll";
-import { prefetchStoreFeed } from "@/hooks/useStoreProductFeed";
+import {
+  prefetchStoreFeed,
+  seedStoreFeedCache,
+  type InitialStoreFeed,
+} from "@/hooks/useStoreProductFeed";
 import {
   ALL_PRODUCTS_CATEGORY_SLUG,
   focusStoreCategory,
@@ -44,6 +48,7 @@ interface UnifiedStoreCatalogProps {
   whatsappSettings: WhatsAppSettings;
   siteUrl: string;
   totalProducts: number;
+  initialFeed?: InitialStoreFeed | null;
 }
 
 export function UnifiedStoreCatalog({
@@ -54,6 +59,7 @@ export function UnifiedStoreCatalog({
   whatsappSettings,
   siteUrl,
   totalProducts,
+  initialFeed = null,
 }: UnifiedStoreCatalogProps) {
   const t = useT();
   const v = getEnvVisual(environmentSlug);
@@ -221,34 +227,53 @@ export function UnifiedStoreCatalog({
   }, []);
 
   useEffect(() => {
+    if (initialFeed?.items.length) {
+      seedStoreFeedCache(environmentSlug, { ...DEFAULT_STORE_FILTERS, shop: null }, initialFeed);
+    }
+  }, [environmentSlug, initialFeed]);
+
+  useEffect(() => {
     if (isFilteredView) return;
     if (showAllProducts) {
       const timer = window.setTimeout(() => {
         prefetchStoreFeed(environmentSlug, { ...apiFilters, shop: null }, {
           includeVariants: true,
         });
-      }, 40);
+      }, 200);
       return () => window.clearTimeout(timer);
     }
+    // Prefetch only the next category — avoid hammering SQLite with 3 parallel feeds.
     const preferred = focusedCategorySlug
       ? shopCategories.filter((category) => category.slug === focusedCategorySlug)
-      : shopCategories.slice(0, 3);
-    const timers = preferred.map((category, index) =>
-      window.setTimeout(() => {
-        prefetchStoreFeed(
-          environmentSlug,
-          { ...apiFilters, shop: null },
-          {
+      : shopCategories.slice(0, 1);
+    const nextCategory = focusedCategorySlug
+      ? null
+      : shopCategories[1];
+    const timers = [
+      ...preferred.map((category) =>
+        window.setTimeout(() => {
+          if (initialFeed?.shopSlug === category.slug) return;
+          prefetchStoreFeed(environmentSlug, { ...apiFilters, shop: null }, {
             shopSlug: category.slug,
-          }
-        );
-      }, 40 + index * 120)
-    );
+          });
+        }, 80)
+      ),
+      ...(nextCategory
+        ? [
+            window.setTimeout(() => {
+              prefetchStoreFeed(environmentSlug, { ...apiFilters, shop: null }, {
+                shopSlug: nextCategory.slug,
+              });
+            }, 400),
+          ]
+        : []),
+    ];
     return () => timers.forEach(window.clearTimeout);
   }, [
     apiFilters,
     environmentSlug,
     focusedCategorySlug,
+    initialFeed,
     isFilteredView,
     shopCategories,
     showAllProducts,
@@ -330,7 +355,7 @@ export function UnifiedStoreCatalog({
           </div>
         ) : (
           <div className="mt-2">
-            {visibleCategories.map((cat) => (
+            {visibleCategories.map((cat, index) => (
               <LazyCategorySection
                 key={cat.slug}
                 slug={cat.slug}
@@ -341,7 +366,10 @@ export function UnifiedStoreCatalog({
                 filters={apiFilters}
                 whatsappSettings={whatsappSettings}
                 siteUrl={siteUrl}
-                forceVisible={focusedCategorySlug === cat.slug}
+                forceVisible={focusedCategorySlug === cat.slug || index === 0}
+                initialFeed={
+                  initialFeed?.shopSlug === cat.slug ? initialFeed : null
+                }
               />
             ))}
           </div>

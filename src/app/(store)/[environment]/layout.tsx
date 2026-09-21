@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import {
   resolveEnvironment,
   isValidEnvironmentSlug,
   environmentFromCacheOrConfig,
+  type ParsedEnvironment,
 } from "@/services/environment.service";
 import { StoreHeader } from "@/components/public/StoreHeader";
 import { StoreFooter } from "@/components/store/StoreFooter";
@@ -25,6 +27,18 @@ function isNextNotFound(error: unknown): boolean {
     error !== null &&
     "digest" in error &&
     (error as { digest?: string }).digest === "NEXT_NOT_FOUND"
+  );
+}
+
+function StoreHeaderFallback({ environment }: { environment: ParsedEnvironment }) {
+  return (
+    <header className="border-b border-black/[0.06] bg-white/90">
+      <div className="mx-auto flex h-14 max-w-7xl items-center px-4">
+        <span className="text-lg font-semibold tracking-tight">
+          {environment.config.displayName}
+        </span>
+      </div>
+    </header>
   );
 }
 
@@ -77,7 +91,9 @@ export default async function EnvironmentLayout({ children, params }: LayoutProp
 
   return (
     <div style={{ ...envStyle(v), backgroundColor: v.sectionAlt }} className="overflow-x-clip">
-      <StoreHeader environment={environment} />
+      <Suspense fallback={<StoreHeaderFallback environment={environment} />}>
+        <StoreHeader environment={environment} />
+      </Suspense>
       <main>{children}</main>
       <StoreFooter environment={environment} />
     </div>

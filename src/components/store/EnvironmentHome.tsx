@@ -6,6 +6,7 @@ import { UnifiedStoreCatalog } from "@/components/store/UnifiedStoreCatalog";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 import type { ParsedEnvironment } from "@/services/environment.service";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
+import type { InitialStoreFeed } from "@/hooks/useStoreProductFeed";
 
 interface Brand {
   id: string;
@@ -21,6 +22,7 @@ interface EnvironmentHomeProps {
   whatsappSettings: WhatsAppSettings;
   siteUrl: string;
   totalProducts: number;
+  initialFeed?: InitialStoreFeed | null;
 }
 
 export function EnvironmentHome({
@@ -30,6 +32,7 @@ export function EnvironmentHome({
   whatsappSettings,
   siteUrl,
   totalProducts,
+  initialFeed = null,
 }: EnvironmentHomeProps) {
   const slug = environment.slug;
   const config = environment.config;
@@ -76,6 +79,7 @@ export function EnvironmentHome({
           whatsappSettings={whatsappSettings}
           siteUrl={siteUrl}
           totalProducts={totalProducts}
+          initialFeed={initialFeed}
         />
       </Suspense>
 

@@ -23,6 +23,10 @@ interface FeedPayload {
   totalPages: number;
 }
 
+export interface InitialStoreFeed extends FeedPayload {
+  shopSlug: string;
+}
+
 const FEED_CACHE_TTL_MS = 2 * 60_000;
 const feedCache = new Map<string, { data: FeedPayload; storedAt: number }>();
 const prefetching = new Map<string, Promise<FeedPayload | null>>();
@@ -62,6 +66,23 @@ function readFeedCache(url: string): FeedPayload | null {
     return null;
   }
   return hit.data;
+}
+
+export function seedStoreFeedCache(
+  environmentSlug: string,
+  filters: StoreFilters,
+  feed: InitialStoreFeed
+) {
+  const url = buildFeedUrl(environmentSlug, filters, feed.shopSlug, 1);
+  feedCache.set(url, {
+    data: {
+      items: feed.items,
+      total: feed.total,
+      page: feed.page,
+      totalPages: feed.totalPages,
+    },
+    storedAt: Date.now(),
+  });
 }
 
 export function prefetchStoreFeed(
@@ -105,6 +126,7 @@ export function useStoreProductFeed(
     onSaleOnly?: boolean;
     enabled?: boolean;
     includeVariants?: boolean;
+    initialFeed?: FeedPayload | null;
   }
 ) {
   const {
@@ -112,14 +134,36 @@ export function useStoreProductFeed(
     onSaleOnly = false,
     enabled = true,
     includeVariants = false,
+    initialFeed = null,
   } = options ?? {};
-  const [state, setState] = useState<FeedState>(() => ({
-    ...initialState,
-    // Fresh mount must look like loading — never flash "No products found".
-    loading: enabled,
-  }));
+  const hasSeed =
+    Boolean(enabled && initialFeed && initialFeed.items.length > 0);
+  const [state, setState] = useState<FeedState>(() => {
+    if (hasSeed && initialFeed) {
+      return {
+        items: initialFeed.items,
+        total: initialFeed.total,
+        page: initialFeed.page,
+        totalPages: initialFeed.totalPages,
+        loading: false,
+        loadingMore: false,
+        error: null,
+      };
+    }
+    return {
+      ...initialState,
+      loading: enabled,
+    };
+  });
   const abortRef = useRef<AbortController | null>(null);
   const filtersKey = JSON.stringify({ filters, shopSlug, onSaleOnly, includeVariants });
+  const skipFirstFetchRef = useRef(hasSeed);
+  const seededRef = useRef(false);
+
+  if (initialFeed && shopSlug && !seededRef.current) {
+    seededRef.current = true;
+    seedStoreFeedCache(environmentSlug, filters, { ...initialFeed, shopSlug });
+  }
 
   const fetchPage = useCallback(
     async (page: number, append: boolean, force = false) => {
@@ -211,6 +255,10 @@ export function useStoreProductFeed(
   useEffect(() => {
     if (!enabled) {
       setState({ ...initialState, loading: false });
+      return;
+    }
+    if (skipFirstFetchRef.current) {
+      skipFirstFetchRef.current = false;
       return;
     }
     setState((current) => ({

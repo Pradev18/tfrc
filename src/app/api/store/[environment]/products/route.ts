@@ -52,7 +52,7 @@ export async function GET(
       headers: {
         "Cache-Control": isSearch
           ? "private, max-age=15"
-          : "public, max-age=30, s-maxage=60, stale-while-revalidate=300",
+          : "public, max-age=60, s-maxage=120, stale-while-revalidate=600",
       },
     });
   } catch (error) {

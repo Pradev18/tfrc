@@ -183,47 +183,65 @@ export type ProductListItem = Prisma.ProductGetPayload<{
 
 export { mapProductPrices } from "@/lib/pricing";
 
+function getProductsFromCatalogCache(filters: ProductFilters) {
+  const page = filters.page ?? 1;
+  const limit = filters.limit ?? 24;
+  if (!filters.environmentSlug) return null;
+
+  const cachedEnvironment = getCachedEnvironment(filters.environmentSlug);
+  if (!cachedEnvironment?.products.length) return null;
+
+  const categoryDefs = getEffectiveShopCategoryDefs(
+    filters.environmentSlug,
+    cachedEnvironment.products.map((product) => product.name)
+  );
+  const selectedCategory = categoryDefs.find(
+    (category) => category.slug === filters.shopCategorySlug
+  );
+  if (
+    filters.shopCategorySlug &&
+    filters.shopCategorySlug !== OTHER_SHOP_CATEGORY.slug &&
+    !selectedCategory
+  ) {
+    return { items: [] as ProductListItem[], total: 0, page, limit, totalPages: 0 };
+  }
+
+  const cached = getCachedProducts(filters.environmentSlug, {
+    page,
+    limit,
+    q: filters.search,
+    brandSlug: filters.brandSlug,
+    onSale: filters.onSale,
+    inStock: filters.inStock,
+    shopSlug: filters.shopCategorySlug,
+    shopDefs: categoryDefs,
+    includeVariants: filters.includeVariants,
+  });
+  if (!cached) return null;
+
+  return {
+    ...cached,
+    items: cached.items as unknown as ProductListItem[],
+  };
+}
+
 export async function getProducts(filters: ProductFilters = {}) {
   const page = filters.page ?? 1;
   const limit = filters.limit ?? 24;
+
+  // Storefront lists: serve from catalog-cache.json first (no SQLite lock wait).
+  if (filters.listMode && filters.environmentSlug) {
+    const fromCache = getProductsFromCatalogCache(filters);
+    if (fromCache) return fromCache;
+  }
 
   try {
     return await getProductsFromPrisma(filters);
   } catch (error) {
     console.error("[products] prisma failed, using catalog cache:", error);
-    if (!filters.environmentSlug) throw error;
-
-    const cachedEnvironment = getCachedEnvironment(filters.environmentSlug);
-    const categoryDefs = getEffectiveShopCategoryDefs(
-      filters.environmentSlug,
-      cachedEnvironment?.products.map((product) => product.name) ?? []
-    );
-    const selectedCategory = categoryDefs.find(
-      (category) => category.slug === filters.shopCategorySlug
-    );
-    if (
-      filters.shopCategorySlug &&
-      filters.shopCategorySlug !== OTHER_SHOP_CATEGORY.slug &&
-      !selectedCategory
-    ) {
-      return { items: [], total: 0, page, limit, totalPages: 0 };
-    }
-    const cached = getCachedProducts(filters.environmentSlug, {
-      page,
-      limit,
-      q: filters.search,
-      brandSlug: filters.brandSlug,
-      onSale: filters.onSale,
-      inStock: filters.inStock,
-      shopSlug: filters.shopCategorySlug,
-      shopDefs: categoryDefs,
-      includeVariants: filters.includeVariants,
-    });
-    if (!cached) throw error;
-    return {
-      ...cached,
-      items: cached.items as unknown as ProductListItem[],
-    };
+    const fromCache = getProductsFromCatalogCache(filters);
+    if (fromCache) return fromCache;
+    throw error;
   }
 }
 

@@ -6,6 +6,7 @@ import { useT } from "@/context/LanguageContext";
 import { getEnvVisual } from "@/lib/env-visuals";
 import type { StoreFilters } from "@/lib/store-catalog-filter";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
+import type { InitialStoreFeed } from "@/hooks/useStoreProductFeed";
 
 interface LazyCategorySectionProps {
   slug: string;
@@ -18,6 +19,7 @@ interface LazyCategorySectionProps {
   siteUrl: string;
   forceVisible?: boolean;
   includeVariants?: boolean;
+  initialFeed?: InitialStoreFeed | null;
 }
 
 export function LazyCategorySection({
@@ -31,6 +33,7 @@ export function LazyCategorySection({
   siteUrl,
   forceVisible = false,
   includeVariants = false,
+  initialFeed = null,
 }: LazyCategorySectionProps) {
   const t = useT();
   const v = getEnvVisual(environmentSlug);
@@ -72,6 +75,7 @@ export function LazyCategorySection({
           shopSlug={slug}
           enabled
           includeVariants={includeVariants}
+          initialFeed={initialFeed}
         />
       ) : (
         <div className="min-h-px" aria-hidden />

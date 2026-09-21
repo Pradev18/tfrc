@@ -7,6 +7,7 @@ import { useT } from "@/context/LanguageContext";
 import { getEnvVisual } from "@/lib/env-visuals";
 import type { StoreFilters } from "@/lib/store-catalog-filter";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
+import type { InitialStoreFeed } from "@/hooks/useStoreProductFeed";
 
 interface PaginatedProductGridProps {
   environmentSlug: string;
@@ -19,6 +20,7 @@ interface PaginatedProductGridProps {
   enabled?: boolean;
   includeVariants?: boolean;
   emptyMessage?: string;
+  initialFeed?: InitialStoreFeed | null;
 }
 
 export function PaginatedProductGrid({
@@ -32,6 +34,7 @@ export function PaginatedProductGrid({
   enabled = true,
   includeVariants = false,
   emptyMessage,
+  initialFeed = null,
 }: PaginatedProductGridProps) {
   const t = useT();
   const v = getEnvVisual(environmentSlug);
@@ -41,6 +44,7 @@ export function PaginatedProductGrid({
       onSaleOnly,
       enabled,
       includeVariants,
+      initialFeed,
     });
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const empty = emptyMessage ?? t("store.noProductsFound");

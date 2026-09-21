@@ -55,11 +55,15 @@ function parseKeywords(raw: string): string[] {
 export const getShopCategories = cache(async function getShopCategories(
   environmentSlug: string
 ): Promise<ShopCategoryItem[]> {
+  // Storefront hot path: prefer file cache so SQLite is never on the critical path.
+  const fromCache = getShopCategoriesFromCache(environmentSlug);
+  if (fromCache.length > 0) return fromCache;
+
   try {
     return await getShopCategoriesFromPrisma(environmentSlug);
   } catch (error) {
     console.error("[shop-categories] prisma failed, using cache:", error);
-    return getShopCategoriesFromCache(environmentSlug);
+    return fromCache;
   }
 });
 
