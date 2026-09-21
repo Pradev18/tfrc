@@ -30,18 +30,53 @@ export async function listCatalogues(includeInactive = true) {
     where: includeInactive ? undefined : { status: "ACTIVE" },
     orderBy: { sortOrder: "asc" },
     include: {
-      _count: { select: { products: true, shopCategories: true } },
+      _count: {
+        select: {
+          // Match admin product totals (ignore soft-deleted).
+          products: { where: { deletedAt: null } },
+          shopCategories: { where: { isActive: true } },
+        },
+      },
     },
   });
 
-  return envs.map((env) => ({
-    ...env,
-    config: buildConfigFromEnvironment(env),
-    cardImage: getEnvironmentCardImage(env),
-    productCount: env._count.products,
-    shopCategoryCount: env._count.shopCategories,
-    isLocked: isCatalogueLockedFromSettings(env.settings),
-  }));
+  const envIds = envs.map((env) => env.id);
+  // Manage tab also shows categories inferred from product.shopCategorySlug
+  // (even when ShopCategory rows are missing). Cards must use the same logic.
+  const slugGroups =
+    envIds.length === 0
+      ? []
+      : await prisma.product.groupBy({
+          by: ["environmentId", "shopCategorySlug"],
+          where: {
+            environmentId: { in: envIds },
+            deletedAt: null,
+            NOT: { shopCategorySlug: null },
+          },
+          _count: { _all: true },
+        });
+
+  const usedBucketsByEnv = new Map<string, number>();
+  for (const group of slugGroups) {
+    if (!group.shopCategorySlug || group._count._all <= 0) continue;
+    usedBucketsByEnv.set(
+      group.environmentId,
+      (usedBucketsByEnv.get(group.environmentId) ?? 0) + 1
+    );
+  }
+
+  return envs.map((env) => {
+    const fromProducts = usedBucketsByEnv.get(env.id) ?? 0;
+    const fromTable = env._count.shopCategories;
+    return {
+      ...env,
+      config: buildConfigFromEnvironment(env),
+      cardImage: getEnvironmentCardImage(env),
+      productCount: env._count.products,
+      shopCategoryCount: Math.max(fromProducts, fromTable),
+      isLocked: isCatalogueLockedFromSettings(env.settings),
+    };
+  });
 }
 
 export async function getCatalogueById(id: string) {
