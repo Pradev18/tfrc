@@ -214,6 +214,71 @@ function drawTfrcMark(doc: jsPDF, x: number, y: number, scale = 1) {
   doc.text("TFRC", x + 7.3 * scale, y + 13 * scale, { align: "center" });
 }
 
+function drawCoverFeatureIcon(
+  doc: jsPDF,
+  kind: "quality" | "range" | "order" | "trust",
+  centerX: number,
+  centerY: number,
+  color: Rgb
+) {
+  doc.setDrawColor(...color);
+  doc.setFillColor(...color);
+  doc.setLineWidth(0.55);
+
+  if (kind === "quality") {
+    doc.line(centerX - 2.2, centerY - 0.1, centerX - 0.5, centerY + 1.7);
+    doc.line(centerX - 0.5, centerY + 1.7, centerX + 2.5, centerY - 2);
+    return;
+  }
+
+  if (kind === "range") {
+    const size = 1.45;
+    const gap = 0.75;
+    const startX = centerX - size - gap / 2;
+    const startY = centerY - size - gap / 2;
+    for (let row = 0; row < 2; row += 1) {
+      for (let column = 0; column < 2; column += 1) {
+        doc.roundedRect(
+          startX + column * (size + gap),
+          startY + row * (size + gap),
+          size,
+          size,
+          0.25,
+          0.25,
+          "F"
+        );
+      }
+    }
+    return;
+  }
+
+  if (kind === "order") {
+    doc.line(centerX - 2.8, centerY - 2.1, centerX - 1.8, centerY - 2.1);
+    doc.line(centerX - 1.8, centerY - 2.1, centerX - 1.1, centerY + 1.1);
+    doc.line(centerX - 1.1, centerY + 1.1, centerX + 2.2, centerY + 1.1);
+    doc.line(centerX - 1.5, centerY - 1.1, centerX + 2.7, centerY - 1.1);
+    doc.line(centerX + 2.7, centerY - 1.1, centerX + 2.1, centerY + 0.5);
+    doc.circle(centerX - 0.5, centerY + 2.2, 0.42, "F");
+    doc.circle(centerX + 1.8, centerY + 2.2, 0.42, "F");
+    return;
+  }
+
+  const points: Array<[number, number]> = [];
+  for (let index = 0; index < 10; index += 1) {
+    const angle = -Math.PI / 2 + index * (Math.PI / 5);
+    const radius = index % 2 === 0 ? 2.8 : 1.25;
+    points.push([
+      centerX + Math.cos(angle) * radius,
+      centerY + Math.sin(angle) * radius,
+    ]);
+  }
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index]!;
+    const next = points[(index + 1) % points.length]!;
+    doc.line(current[0], current[1], next[0], next[1]);
+  }
+}
+
 function drawPageFooter(
   doc: jsPDF,
   payload: CataloguePdfPayload,
@@ -349,11 +414,23 @@ function drawCover(
   });
 
   const featureY = titleBottom + 37;
-  const features = ["QUALITY & SAFE", "WIDE PRODUCT RANGE", "EASY ORDERING", "TRUSTED BY TFRC"];
-  features.forEach((feature, index) => {
+  const features = [
+    ["QUALITY & SAFE", "quality"],
+    ["WIDE PRODUCT RANGE", "range"],
+    ["EASY ORDERING", "order"],
+    ["TRUSTED BY TFRC", "trust"],
+  ] as const;
+  features.forEach(([feature, icon], index) => {
     const x = PAGE_MARGIN + index * (CONTENT_WIDTH / 4);
     doc.setFillColor(...mix(colors.accent, 0.9));
     doc.circle(x + CONTENT_WIDTH / 8, featureY, 4, "F");
+    drawCoverFeatureIcon(
+      doc,
+      icon,
+      x + CONTENT_WIDTH / 8,
+      featureY,
+      colors.cta
+    );
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...colors.cta);
     doc.setFontSize(6.5);
