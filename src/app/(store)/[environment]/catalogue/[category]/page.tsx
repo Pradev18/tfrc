@@ -54,7 +54,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
     title: `${category.name} | ${env.config.displayName}`,
 
-    description: `Shop ${category.name} at ${env.config.displayName} — TFRC Vita Nova Qatar.`,
+    description: `Shop ${category.name} at ${env.config.displayName} — TFRC Wholesale Services Qatar.`,
 
     alternates: { canonical: `/${envSlug}/catalogue/${category.slug}` },
 

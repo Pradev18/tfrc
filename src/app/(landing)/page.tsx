@@ -30,27 +30,45 @@ export default async function LandingPage() {
       {
         "@type": "Organization",
         "@id": `${siteUrl}/#organization`,
-        name: "TFRC",
-        alternateName: "TFRC Vita Nova",
+        name: PLATFORM.fullName,
+        alternateName: [
+          PLATFORM.name,
+          "TF",
+          "TFR",
+          "TFRC Wholesale",
+          "TFRC Wholesale Services Qatar",
+        ],
         url: siteUrl,
+        logo: `${siteUrl}${PLATFORM.logoUrl}`,
+        image: `${siteUrl}${PLATFORM.logoUrl}`,
         description: PLATFORM.description,
         areaServed: {
           "@type": "Country",
           name: "Qatar",
+        },
+        brand: {
+          "@type": "Brand",
+          name: PLATFORM.fullName,
         },
       },
       {
         "@type": "WebSite",
         "@id": `${siteUrl}/#website`,
         name: PLATFORM.fullName,
+        alternateName: ["TF", "TFR", "TFRC", "Wholesale Qatar"],
         url: siteUrl,
         description: PLATFORM.seo.description,
         publisher: { "@id": `${siteUrl}/#organization` },
         inLanguage: "en-QA",
+        potentialAction: {
+          "@type": "SearchAction",
+          target: `${siteUrl}/?q={search_term_string}`,
+          "query-input": "required name=search_term_string",
+        },
       },
       {
         "@type": "ItemList",
-        name: "TFRC Catalogues",
+        name: `${PLATFORM.name} Catalogues`,
         itemListElement: portals.map((portal, index) => ({
           "@type": "ListItem",
           position: index + 1,

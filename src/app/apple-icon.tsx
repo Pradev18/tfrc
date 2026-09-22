@@ -1,10 +1,10 @@
 import { ImageResponse } from "next/og";
 
-export const size = { width: 32, height: 32 };
+export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
-/** Favicon: TFRC purple-bar logo mark */
-export default function Icon() {
+/** Apple touch icon: TFRC purple-bar logo mark */
+export default function AppleIcon() {
   return new ImageResponse(
     (
       <div
@@ -14,31 +14,31 @@ export default function Icon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          gap: 3,
+          gap: 14,
           background: "#ffffff",
         }}
       >
         <div
           style={{
-            width: 5,
-            height: 18,
-            borderRadius: 1,
+            width: 28,
+            height: 96,
+            borderRadius: 4,
             background: "#7B2D8E",
           }}
         />
         <div
           style={{
-            width: 5,
-            height: 18,
-            borderRadius: 1,
+            width: 28,
+            height: 96,
+            borderRadius: 4,
             background: "#7B2D8E",
           }}
         />
         <div
           style={{
-            width: 5,
-            height: 18,
-            borderRadius: 1,
+            width: 28,
+            height: 96,
+            borderRadius: 4,
             background: "#7B2D8E",
           }}
         />

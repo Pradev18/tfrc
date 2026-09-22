@@ -4,8 +4,8 @@ import { getWhatsAppAdUrl } from "@/lib/site-config";
 import { buildPageMetadata } from "@/lib/meta-seo";
 
 export const metadata: Metadata = buildPageMetadata({
-  title: "Order on WhatsApp | TFRC Vita Nova",
-  description: "Chat with TFRC Vita Nova on WhatsApp to place your order in Qatar.",
+  title: "Order on WhatsApp | TFRC Wholesale Services",
+  description: "Chat with TFRC Wholesale Services on WhatsApp to place your order in Qatar.",
   path: "/whatsapp",
   noIndex: true,
 });

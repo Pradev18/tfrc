@@ -33,7 +33,12 @@ export function VitaNovaLanding({
 
       <footer className="shrink-0 border-t border-[#ebe8e3]/80 py-5 text-center">
         <div className="flex justify-center">
-          <TfrcBrand className="gap-2" iconClassName="h-4" textClassName="text-base font-semibold" />
+          <TfrcBrand
+            fullName
+            className="gap-2"
+            iconClassName="h-5"
+            textClassName="text-base font-semibold"
+          />
         </div>
         <p className="mt-2 text-[11px] text-[#6b6560]">{t("landing.onlineCatalogues")}</p>
         <p className="mt-1 text-[10px] uppercase tracking-[0.16em] text-[#9c9690]">

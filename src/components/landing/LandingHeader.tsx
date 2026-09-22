@@ -59,7 +59,11 @@ export function LandingHeader({ portals, whatsappSettings, siteUrl }: LandingHea
       >
         <div className="container-pawmart flex h-14 items-center justify-between sm:h-[4.25rem]">
           <Link href="/" className="group transition-opacity hover:opacity-85">
-            <TfrcBrand />
+            <TfrcBrand
+              fullName
+              iconClassName="h-5 md:h-6"
+              textClassName="text-sm font-semibold md:text-base"
+            />
           </Link>
 
           <nav className="flex items-center gap-1 sm:gap-1.5" ref={menuRef}>

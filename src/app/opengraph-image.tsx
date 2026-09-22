@@ -43,30 +43,36 @@ export default function OpenGraphImage() {
           >
             ONE PLATFORM
           </div>
-          <div style={{ fontSize: 96, fontWeight: 600, letterSpacing: "0.08em" }}>
+          <div style={{ display: "flex", gap: 18, marginBottom: 28 }}>
+            <div style={{ width: 28, height: 96, borderRadius: 4, background: "#7B2D8E" }} />
+            <div style={{ width: 28, height: 96, borderRadius: 4, background: "#7B2D8E" }} />
+            <div style={{ width: 28, height: 96, borderRadius: 4, background: "#7B2D8E" }} />
+          </div>
+          <div style={{ fontSize: 72, fontWeight: 600, letterSpacing: "0.06em" }}>
             {PLATFORM.name}
           </div>
           <div
             style={{
-              fontSize: 36,
-              letterSpacing: "0.45em",
-              opacity: 0.75,
+              fontSize: 32,
+              letterSpacing: "0.28em",
+              opacity: 0.8,
               marginTop: 8,
+              textTransform: "uppercase",
             }}
           >
             {PLATFORM.tagline}
           </div>
           <div
             style={{
-              marginTop: 32,
-              fontSize: 22,
+              marginTop: 28,
+              fontSize: 20,
               opacity: 0.55,
-              maxWidth: 700,
+              maxWidth: 760,
               textAlign: "center",
               lineHeight: 1.5,
             }}
           >
-            Pets · Home & Living · Tools — Order on WhatsApp · Qatar
+            TF · TFR · TFRC · Wholesale Qatar — Pets · Home & Living · Tools
           </div>
         </div>
       </div>

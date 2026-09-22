@@ -46,7 +46,7 @@ export function EnvironmentHome({
     url: `${siteUrl}/${slug}`,
     isPartOf: {
       "@type": "WebSite",
-      name: "TFRC Vita Nova",
+      name: "TFRC Wholesale Services",
       url: siteUrl,
     },
     about: {

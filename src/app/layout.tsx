@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   keywords: [...PLATFORM.seo.keywords],
   authors: [{ name: "TFRC" }],
   creator: "TFRC",
-  publisher: "TFRC Vita Nova",
+  publisher: PLATFORM.fullName,
   category: "shopping",
   openGraph: {
     type: "website",

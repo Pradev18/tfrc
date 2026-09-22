@@ -18,7 +18,7 @@ export default function Error({
     <div className="flex min-h-screen flex-col bg-[#faf9f7]">
       <header className="border-b border-[#ebe8e3] bg-white px-6 py-5 md:px-10">
         <Link href="/" className="font-display text-2xl font-medium tracking-tight text-[#141414]">
-          TFRC <span className="text-[#9c9690]">Vita Nova</span>
+          TFRC <span className="text-[#9c9690]">Wholesale Services</span>
         </Link>
       </header>
 

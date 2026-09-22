@@ -73,7 +73,7 @@ export const META_CONFIG = {
 
 /** Short pre-filled message for Meta Click-to-WhatsApp ads */
 export function getWhatsAppAdMessage(source = "Meta ad"): string {
-  return `Hello, I saw your ${source} and would like to order from TFRC Vita Nova. Please help me.`;
+  return `Hello, I saw your ${source} and would like to order from TFRC Wholesale Services. Please help me.`;
 }
 
 export function getWhatsAppAdUrl(source = "Meta ad"): string {

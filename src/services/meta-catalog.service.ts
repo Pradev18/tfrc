@@ -79,7 +79,7 @@ function generateMetaCatalogCsvFromCache(environmentSlug?: string): string {
           formatMetaPrice(pricing.regular, pricing.currency),
           link,
           primaryImage,
-          product.brand?.name ?? "TFRC Vita Nova",
+          product.brand?.name ?? "TFRC Wholesale Services",
           "",
           "",
           pricing.isOnSale && pricing.sale
@@ -159,7 +159,7 @@ async function generateMetaCatalogCsvFromPrisma(environmentSlug?: string): Promi
       formatMetaPrice(pricing.regular, pricing.currency),
       link,
       primaryImage,
-      product.brand?.name ?? "TFRC Vita Nova",
+      product.brand?.name ?? "TFRC Wholesale Services",
       product.googleCategory ?? "",
       product.fbCategory ?? "",
       pricing.isOnSale && pricing.sale

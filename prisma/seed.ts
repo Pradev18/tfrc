@@ -150,7 +150,7 @@ async function importRow(
     googleCategory: row.google_product_category || null,
     fbCategory: row.fb_product_category || null,
     departmentSource: row.departmentSource,
-    seoTitle: `${row.title} | TFRC Vita Nova`,
+    seoTitle: `${row.title} | TFRC Wholesale Services`,
     seoDescription: row.description.slice(0, 160) || null,
     isNew: false,
     isFeatured: false,
@@ -234,7 +234,7 @@ async function importRow(
 }
 
 async function main() {
-  console.log("🌱 Seeding TFRC Vita Nova database...\n");
+  console.log("🌱 Seeding TFRC Wholesale Services database...\n");
 
   await prisma.inventoryTransaction.deleteMany();
   await prisma.productTag.deleteMany();
@@ -327,7 +327,7 @@ async function main() {
     await prisma.whatsAppSetting.create({
       data: {
         phoneNumber: whatsappNumber,
-        defaultGreeting: "Hello, I would like to order from TFRC Vita Nova",
+        defaultGreeting: "Hello, I would like to order from TFRC Wholesale Services",
         productTemplate:
           "• {{name}}\n  Price: {{price}}\n  Ref: {{productId}}",
         isActive: true,
@@ -336,9 +336,9 @@ async function main() {
   }
 
   const settings = [
-    { key: "site_name", value: "TFRC Vita Nova", group: "general" },
+    { key: "site_name", value: "TFRC Wholesale Services", group: "general" },
     { key: "site_tagline", value: "One Platform. Curated Catalogues.", group: "general" },
-    { key: "site_description", value: "TFRC Vita Nova — premium catalogues for pets, home & living, and professional tools in Qatar. Order on WhatsApp.", group: "general" },
+    { key: "site_description", value: "TFRC Wholesale Services — premium wholesale catalogues for pets, home & living, and professional tools in Qatar. Order on WhatsApp.", group: "general" },
   ];
 
   for (const s of settings) {

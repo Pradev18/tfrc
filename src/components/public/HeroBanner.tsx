@@ -19,7 +19,7 @@ export function HeroBanner({
   collageImages,
   ctaHref = "/catalogue",
   ctaLabel = "Explore Catalogue",
-  eyebrow = "TFRC Vita Nova",
+  eyebrow = "TFRC Wholesale Services",
 }: HeroBannerProps) {
   return (
     <section className="relative overflow-hidden border-b border-border bg-surface-muted">

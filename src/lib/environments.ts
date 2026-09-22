@@ -138,19 +138,30 @@ export function getDepartmentForSlug(slug: string): string | undefined {
 
 export const PLATFORM = {
   name: "TFRC",
-  tagline: "Vita Nova",
-  fullName: "TFRC Vita Nova",
+  tagline: "Wholesale Services",
+  fullName: "TFRC Wholesale Services",
   description:
-    "TFRC Vita Nova catalogues for Qatar — pets, kitchen & home, and professional tools. Browse by category and order on WhatsApp.",
+    "TFRC Wholesale Services — Qatar wholesale catalogues for pets, kitchen & home, and professional tools. Browse by category and order on WhatsApp.",
+  logoUrl: "/images/brand/tfrc-logo.svg",
   seo: {
-    title: "TFRC Vita Nova | Online Catalogues Qatar — Pets, Home, Tools",
+    title:
+      "TFRC Wholesale Services | TF · TFR · TFRC Qatar Wholesale Catalogues",
     description:
-      "TFRC Vita Nova online catalogues in Qatar: PawMart pets, Kitchen & Home, and Pro Tools. Browse categories, compare products, and order on WhatsApp.",
+      "TFRC Wholesale Services (TF / TFR / TFRC) — Qatar wholesale online catalogues: PawMart pets, Kitchen & Home, and Pro Tools. Browse categories, compare products, and order on WhatsApp.",
     keywords: [
+      "tf",
+      "tfr",
       "tfrc",
+      "tfrc wholesale",
+      "tfrc wholesale services",
+      "tf wholesale",
+      "tfr wholesale",
+      "wholesale",
+      "wholesale qatar",
+      "qatar wholesale",
       "tfrc qatar",
-      "tfrc vita nova",
       "online catalogue qatar",
+      "wholesale catalogue qatar",
       "whatsapp shopping qatar",
       "pet products qatar",
       "kitchen home qatar",

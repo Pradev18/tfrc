@@ -50,7 +50,7 @@ export function CartDrawer({
 
   const settings: WhatsAppSettings = whatsappSettings ?? {
     phoneNumber: "97455049229",
-    defaultGreeting: "Hello, I would like to order from TFRC Vita Nova",
+    defaultGreeting: "Hello, I would like to order from TFRC Wholesale Services",
     productTemplate: "",
   };
 

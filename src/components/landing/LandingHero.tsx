@@ -63,9 +63,10 @@ export function LandingHero({ waHref, portals = LANDING_PORTALS }: LandingHeroPr
         <div className="mx-auto max-w-xl text-center landing-fade-up">
           <div className="flex justify-center">
             <TfrcBrand
+              fullName
               className="gap-3"
-              iconClassName="h-6 md:h-7"
-              textClassName="text-2xl md:text-3xl"
+              iconClassName="h-8 w-auto md:h-10"
+              textClassName="text-xl md:text-3xl"
             />
           </div>
           <p className="mt-2 text-sm text-[#6b6560]">{t("landing.chooseWorld")}</p>

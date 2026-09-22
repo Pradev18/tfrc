@@ -23,10 +23,20 @@ export async function Footer() {
       <div className="container-pawmart section-padding-sm">
         <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-12 lg:gap-8">
           <div className="lg:col-span-4">
-            <p className="font-display text-[1.75rem] font-medium">{PLATFORM.name}</p>
-            <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.35em] text-white/45">
-              {PLATFORM.tagline}
-            </p>
+            <div className="flex items-center gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={PLATFORM.logoUrl}
+                alt={PLATFORM.fullName}
+                className="h-10 w-auto brightness-0 invert"
+              />
+              <div>
+                <p className="font-display text-[1.75rem] font-medium">{PLATFORM.name}</p>
+                <p className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.35em] text-white/45">
+                  {PLATFORM.tagline}
+                </p>
+              </div>
+            </div>
             <p className="mt-5 max-w-xs text-sm leading-relaxed text-white/60">
               {tagline}
             </p>

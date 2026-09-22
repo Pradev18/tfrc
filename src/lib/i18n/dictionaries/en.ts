@@ -18,7 +18,7 @@ export const en = {
     orderWhatsApp: "WhatsApp",
     orderOnWhatsApp: "Order on WhatsApp",
     cancel: "Cancel",
-    backHome: "TFRC Vita Nova Home",
+    backHome: "TFRC Wholesale Services Home",
   },
 
   landing: {

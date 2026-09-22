@@ -21,7 +21,7 @@ export const arQA: Dictionary = {
     orderWhatsApp: "واتساب",
     orderOnWhatsApp: "اطلب عبر واتساب",
     cancel: "إلغاء",
-    backHome: "الرئيسية · TFRC Vita Nova",
+    backHome: "الرئيسية · TFRC Wholesale Services",
   },
 
   landing: {
