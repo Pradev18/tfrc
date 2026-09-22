@@ -4,6 +4,10 @@ import {
   chunkCatalogueProducts,
   PDF_PRODUCTS_PER_PAGE,
 } from "../src/lib/catalogue-pdf-document";
+import {
+  assembleCataloguePdfDocument,
+  CataloguePdfImageError,
+} from "../src/lib/catalogue-pdf-build";
 import type { CataloguePdfPayload } from "../src/services/catalogue-pdf.service";
 
 const TINY_PNG =
@@ -137,6 +141,8 @@ describe("catalogue PDF links and assets", () => {
     expect(linkAnnotationCount(result.bytes)).toBe(5);
     expect(source).toContain("/URI (https://www.vitanovaservices.com/future-catalogue)");
     expect(source).toContain("/URI (https://wa.me/9745000");
+    expect(result.stats.renderedProductImages).toBe(3);
+    expect(result.stats.fallbackProductImages).toBe(0);
   });
 
   it("uses each catalogue's supplied WhatsApp URLs without hardcoding", () => {
@@ -188,9 +194,34 @@ describe("catalogue PDF links and assets", () => {
       "data:image/svg+xml;charset=utf-8,%3Csvg/%3E";
     const result = buildCataloguePdfDocument(fixture);
     expect(result.stats.fallbackImages).toBeGreaterThanOrEqual(1);
+    expect(result.stats.fallbackProductImages).toBe(1);
     expect(result.stats.productCards).toBe(1);
     expect(result.stats.linkAnnotations).toBe(3);
     expect(physicalPageCount(result.bytes)).toBe(2);
+  });
+
+  it("refuses to return an assembled PDF when any product has no image", async () => {
+    const fixture = payload([1]);
+    fixture.categories[0]!.products[0]!.imageUrl = null;
+
+    await expect(
+      assembleCataloguePdfDocument(fixture, { origin: "https://example.test" })
+    ).rejects.toBeInstanceOf(CataloguePdfImageError);
+  });
+
+  it("uses a validated alternate image when the primary source is broken", async () => {
+    const fixture = payload([1]);
+    const item = fixture.categories[0]!.products[0]!;
+    item.imageUrl = "data:image/jpeg;base64,bm90LWFuLWltYWdl";
+    item.imageUrls = [item.imageUrl, TINY_PNG];
+
+    const result = await assembleCataloguePdfDocument(fixture, {
+      origin: "https://example.test",
+    });
+
+    expect(result.stats.embeddedProductImages).toBe(1);
+    expect(result.stats.fallbackProductImages).toBe(0);
+    expect(result.stats.renderedFallbacks).toBe(0);
   });
 
   it("emits true A4 pages and never contains browser print code", () => {

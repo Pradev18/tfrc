@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/admin-auth";
+import {
+  requireAdminSession,
+  verifyCurrentAdminPassword,
+} from "@/lib/admin-auth";
 import {
   applyCatalogueUnlockCookie,
   clearCatalogueUnlockCookie,
@@ -35,12 +38,17 @@ export async function GET(_req: NextRequest, context: RouteContext) {
 }
 
 export async function POST(req: NextRequest, context: RouteContext) {
-  const { error } = await requireAdminSession();
+  const { session, error } = await requireAdminSession();
   if (error) return error;
 
   const { id } = await context.params;
   const body = (await req.json().catch(() => null)) as
-    | { action?: string; password?: string; confirmPassword?: string }
+    | {
+        action?: string;
+        password?: string;
+        confirmPassword?: string;
+        adminPassword?: string;
+      }
     | null;
 
   const action = String(body?.action || "");
@@ -88,6 +96,45 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return res;
     }
 
+    if (action === "change-password") {
+      // Allowed from the locked gate: admin portal password is the gate, not the catalogue unlock cookie.
+      if (!session || !(await verifyCurrentAdminPassword(session, body?.adminPassword ?? ""))) {
+        return NextResponse.json(
+          { error: "The admin portal password is incorrect." },
+          { status: 401 }
+        );
+      }
+      if (password !== confirmPassword) {
+        return NextResponse.json(
+          { error: "New password and confirm password do not match." },
+          { status: 400 }
+        );
+      }
+      const state = await getCatalogueLockState(id);
+      if (!state.exists) {
+        return NextResponse.json({ error: "Catalogue not found" }, { status: 404 });
+      }
+      if (!state.isLocked) {
+        return NextResponse.json(
+          { error: "Lock this catalogue before changing its password." },
+          { status: 400 }
+        );
+      }
+      const alreadyUnlocked = await hasCatalogueUnlockCookie(id);
+      await enableCatalogueLock(id, password);
+      const res = NextResponse.json({
+        ok: true,
+        isLocked: true,
+        unlocked: alreadyUnlocked,
+      });
+      if (alreadyUnlocked) {
+        applyCatalogueUnlockCookie(res, id);
+      } else {
+        clearCatalogueUnlockCookie(res, id);
+      }
+      return res;
+    }
+
     if (action === "disable") {
       await disableCatalogueLock(id, password);
       const res = NextResponse.json({ ok: true, isLocked: false, unlocked: true });
@@ -96,7 +143,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     }
 
     return NextResponse.json(
-      { error: "Unknown lock action. Use unlock, enable, or disable." },
+      { error: "Unknown lock action. Use unlock, enable, change-password, or disable." },
       { status: 400 }
     );
   } catch (e) {

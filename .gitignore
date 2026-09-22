@@ -22,6 +22,8 @@
 .DS_Store
 *.pem
 tmp-catalogue-pdf-*
+tmp-*-product-brochure.pdf
+tmp-*-page.png
 tmp-office-*
 tmp-office-report-*
 tmp-iqs-*
@@ -58,6 +60,7 @@ next-env.d.ts
 *.db-shm
 *.db-wal
 /catalog-cache.json
+/data/catalogue-image-cache/
 
 # uploads
 /public/uploads/*

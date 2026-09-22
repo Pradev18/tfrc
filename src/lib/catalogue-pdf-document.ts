@@ -33,6 +33,8 @@ export interface CataloguePdfDocumentStats {
   linkAnnotations: number;
   renderedImages: number;
   fallbackImages: number;
+  renderedProductImages: number;
+  fallbackProductImages: number;
   pageCardCounts: number[];
 }
 
@@ -675,7 +677,13 @@ function drawProductCard(
   x: number,
   y: number,
   colors: { accent: Rgb; cta: Rgb; heading: Rgb; muted: Rgb; line: Rgb },
-  counters: { links: number; images: number; fallbacks: number }
+  counters: {
+    links: number;
+    images: number;
+    fallbacks: number;
+    productImages: number;
+    productFallbacks: number;
+  }
 ) {
   doc.setFillColor(255, 255, 255);
   doc.setDrawColor(...colors.line);
@@ -698,7 +706,10 @@ function drawProductCard(
       imageHeight - 2,
       `product-${product.id}`
     )
-  ) counters.images += 1;
+  ) {
+    counters.images += 1;
+    counters.productImages += 1;
+  }
   else {
     drawImageFallback(
       doc,
@@ -710,6 +721,7 @@ function drawProductCard(
       colors.accent
     );
     counters.fallbacks += 1;
+    counters.productFallbacks += 1;
   }
 
   const bodyX = x + 2;
@@ -808,7 +820,13 @@ export function buildCataloguePdfDocument(
     muted: rgb(payload.muted, [107, 101, 96]),
     line: [211, 226, 218] as Rgb,
   };
-  const counters = { links: 0, images: 0, fallbacks: 0 };
+  const counters = {
+    links: 0,
+    images: 0,
+    fallbacks: 0,
+    productImages: 0,
+    productFallbacks: 0,
+  };
 
   const doc = new jsPDF({
     orientation: "portrait",
@@ -859,6 +877,8 @@ export function buildCataloguePdfDocument(
       linkAnnotations: counters.links,
       renderedImages: counters.images,
       fallbackImages: counters.fallbacks,
+      renderedProductImages: counters.productImages,
+      fallbackProductImages: counters.productFallbacks,
       pageCardCounts: logicalPages.map((page) => page.products.length),
     },
   };

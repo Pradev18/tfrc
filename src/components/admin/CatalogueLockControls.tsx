@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Lock, Unlock } from "lucide-react";
 import { adminNotify } from "@/lib/admin-notify";
 
-type Mode = "idle" | "enable" | "disable";
+type Mode = "idle" | "enable" | "change" | "disable";
 
 export function CatalogueLockControls({
   catalogueId,
@@ -20,6 +20,7 @@ export function CatalogueLockControls({
   const [mode, setMode] = useState<Mode>("idle");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localLocked, setLocalLocked] = useState(isLocked);
@@ -33,7 +34,12 @@ export function CatalogueLockControls({
     setBusy(true);
     setError(null);
     try {
-      const action = mode === "enable" ? "enable" : "disable";
+      const action =
+        mode === "enable"
+          ? "enable"
+          : mode === "change"
+            ? "change-password"
+            : "disable";
       const res = await fetch(`/api/admin/catalogues/${catalogueId}/lock`, {
         method: "POST",
         credentials: "include",
@@ -42,7 +48,9 @@ export function CatalogueLockControls({
         body: JSON.stringify({
           action,
           password,
-          confirmPassword: mode === "enable" ? confirmPassword : undefined,
+          confirmPassword:
+            mode === "enable" || mode === "change" ? confirmPassword : undefined,
+          adminPassword: mode === "change" ? adminPassword : undefined,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -53,6 +61,7 @@ export function CatalogueLockControls({
       if (!res.ok) throw new Error(data.error || "Lock action failed");
       setPassword("");
       setConfirmPassword("");
+      setAdminPassword("");
       setMode("idle");
       setLocalLocked(Boolean(data.isLocked));
       onChanged?.({
@@ -62,6 +71,8 @@ export function CatalogueLockControls({
       adminNotify(
         mode === "enable"
           ? "Catalogue locked. Password will be required next time."
+          : mode === "change"
+            ? "Catalogue password changed successfully."
           : "Catalogue lock removed."
       );
       if (mode === "disable") {
@@ -108,17 +119,30 @@ export function CatalogueLockControls({
               Lock catalogue
             </button>
           ) : (
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-text"
-              onClick={() => {
-                setMode("disable");
-                setError(null);
-              }}
-            >
-              <Unlock className="h-4 w-4" />
-              Remove lock
-            </button>
+            <>
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white"
+                onClick={() => {
+                  setMode("change");
+                  setError(null);
+                }}
+              >
+                <Lock className="h-4 w-4" />
+                Change password
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-text"
+                onClick={() => {
+                  setMode("disable");
+                  setError(null);
+                }}
+              >
+                <Unlock className="h-4 w-4" />
+                Remove lock
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -128,17 +152,31 @@ export function CatalogueLockControls({
           <p className="text-sm text-text-muted">
             {mode === "enable"
               ? "Set a password (numbers, letters, or both — at least 4 characters)."
+              : mode === "change"
+                ? "First confirm your admin portal password, then choose the new catalogue password."
               : "Enter the current lock password to remove the lock."}
           </p>
+          {mode === "change" && (
+            <input
+              type="password"
+              autoComplete="current-password"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm"
+              placeholder="Current admin portal password"
+              value={adminPassword}
+              onChange={(e) => setAdminPassword(e.target.value)}
+            />
+          )}
           <input
             type="password"
-            autoComplete="new-password"
+            autoComplete={mode === "disable" ? "current-password" : "new-password"}
             className="w-full rounded-lg border border-border px-3 py-2 text-sm"
-            placeholder={mode === "enable" ? "New lock password" : "Current lock password"}
+            placeholder={
+              mode === "disable" ? "Current catalogue password" : "New catalogue password"
+            }
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          {mode === "enable" && (
+          {(mode === "enable" || mode === "change") && (
             <input
               type="password"
               autoComplete="new-password"
@@ -156,11 +194,22 @@ export function CatalogueLockControls({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={busy || !password.trim()}
+              disabled={
+                busy ||
+                !password.trim() ||
+                ((mode === "enable" || mode === "change") && !confirmPassword.trim()) ||
+                (mode === "change" && !adminPassword.trim())
+              }
               className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               onClick={() => void submit()}
             >
-              {busy ? "Saving…" : mode === "enable" ? "Turn lock on" : "Remove lock"}
+              {busy
+                ? "Saving…"
+                : mode === "enable"
+                  ? "Turn lock on"
+                  : mode === "change"
+                    ? "Change password"
+                    : "Remove lock"}
             </button>
             <button
               type="button"
@@ -170,6 +219,7 @@ export function CatalogueLockControls({
                 setMode("idle");
                 setPassword("");
                 setConfirmPassword("");
+                setAdminPassword("");
                 setError(null);
               }}
             >
@@ -196,6 +246,13 @@ export function CatalogueUnlockGate({
   const [error, setError] = useState<string | null>(null);
   const [unlocked, setUnlocked] = useState(false);
   const [ready, setReady] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changeBusy, setChangeBusy] = useState(false);
+  const [changeError, setChangeError] = useState<string | null>(null);
+  const [changeMessage, setChangeMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -241,6 +298,42 @@ export function CatalogueUnlockGate({
     }
   }
 
+  async function changeCataloguePassword() {
+    if (changeBusy) return;
+    setChangeBusy(true);
+    setChangeError(null);
+    setChangeMessage(null);
+    try {
+      const res = await fetch(`/api/admin/catalogues/${catalogueId}/lock`, {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "change-password",
+          adminPassword,
+          password: newPassword,
+          confirmPassword,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "Could not change password.");
+      setAdminPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setChangingPassword(false);
+      setPassword("");
+      setChangeMessage("Catalogue password updated. Enter the new password to unlock.");
+      adminNotify("Catalogue password changed successfully.");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Could not change password.";
+      setChangeError(message);
+      adminNotify(message);
+    } finally {
+      setChangeBusy(false);
+    }
+  }
+
   if (unlocked) return <>{children}</>;
 
   return (
@@ -259,7 +352,7 @@ export function CatalogueUnlockGate({
         className="mt-4 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"
         placeholder="Lock password"
         value={password}
-        disabled={!ready || busy}
+        disabled={!ready || busy || changeBusy}
         onChange={(e) => setPassword(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") void unlock();
@@ -270,14 +363,103 @@ export function CatalogueUnlockGate({
           {error}
         </p>
       )}
+      {changeMessage && (
+        <p role="status" className="mt-2 text-sm text-emerald-800">
+          {changeMessage}
+        </p>
+      )}
       <button
         type="button"
-        disabled={!ready || busy || !password.trim()}
+        disabled={!ready || busy || changeBusy || !password.trim()}
         className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
         onClick={() => void unlock()}
       >
         {busy ? "Checking…" : ready ? "Unlock" : "Preparing…"}
       </button>
+
+      <div className="mt-4 border-t border-amber-200 pt-4">
+        {!changingPassword ? (
+          <button
+            type="button"
+            disabled={!ready || busy || changeBusy}
+            className="w-full rounded-lg border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-950 disabled:opacity-50"
+            onClick={() => {
+              setChangingPassword(true);
+              setChangeError(null);
+              setChangeMessage(null);
+            }}
+          >
+            Change password
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-amber-900">
+              Confirm your admin portal password first, then set the new catalogue password.
+            </p>
+            <input
+              type="password"
+              autoComplete="current-password"
+              className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"
+              placeholder="Current admin portal password"
+              value={adminPassword}
+              disabled={changeBusy}
+              onChange={(e) => setAdminPassword(e.target.value)}
+            />
+            <input
+              type="password"
+              autoComplete="new-password"
+              className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"
+              placeholder="New catalogue password"
+              value={newPassword}
+              disabled={changeBusy}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+            <input
+              type="password"
+              autoComplete="new-password"
+              className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"
+              placeholder="Confirm new catalogue password"
+              value={confirmPassword}
+              disabled={changeBusy}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+            {changeError && (
+              <p role="alert" className="text-sm text-red-700">
+                {changeError}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={
+                  changeBusy ||
+                  !adminPassword.trim() ||
+                  !newPassword.trim() ||
+                  !confirmPassword.trim()
+                }
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                onClick={() => void changeCataloguePassword()}
+              >
+                {changeBusy ? "Saving…" : "Save new password"}
+              </button>
+              <button
+                type="button"
+                disabled={changeBusy}
+                className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm text-amber-950 disabled:opacity-50"
+                onClick={() => {
+                  setChangingPassword(false);
+                  setAdminPassword("");
+                  setNewPassword("");
+                  setConfirmPassword("");
+                  setChangeError(null);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

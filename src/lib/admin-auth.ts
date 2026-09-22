@@ -1,8 +1,12 @@
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
+import bcrypt from "bcryptjs";
+import type { Session } from "next-auth";
 
 const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN"]);
+const DUMMY_PASSWORD_HASH =
+  "$2b$12$CkjYPjLSdLgyQVGmHrz08eQFNTrAHVFBc3bTDHyOhCoof/Nfjgtjm";
 
 export async function getVerifiedAdminSession() {
   const session = await auth();
@@ -32,4 +36,23 @@ export async function requireAdminSession() {
   }
 
   return { session, error: null };
+}
+
+/** Re-authenticates a signed-in admin before sensitive security changes. */
+export async function verifyCurrentAdminPassword(
+  session: Session,
+  password: string
+): Promise<boolean> {
+  const email = session.user?.email?.trim().toLowerCase();
+  const user = email
+    ? await prisma.user.findUnique({
+        where: { email },
+        select: { passwordHash: true, isActive: true },
+      })
+    : null;
+  const valid = await bcrypt.compare(
+    String(password ?? ""),
+    user?.passwordHash ?? DUMMY_PASSWORD_HASH
+  );
+  return Boolean(user?.isActive && valid);
 }

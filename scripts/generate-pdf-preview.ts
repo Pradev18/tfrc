@@ -85,6 +85,15 @@ async function main() {
         `Expected at least ${stats.listedCards + 2} PDF links, got ${stats.linkAnnotations}.`
       );
     }
+    if (
+      stats.fallbackProductImages !== 0 ||
+      stats.embeddedProductImages !== stats.listedCards
+    ) {
+      throw new Error(
+        `Incomplete product images: embedded ${stats.embeddedProductImages} of ` +
+          `${stats.listedCards}; fallbacks ${stats.fallbackProductImages}.`
+      );
+    }
 
     const out = resolve(
       process.cwd(),

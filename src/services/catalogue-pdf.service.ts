@@ -32,6 +32,8 @@ export interface CataloguePdfProduct {
   currency: string;
   inStock: boolean;
   imageUrl: string | null;
+  /** Ordered candidates; PDF generation uses the first image it can fully validate. */
+  imageUrls?: string[];
   whatsappUrl: string;
 }
 
@@ -99,10 +101,15 @@ function toPdfProduct(
   availableSizes: string[],
   displayName: string,
   price: number,
-  priceFrom: boolean
+  priceFrom: boolean,
+  imageCandidates?: string[]
 ): CataloguePdfProduct {
   const { pricing } = mapProductPrices(product);
   const name = productDisplayTitle(product.name, product.productId);
+
+  const imageUrls = [
+    ...new Set((imageCandidates ?? product.images.map((image) => image.url)).filter(Boolean)),
+  ];
 
   return {
     id: product.id,
@@ -115,7 +122,8 @@ function toPdfProduct(
     priceFrom,
     currency: pricing.currency,
     inStock: product.inventory?.isInStock !== false,
-    imageUrl: product.images[0]?.url ?? null,
+    imageUrl: imageUrls[0] ?? null,
+    imageUrls,
     whatsappUrl: generateWhatsAppLinkSync(
       whatsappSettings,
       {
@@ -216,7 +224,13 @@ function collapseVariantGroups(
         readableSizes,
         displayName,
         minPrice,
-        priceFrom
+        priceFrom,
+        [
+          ...primary.images.map((image) => image.url),
+          ...siblings
+            .filter((item) => item.id !== primary.id)
+            .flatMap((item) => item.images.map((image) => image.url)),
+        ]
       )
     );
   }
@@ -268,7 +282,7 @@ export async function getCataloguePdfPayload(
       include: {
         prices: true,
         inventory: { select: { isInStock: true } },
-        images: { orderBy: { sortOrder: "asc" }, take: 1 },
+        images: { orderBy: { sortOrder: "asc" } },
       },
     }),
     getWhatsAppSettings(),

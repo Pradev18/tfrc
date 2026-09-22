@@ -185,11 +185,45 @@ export function ManageCataloguePanel({
     setError("");
     try {
       const url = `/api/admin/catalogues/${catalogueId}/pdf`;
-      const res = await fetch(url, {
+      const start = await fetch(url, {
+        method: "POST",
         credentials: "include",
         cache: "no-store",
         headers: { "Cache-Control": "no-store" },
       });
+      if (!start.ok) {
+        let message = `Could not start catalogue PDF (error ${start.status}).`;
+        try {
+          const data = (await start.json()) as { error?: string };
+          if (data.error) message = data.error;
+        } catch {
+          // non-JSON error body
+        }
+        setError(message);
+        adminNotify(message);
+        return;
+      }
+
+      let res: Response | null = null;
+      for (let attempt = 0; attempt < 180; attempt += 1) {
+        const polled = await fetch(`${url}?poll=1`, {
+          credentials: "include",
+          cache: "no-store",
+          headers: { "Cache-Control": "no-store" },
+        });
+        if (polled.status !== 202) {
+          res = polled;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+      }
+      if (!res) {
+        const message =
+          "PDF generation is still taking too long. No incomplete PDF was opened; try again.";
+        setError(message);
+        adminNotify(message);
+        return;
+      }
       if (!res.ok) {
         let message = `Could not prepare catalogue PDF (error ${res.status}).`;
         try {
@@ -198,6 +232,13 @@ export function ManageCataloguePanel({
         } catch {
           // non-JSON error body
         }
+        setError(message);
+        adminNotify(message);
+        return;
+      }
+      if (res.headers.get("x-catalogue-pdf-complete") !== "true") {
+        const message =
+          "The server did not confirm that every product image was rendered. No PDF was opened.";
         setError(message);
         adminNotify(message);
         return;
@@ -332,7 +373,7 @@ export function ManageCataloguePanel({
                 className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Download className="h-4 w-4" />
-                {pdfLoading ? "Preparing PDF…" : "Download PDF"}
+                {pdfLoading ? "Loading every image…" : "Download PDF"}
               </button>
               <button
                 type="button"
