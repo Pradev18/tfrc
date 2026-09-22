@@ -61,7 +61,7 @@ Then **Save and redeploy** or restart the app.
 ### Admin login (change password immediately)
 
 - URL: `https://tfrcwholesale.com/admin`
-- Email: `admin@pawmart.qa`
+- Email: `info@tfrcwholesale.com`
 - Password: use the securely provisioned administrator password
 
 ---

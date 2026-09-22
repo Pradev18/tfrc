@@ -272,10 +272,10 @@ async function main() {
   const initialAdminPasswordHash =
     "$2b$12$CkjYPjLSdLgyQVGmHrz08eQFNTrAHVFBc3bTDHyOhCoof/Nfjgtjm";
   const adminUser = await prisma.user.upsert({
-    where: { email: "admin@pawmart.qa" },
+    where: { email: "info@tfrcwholesale.com" },
     create: {
-      email: "admin@pawmart.qa",
-      name: "PawMart Admin",
+      email: "info@tfrcwholesale.com",
+      name: "TFRC Admin",
       passwordHash: initialAdminPasswordHash,
       isActive: true,
       roles: { create: [{ roleId: superRole.id }] },
@@ -385,7 +385,7 @@ async function main() {
   console.log("\n✅ Seed complete!");
   console.log(`   Products: ${productCount} (${created} created, ${updated} updated, ${errors} errors)`);
   console.log(`   Categories: ${categoryCount}`);
-  console.log("   Admin: admin@pawmart.qa (password preserved if user already exists)");
+  console.log("   Admin: info@tfrcwholesale.com (password preserved if user already exists)");
   console.log(`   WhatsApp: ${whatsappNumber}`);
 }
 
