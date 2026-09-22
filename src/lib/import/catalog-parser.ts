@@ -219,6 +219,7 @@ function decodeCatalogueSheetOffThread(
   const workerPath = path.join(
     process.cwd(),
     "scripts",
+    "runtime",
     "catalogue-excel-parse-worker.cjs"
   );
   if (!fs.existsSync(workerPath)) {

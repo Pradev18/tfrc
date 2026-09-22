@@ -11,6 +11,14 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  // Worker paths are resolved dynamically, so deployment tracing cannot infer
+  // them. They are self-contained bundles generated before every build.
+  outputFileTracingIncludes: {
+    "/api/admin/**/*": [
+      "./scripts/runtime/office-report-parse-worker.cjs",
+      "./scripts/runtime/catalogue-excel-parse-worker.cjs",
+    ],
+  },
   serverExternalPackages: ["emf-to-png", "@resvg/resvg-js"],
   experimental: {
     // Allow large Office Forms workbook uploads in admin Report module.

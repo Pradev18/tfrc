@@ -73,6 +73,7 @@ function decodeWorkbookOffThread(buffer: Buffer): Promise<OfficeFormsSheetRows> 
   const workerPath = path.join(
     process.cwd(),
     "scripts",
+    "runtime",
     "office-report-parse-worker.cjs"
   );
   if (!fs.existsSync(workerPath)) {
