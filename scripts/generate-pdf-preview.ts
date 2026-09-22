@@ -1,5 +1,5 @@
 /**
- * Generate a local PDF HTML preview from LIVE catalogue data (same path as production).
+ * Generate a real local PDF from LIVE catalogue data (same path as production).
  *
  * Usage:
  *   npx tsx scripts/generate-pdf-preview.ts
@@ -29,7 +29,7 @@ require.cache[serverOnlyPath] = {
 async function main() {
   const { default: prisma } = await import("../src/lib/db");
   const { getCataloguePdfPayload } = await import("../src/services/catalogue-pdf.service");
-  const { assembleCataloguePdfHtml } = await import("../src/lib/catalogue-pdf-build");
+  const { assembleCataloguePdfDocument } = await import("../src/lib/catalogue-pdf-build");
   const { getSiteUrl } = await import("../src/lib/site-config");
 
   async function resolveCatalogueId(arg?: string): Promise<string> {
@@ -70,25 +70,9 @@ async function main() {
       throw new Error(`getCataloguePdfPayload returned null for ${catalogueId}`);
     }
 
-    const { html, stats } = await assembleCataloguePdfHtml(payload, {
+    const { pdf, stats } = await assembleCataloguePdfDocument(payload, {
       origin: getSiteUrl(),
-      autoPrint: false,
     });
-
-    const banned = [
-      "Sample Product",
-      "example.com/",
-      ">P1</text>",
-      ">P2</text>",
-      ">P3</text>",
-      "http://localhost",
-      "https://localhost",
-    ];
-    for (const needle of banned) {
-      if (html.includes(needle)) {
-        throw new Error(`Preview HTML still contains forbidden demo content: ${needle}`);
-      }
-    }
 
     if (!stats.websiteUrl.startsWith("https://www.vitanovaservices.com/")) {
       throw new Error(
@@ -96,16 +80,17 @@ async function main() {
       );
     }
 
-    if (!html.includes("api.whatsapp.com/send/")) {
-      throw new Error("WhatsApp cover QR must use the official WhatsApp chat URL.");
+    if (stats.linkAnnotations < stats.listedCards + 2) {
+      throw new Error(
+        `Expected at least ${stats.listedCards + 2} PDF links, got ${stats.linkAnnotations}.`
+      );
     }
 
-    if (!stats.sampleNames.length) {
-      throw new Error("Payload produced zero product cards — check catalogue data.");
-    }
-
-    const out = resolve(process.cwd(), "tmp-catalogue-pdf-preview.html");
-    writeFileSync(out, html, "utf8");
+    const out = resolve(
+      process.cwd(),
+      `tmp-${stats.catalogueSlug}-product-brochure.pdf`
+    );
+    writeFileSync(out, Buffer.from(pdf));
 
     console.log("Wrote", out);
     console.log(
@@ -120,6 +105,12 @@ async function main() {
           categories: stats.categories,
           embeddedProductImages: stats.embeddedProductImages,
           fallbackProductImages: stats.fallbackProductImages,
+          pageCount: stats.pageCount,
+          productPages: stats.productPages,
+          linkAnnotations: stats.linkAnnotations,
+          renderedImages: stats.renderedImages,
+          renderedFallbacks: stats.renderedFallbacks,
+          pageCardCounts: stats.pageCardCounts,
           sampleNames: stats.sampleNames,
         },
         null,

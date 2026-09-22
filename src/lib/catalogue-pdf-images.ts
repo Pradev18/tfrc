@@ -120,9 +120,9 @@ export function pdfImageOrPlaceholder(
   if (!absoluteUrl) return placeholderDataUri(label);
   const embeddedUri = embedded.get(absoluteUrl);
   if (embeddedUri) return embeddedUri;
-  // Keep the live product URL so browser preview/print can still render the image
-  // when server-side embed fails (timeout, CDN hiccup, oversized file).
-  return absoluteUrl;
+  // Production PDFs never depend on a browser fetching an image after generation
+  // starts. A failed/oversized/unsupported source resolves to a stable placeholder.
+  return placeholderDataUri(label);
 }
 
 export { placeholderDataUri };

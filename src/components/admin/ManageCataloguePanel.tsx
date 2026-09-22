@@ -184,7 +184,7 @@ export function ManageCataloguePanel({
     setPdfLoading(true);
     setError("");
     try {
-      const url = `/api/admin/catalogues/${catalogueId}/pdf${autoPrint ? "?print=1" : ""}`;
+      const url = `/api/admin/catalogues/${catalogueId}/pdf`;
       const res = await fetch(url, {
         credentials: "include",
         cache: "no-store",
@@ -202,15 +202,14 @@ export function ManageCataloguePanel({
         adminNotify(message);
         return;
       }
-      const html = await res.text();
-      if (!html || html.length < 80) {
+      const pdfBlob = await res.blob();
+      if (!pdfBlob.size || !pdfBlob.type.includes("application/pdf")) {
         const message = "Catalogue PDF came back empty. Try again in a moment.";
         setError(message);
         adminNotify(message);
         return;
       }
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const blobUrl = URL.createObjectURL(blob);
+      const blobUrl = URL.createObjectURL(pdfBlob);
       const popup = window.open(blobUrl, "_blank", "noopener,noreferrer");
       if (!popup) {
         adminNotify(
@@ -222,8 +221,8 @@ export function ManageCataloguePanel({
       window.setTimeout(() => URL.revokeObjectURL(blobUrl), 120_000);
       setMessage(
         autoPrint
-          ? "Catalogue PDF opened — use the browser print dialog to save/download."
-          : "Catalogue PDF preview opened."
+          ? "Catalogue PDF opened — use the PDF viewer to save or print it."
+          : "Catalogue PDF preview opened with working links."
       );
     } catch (cause) {
       const message =
@@ -329,7 +328,7 @@ export function ManageCataloguePanel({
               <button
                 type="button"
                 onClick={() => void downloadCataloguePdf(true)}
-                disabled={pdfLoading || total === 0}
+                disabled={pdfLoading}
                 className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Download className="h-4 w-4" />
@@ -338,7 +337,7 @@ export function ManageCataloguePanel({
               <button
                 type="button"
                 onClick={() => void downloadCataloguePdf(false)}
-                disabled={pdfLoading || total === 0}
+                disabled={pdfLoading}
                 className="rounded-lg px-3 py-2 text-sm text-text-muted hover:text-primary disabled:opacity-50"
               >
                 Preview

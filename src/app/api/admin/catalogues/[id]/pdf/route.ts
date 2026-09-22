@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { getCataloguePdfPayload } from "@/services/catalogue-pdf.service";
-import { assembleCataloguePdfHtml } from "@/lib/catalogue-pdf-build";
+import { assembleCataloguePdfDocument } from "@/lib/catalogue-pdf-build";
 import { getSiteUrl } from "@/lib/site-config";
 import { requireCatalogueUnlocked } from "@/lib/catalogue-lock";
 
@@ -27,14 +27,13 @@ export async function GET(req: NextRequest, context: RouteContext) {
   }
 
   const origin = (req.nextUrl.origin || getSiteUrl()).replace(/\/$/, "");
-  const autoPrint = req.nextUrl.searchParams.get("print") === "1";
-  const { html } = await assembleCataloguePdfHtml(payload, { origin, autoPrint });
-  const filename = `${payload.catalogue.slug || "catalogue"}-brochure.pdf.html`;
+  const { pdf } = await assembleCataloguePdfDocument(payload, { origin });
+  const filename = `${payload.catalogue.slug || "catalogue"}-product-brochure.pdf`;
 
-  return new NextResponse(html, {
+  return new NextResponse(Buffer.from(pdf), {
     status: 200,
     headers: {
-      "Content-Type": "text/html; charset=utf-8",
+      "Content-Type": "application/pdf",
       "Cache-Control": "no-store, max-age=0",
       "Content-Disposition": `inline; filename="${filename}"`,
     },

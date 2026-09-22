@@ -1,5 +1,5 @@
 import type { CataloguePdfPayload } from "@/services/catalogue-pdf.service";
-import { buildCataloguePdfHtml } from "@/lib/catalogue-pdf-html";
+import { buildCataloguePdfDocument } from "@/lib/catalogue-pdf-document";
 import { embedCatalogueImages, pdfImageOrPlaceholder } from "@/lib/catalogue-pdf-images";
 import { getSiteUrl } from "@/lib/site-config";
 
@@ -20,14 +20,14 @@ export function absolutizeMediaUrl(url: string | null, origin: string): string |
 
 /**
  * Shared production PDF assembly for any catalogueId:
- * payload (DB) → absolute media URLs → embed images → HTML.
+ * payload (DB) → absolute media URLs → embed images → deterministic A4 PDF.
  * Used by the admin API route and the local preview script.
  * No catalogue-specific branches — only the payload differs.
  */
-export async function assembleCataloguePdfHtml(
+export async function assembleCataloguePdfDocument(
   payload: CataloguePdfPayload,
-  options?: { origin?: string; autoPrint?: boolean }
-): Promise<{ html: string; stats: CataloguePdfBuildStats }> {
+  options?: { origin?: string }
+): Promise<{ pdf: Uint8Array; stats: CataloguePdfBuildStats }> {
   const origin = (options?.origin || getSiteUrl()).replace(/\/$/, "");
   const logoAbsolute = absolutizeMediaUrl(payload.catalogue.logoUrl, origin);
   const productUrls = payload.categories.flatMap((category) =>
@@ -67,12 +67,10 @@ export async function assembleCataloguePdfHtml(
     })),
   };
 
-  const html = buildCataloguePdfHtml(withAbsoluteMedia, {
-    autoPrint: options?.autoPrint,
-  });
+  const document = buildCataloguePdfDocument(withAbsoluteMedia);
 
   return {
-    html,
+    pdf: document.bytes,
     stats: {
       origin,
       catalogueId: payload.catalogue.id,
@@ -85,6 +83,12 @@ export async function assembleCataloguePdfHtml(
       categories: payload.categories.length,
       embeddedProductImages,
       fallbackProductImages,
+      pageCount: document.stats.pageCount,
+      productPages: document.stats.productPages,
+      linkAnnotations: document.stats.linkAnnotations,
+      renderedImages: document.stats.renderedImages,
+      renderedFallbacks: document.stats.fallbackImages,
+      pageCardCounts: document.stats.pageCardCounts,
       sampleNames: payload.categories
         .flatMap((c) => c.products)
         .slice(0, 5)
@@ -105,5 +109,11 @@ export interface CataloguePdfBuildStats {
   categories: number;
   embeddedProductImages: number;
   fallbackProductImages: number;
+  pageCount: number;
+  productPages: number;
+  linkAnnotations: number;
+  renderedImages: number;
+  renderedFallbacks: number;
+  pageCardCounts: number[];
   sampleNames: string[];
 }

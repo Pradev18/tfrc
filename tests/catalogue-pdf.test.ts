@@ -1,378 +1,203 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildCataloguePdfHtml,
-  chunkProducts,
+  buildCataloguePdfDocument,
+  chunkCatalogueProducts,
   PDF_PRODUCTS_PER_PAGE,
-  TFRC_LOGO_SRC,
-} from "../src/lib/catalogue-pdf-html";
+} from "../src/lib/catalogue-pdf-document";
 import type { CataloguePdfPayload } from "../src/services/catalogue-pdf.service";
 
-function baseProduct(overrides: Partial<CataloguePdfPayload["categories"][number]["products"][number]> = {}) {
+const TINY_PNG =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
+function product(index: number, overrides = {}) {
   return {
-    id: "p1",
-    name: "Black Pet Hat",
-    displayName: "Black Pet Hat",
-    productId: "110011577",
-    size: "L",
-    availableSizes: ["S", "M", "L"] as string[],
-    price: 15,
-    priceFrom: true,
+    id: `product-${index}`,
+    name: `Product ${index}`,
+    displayName: `Product ${index}`,
+    productId: `SKU-${index}`,
+    size: null,
+    availableSizes: [] as string[],
+    price: index + 0.5,
+    priceFrom: false,
     currency: "QAR",
     inStock: true,
-    imageUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E",
-    whatsappUrl: "https://wa.me/97455049229?text=hello",
+    imageUrl: TINY_PNG,
+    whatsappUrl: `https://wa.me/9745000${String(index).padStart(4, "0")}?text=Product%20${index}`,
     ...overrides,
   };
 }
 
-/** Generic fixture — not a real catalogue. Override per-test for multi-store cases. */
-function basePayload(overrides: Partial<CataloguePdfPayload> = {}): CataloguePdfPayload {
+function payload(
+  categorySizes: number[] = [1],
+  overrides: Partial<CataloguePdfPayload> = {}
+): CataloguePdfPayload {
+  const categories = categorySizes.map((size, categoryIndex) => ({
+    slug: `category-${categoryIndex + 1}`,
+    name: `Category ${categoryIndex + 1}`,
+    productCount: size,
+    products: Array.from({ length: size }, (_, index) =>
+      product(categoryIndex * 10_000 + index + 1)
+    ),
+  }));
+  const listedCards = categorySizes.reduce((sum, size) => sum + size, 0);
   return {
     catalogue: {
-      id: "1",
-      name: "Fixture Store",
-      slug: "fixture-store",
-      logoUrl: "/api/media/fixture-logo.png",
-      tagline: "Sample tagline from payload",
-      description: "Sample description from payload.",
+      id: "fixture-id",
+      name: "Future Catalogue",
+      slug: "future-catalogue",
+      logoUrl: TINY_PNG,
+      tagline: "Data-driven product range",
+      description: "A fixture that uses the same production PDF renderer.",
     },
-    websiteUrl: "https://example.com/fixture-store",
-    whatsappUrl: "https://wa.me/97455049229",
-    whatsappPhone: "97455049229",
-    websiteQrDataUrl: "data:image/png;base64,AAA",
-    whatsappQrDataUrl: "data:image/png;base64,BBB",
-    totalProducts: 3,
-    listedCards: 1,
+    websiteUrl: "https://www.vitanovaservices.com/future-catalogue",
+    whatsappUrl: "https://api.whatsapp.com/send/?phone=97450000000&text=Hello",
+    whatsappPhone: "97450000000",
+    websiteQrDataUrl: TINY_PNG,
+    whatsappQrDataUrl: TINY_PNG,
+    totalProducts: listedCards,
+    listedCards,
     accent: "#40916c",
     heading: "#141414",
     muted: "#6b6560",
     surface: "#f5f8f6",
     cta: "#1b4332",
-    categories: [
-      {
-        slug: "toys",
-        name: "Toys",
-        productCount: 3,
-        products: [baseProduct()],
-      },
-    ],
+    categories,
     ...overrides,
   };
 }
 
+function pdfSource(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString("latin1");
+}
+
+function physicalPageCount(bytes: Uint8Array): number {
+  return pdfSource(bytes).match(/\/Type\s*\/Page\b/g)?.length ?? 0;
+}
+
+function linkAnnotationCount(bytes: Uint8Array): number {
+  return pdfSource(bytes).match(/\/Subtype\s*\/Link\b/g)?.length ?? 0;
+}
+
 describe("catalogue PDF pagination", () => {
-  it("chunks products into pages of 12", () => {
-    const items = Array.from({ length: 100 }, (_, index) => index + 1);
-    const pages = chunkProducts(items, PDF_PRODUCTS_PER_PAGE);
+  it("chunks actual cards into pages of 12 without creating an empty page", () => {
+    const items = Array.from({ length: 27 }, (_, index) => index);
     expect(PDF_PRODUCTS_PER_PAGE).toBe(12);
-    expect(pages).toHaveLength(9);
-    expect(pages[0]).toHaveLength(12);
-    expect(pages[8]).toHaveLength(4);
-    expect(pages.flat()).toEqual(items);
-  });
-
-  it("supports 13 → 12 + 1 and 27 → 12 + 12 + 3", () => {
-    expect(chunkProducts(Array.from({ length: 13 }, (_, i) => i))).toEqual([
-      Array.from({ length: 12 }, (_, i) => i),
-      [12],
+    expect(chunkCatalogueProducts(items).map((page) => page.length)).toEqual([
+      12, 12, 3,
     ]);
-    const pages27 = chunkProducts(Array.from({ length: 27 }, (_, i) => i));
-    expect(pages27.map((p) => p.length)).toEqual([12, 12, 3]);
+    expect(chunkCatalogueProducts([])).toEqual([]);
   });
 
-  it("keeps an empty page placeholder when there are no products", () => {
-    expect(chunkProducts([])).toEqual([[]]);
+  it("builds the Home & Living regression shape as exactly six physical pages", () => {
+    const result = buildCataloguePdfDocument(payload([47, 4]));
+    expect(result.stats.pageCount).toBe(6);
+    expect(result.stats.pageCardCounts).toEqual([12, 12, 12, 11, 4]);
+    expect(result.stats.productCards).toBe(51);
+    expect(physicalPageCount(result.bytes)).toBe(6);
+  });
+
+  it("handles 13 cards as 12 + 1 and stops", () => {
+    const result = buildCataloguePdfDocument(payload([13]));
+    expect(result.stats.pageCardCounts).toEqual([12, 1]);
+    expect(result.stats.pageCount).toBe(3);
+    expect(physicalPageCount(result.bytes)).toBe(3);
+  });
+
+  it("supports zero cards with a one-page cover and no empty category page", () => {
+    const result = buildCataloguePdfDocument(payload([0]));
+    expect(result.stats.pageCount).toBe(1);
+    expect(result.stats.productPages).toBe(0);
+    expect(result.stats.pageCardCounts).toEqual([]);
+    expect(physicalPageCount(result.bytes)).toBe(1);
+  });
+
+  it("uses deterministic pagination for 1000 cards", () => {
+    const result = buildCataloguePdfDocument(payload([1000]));
+    expect(result.stats.productPages).toBe(84);
+    expect(result.stats.pageCount).toBe(85);
+    expect(result.stats.pageCardCounts.at(-1)).toBe(4);
+    expect(physicalPageCount(result.bytes)).toBe(85);
+  }, 30_000);
+
+  it("keeps a data-driven category index while skipping no populated category", () => {
+    const categorySizes = Array.from({ length: 31 }, () => 1);
+    const result = buildCataloguePdfDocument(payload(categorySizes));
+    expect(result.stats.productPages).toBe(31);
+    expect(result.stats.productCards).toBe(31);
+    expect(result.stats.pageCount).toBe(32);
+    expect(physicalPageCount(result.bytes)).toBe(32);
   });
 });
 
-describe("catalogue PDF HTML", () => {
-  it("embeds catalogue logo, TFRC mark, sizes, and real QR panels", () => {
-    const html = buildCataloguePdfHtml(basePayload());
-    expect(html).toContain('src="/api/media/fixture-logo.png"');
-    expect(html).toContain(TFRC_LOGO_SRC);
-    expect(html).toContain(">S</span>");
-    expect(html).toContain(">M</span>");
-    expect(html).toContain(">L</span>");
-    expect(html).toContain("From QAR 15.00");
-    expect(html).toContain("Visit Our Website");
-    expect(html).toContain("WhatsApp Orders");
-    expect(html).toContain('src="data:image/png;base64,AAA"');
-    expect(html).toContain('src="data:image/png;base64,BBB"');
-    expect(html).toContain("https://example.com/fixture-store");
-    expect(html).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
-    expect(html).toContain("grid-template-rows: repeat(3, minmax(0, 1fr))");
-    expect(html).toContain("width: 210mm");
-    expect(html).toContain("height: 297mm");
-    expect(html).toContain("flex: 0 0 50%");
-    expect(html).toContain("product-stage");
-    expect(html).toContain("grid-cell--empty");
-    expect(html).toContain("class=\"card-wa\"");
-    expect(html).toContain("WhatsApp Order");
-    expect(html).toContain("flex: 0 0 6.2mm");
-    expect(html).not.toContain("Generated");
-    expect(html).not.toContain("height: 82mm");
+describe("catalogue PDF links and assets", () => {
+  it("writes real PDF link annotations for both cover links and every card", () => {
+    const result = buildCataloguePdfDocument(payload([3]));
+    const source = pdfSource(result.bytes);
+    expect(result.stats.linkAnnotations).toBe(5);
+    expect(linkAnnotationCount(result.bytes)).toBe(5);
+    expect(source).toContain("/URI (https://www.vitanovaservices.com/future-catalogue)");
+    expect(source).toContain("/URI (https://wa.me/9745000");
   });
 
-  it("omits catalogue logo slot content when logo is missing", () => {
-    const html = buildCataloguePdfHtml(
-      basePayload({
-        catalogue: {
-          id: "2",
-          name: "Pro Tools",
-          slug: "hardware",
-          logoUrl: null,
-          tagline: "Built for the Job",
-          description: "Professional tools for Qatar.",
-        },
-      })
-    );
-    expect(html).toContain("logo-slot--empty");
-    expect(html).not.toContain('class="catalogue-logo"');
-    expect(html).toContain(TFRC_LOGO_SRC);
-    expect(html).toContain("Pro Tools");
-  });
-
-  it("does not treat item codes as sizes", () => {
-    const html = buildCataloguePdfHtml(
-      basePayload({
+  it("uses each catalogue's supplied WhatsApp URLs without hardcoding", () => {
+    const first = buildCataloguePdfDocument(
+      payload([1], {
+        whatsappPhone: "97451111111",
+        whatsappUrl: "https://wa.me/97451111111?text=Cover%20A",
         categories: [
           {
-            slug: "toys",
-            name: "Toys",
-            productCount: 1,
-            products: [baseProduct({ availableSizes: [], displayName: "Rope Pet Toy", productId: "110009578" })],
-          },
-        ],
-      })
-    );
-    expect(html).not.toContain('class="size-chip"');
-    expect(html).toContain("sizes--empty");
-    expect(html).toContain("Rope Pet Toy");
-    expect(html).toContain("Item code: 110009578");
-  });
-
-  it("renders a full page of 12 product cards in a 4×3 grid", () => {
-    const twelve = Array.from({ length: 12 }, (_, index) =>
-      baseProduct({
-        id: `p${index + 1}`,
-        displayName: `Product ${index + 1}`,
-        productId: `1100${10000 + index}`,
-        availableSizes: [],
-        priceFrom: false,
-      })
-    );
-    const html = buildCataloguePdfHtml(
-      basePayload({
-        totalProducts: 12,
-        listedCards: 12,
-        categories: [
-          {
-            slug: "drill",
-            name: "Drill",
-            productCount: 12,
-            products: twelve,
-          },
-        ],
-      })
-    );
-    expect(html.match(/<article class="grid-cell card">/g)).toHaveLength(12);
-    expect(html).toContain("12 on this page");
-    expect(html).toContain("Page 1 of 1");
-    expect(html.match(/class="grid-cell grid-cell--empty"/g)).toBeNull();
-    for (let i = 1; i <= 12; i++) {
-      expect(html).toContain(`Product ${i}`);
-    }
-  });
-
-  it("pads partial pages to a full 4×3 stage without stretching cards", () => {
-    const three = Array.from({ length: 3 }, (_, index) =>
-      baseProduct({
-        id: `p${index + 1}`,
-        displayName: `Partial ${index + 1}`,
-        productId: `P${index}`,
-        availableSizes: [],
-        priceFrom: false,
-      })
-    );
-    const html = buildCataloguePdfHtml(
-      basePayload({
-        totalProducts: 3,
-        listedCards: 3,
-        categories: [
-          {
-            slug: "carriers-travel",
-            name: "Carriers & Travel",
-            productCount: 3,
-            products: three,
-          },
-        ],
-      })
-    );
-    expect(html.match(/<article class="grid-cell card">/g)).toHaveLength(3);
-    expect(html.match(/class="grid-cell grid-cell--empty"/g)).toHaveLength(9);
-    expect(html).toContain("3 on this page");
-    expect(html).toContain("product-stage");
-  });
-
-  it("paginates 13 cards into two pages without stretching language", () => {
-    const thirteen = Array.from({ length: 13 }, (_, index) =>
-      baseProduct({
-        id: `p${index + 1}`,
-        displayName: `Sku ${index + 1}`,
-        productId: `X${index}`,
-        availableSizes: [],
-        priceFrom: false,
-      })
-    );
-    const html = buildCataloguePdfHtml(
-      basePayload({
-        totalProducts: 13,
-        listedCards: 13,
-        categories: [
-          {
-            slug: "leashes-collars",
-            name: "Leashes & Collars",
-            productCount: 13,
-            products: thirteen,
-          },
-        ],
-      })
-    );
-    expect(html.match(/<article class="grid-cell card">/g)).toHaveLength(13);
-    expect(html).toContain("Page 1 of 2");
-    expect(html).toContain("Page 2 of 2");
-    expect(html).toContain("12 on this page");
-    expect(html).toContain("1 on this page");
-    // Page 2 has 1 card + 11 reserved empty slots
-    expect(html.match(/class="grid-cell grid-cell--empty"/g)).toHaveLength(11);
-  });
-
-  it("handles long product names safely inside cards", () => {
-    const html = buildCataloguePdfHtml(
-      basePayload({
-        categories: [
-          {
-            slug: "toys",
-            name: "Toys",
+            slug: "a",
+            name: "A",
             productCount: 1,
             products: [
-              baseProduct({
-                displayName:
-                  "Pet Retractable Leash Cord Mix Color 5M 20Kg Max Extra Long Title",
-                availableSizes: [],
+              product(1, {
+                whatsappUrl: "https://wa.me/97451111111?text=Card%20A",
               }),
             ],
           },
         ],
       })
     );
-    expect(html).toContain("max-height: 2.3em");
-    expect(html).toContain("Pet Retractable Leash Cord Mix Color 5M 20Kg Max Extra Long Title");
+    const second = buildCataloguePdfDocument(
+      payload([1], {
+        whatsappPhone: "97452222222",
+        whatsappUrl: "https://wa.me/97452222222?text=Cover%20B",
+        categories: [
+          {
+            slug: "b",
+            name: "B",
+            productCount: 1,
+            products: [
+              product(2, {
+                whatsappUrl: "https://wa.me/97452222222?text=Card%20B",
+              }),
+            ],
+          },
+        ],
+      })
+    );
+    expect(pdfSource(first.bytes)).toContain("97451111111");
+    expect(pdfSource(first.bytes)).not.toContain("97452222222");
+    expect(pdfSource(second.bytes)).toContain("97452222222");
+    expect(pdfSource(second.bytes)).not.toContain("97451111111");
   });
 
-  it("uses the same template for different catalogues with only payload data changing", () => {
-    const tools = buildCataloguePdfHtml(
-      basePayload({
-        catalogue: {
-          id: "tools-1",
-          name: "Pro Tools",
-          slug: "hardware",
-          logoUrl: "/api/media/tools-wide-logo.png",
-          tagline: "Built for the Job",
-          description: "Professional tools for Qatar.",
-        },
-        websiteUrl: "https://shop.example.org/hardware",
-        whatsappUrl: "https://wa.me/97450001111",
-        whatsappPhone: "97450001111",
-        websiteQrDataUrl: "data:image/png;base64,TOOLSWEB",
-        whatsappQrDataUrl: "data:image/png;base64,TOOLSWA",
-        accent: "#d97706",
-        cta: "#0f172a",
-        categories: [
-          {
-            slug: "drills",
-            name: "Drills",
-            productCount: 1,
-            products: [
-              baseProduct({
-                displayName: "Impact Drill 750W",
-                productId: "HW-100",
-                availableSizes: [],
-                priceFrom: false,
-                price: 199,
-                whatsappUrl: "https://wa.me/97450001111?text=Impact",
-              }),
-            ],
-          },
-        ],
-      })
-    );
+  it("applies a controlled fallback without losing the card or its link", () => {
+    const fixture = payload([1]);
+    fixture.categories[0]!.products[0]!.imageUrl =
+      "data:image/svg+xml;charset=utf-8,%3Csvg/%3E";
+    const result = buildCataloguePdfDocument(fixture);
+    expect(result.stats.fallbackImages).toBeGreaterThanOrEqual(1);
+    expect(result.stats.productCards).toBe(1);
+    expect(result.stats.linkAnnotations).toBe(3);
+    expect(physicalPageCount(result.bytes)).toBe(2);
+  });
 
-    const home = buildCataloguePdfHtml(
-      basePayload({
-        catalogue: {
-          id: "home-1",
-          name: "Kitchen & Home",
-          slug: "household",
-          logoUrl: null,
-          tagline: "Elevate Your Space",
-          description: "Home essentials for Qatar.",
-        },
-        websiteUrl: "https://shop.example.org/household",
-        whatsappUrl: "https://wa.me/97450002222",
-        whatsappPhone: "97450002222",
-        websiteQrDataUrl: "data:image/png;base64,HOMEWEB",
-        whatsappQrDataUrl: "data:image/png;base64,HOMEWA",
-        accent: "#ca8a04",
-        cta: "#9a3412",
-        categories: [
-          {
-            slug: "tableware",
-            name: "Tableware",
-            productCount: 1,
-            products: [
-              baseProduct({
-                displayName: "Ceramic Bowl Set",
-                productId: "HH-200",
-                availableSizes: ["S", "M"],
-                priceFrom: true,
-                price: 45,
-                whatsappUrl: "https://wa.me/97450002222?text=Bowl",
-              }),
-            ],
-          },
-        ],
-      })
-    );
-
-    // Same visual system for both catalogues
-    expect(tools).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
-    expect(home).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
-    expect(tools).toContain(TFRC_LOGO_SRC);
-    expect(home).toContain(TFRC_LOGO_SRC);
-    expect(tools).toContain("width: 210mm");
-    expect(home).toContain("width: 210mm");
-
-    // Data-driven differences only
-    expect(tools).toContain("Pro Tools");
-    expect(tools).toContain("Impact Drill 750W");
-    expect(tools).toContain("https://shop.example.org/hardware");
-    expect(tools).toContain("97450001111");
-    expect(tools).toContain('class="catalogue-logo"');
-    expect(tools).toContain('class="logo-slot logo-slot--catalogue"');
-    expect(tools).not.toContain('class="logo-slot logo-slot--empty"');
-
-    expect(home).toContain("Kitchen &amp; Home");
-    expect(home).toContain("Ceramic Bowl Set");
-    expect(home).toContain("https://shop.example.org/household");
-    expect(home).toContain("97450002222");
-    expect(home).toContain('class="logo-slot logo-slot--empty"');
-    expect(home).not.toContain('class="catalogue-logo"');
-
-    // No cross-catalogue name bleed
-    expect(tools).not.toContain("Kitchen &amp; Home");
-    expect(home).not.toContain("Pro Tools");
-    expect(tools).not.toContain("Fixture Store");
-    expect(home).not.toContain("Fixture Store");
+  it("emits true A4 pages and never contains browser print code", () => {
+    const result = buildCataloguePdfDocument(payload([1]));
+    const source = pdfSource(result.bytes);
+    expect(source).toMatch(/\/MediaBox\s*\[0 0 595\.\d+ 841\.\d+\]/);
+    expect(source).not.toContain("window.print");
+    expect(source).not.toContain("setTimeout");
   });
 });
