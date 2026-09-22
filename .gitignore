@@ -24,12 +24,22 @@
 tmp-catalogue-pdf-*
 tmp-*-product-brochure.pdf
 tmp-*-page.png
+tmp-*.jpg
+tmp-*.jpeg
+tmp-*.png
+tmp-*.pdf
+tmp-pdf-pages/
 tmp-office-*
 tmp-office-report-*
 tmp-iqs-*
 tmp-*.html
 tmp-*.json
 tmp-*.txt
+
+# unused local sample uploads (not required for builds)
+/data/*.xlsx
+/data/*.xls
+/public/images/platform-hero.png
 
 # debug
 npm-debug.log*

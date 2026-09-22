@@ -140,6 +140,7 @@ export const PLATFORM = {
   name: "TFRC",
   tagline: "Wholesale Services",
   fullName: "TFRC Wholesale Services",
+  email: "info@tfrcwholesale.com",
   description:
     "TFRC Wholesale Services — Qatar wholesale catalogues for pets, kitchen & home, and professional tools. Browse by category and order on WhatsApp.",
   logoUrl: "/images/brand/tfrc-logo.svg",
@@ -167,6 +168,7 @@ export const PLATFORM = {
       "kitchen home qatar",
       "tools hardware qatar",
       "pawmart qatar",
+      "info@tfrcwholesale.com",
     ],
   },
 } as const;

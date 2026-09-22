@@ -21,12 +21,3 @@ export const LANDING_PORTALS: LandingPortal[] = ENVIRONMENT_CONFIGS.map((env) =>
   tagline: env.tagline,
   image: CATEGORY_HERO_IMAGES[env.slug] ?? "",
 })).filter((p) => Boolean(p.image));
-
-export const PLATFORM_HERO_IMAGE = "/images/platform-hero.png";
-
-/** @deprecated Use LANDING_PORTALS */
-export const LANDING_SHOWCASE = LANDING_PORTALS.map((p) => ({
-  slug: p.slug,
-  label: p.displayName,
-  image: p.image,
-}));

@@ -92,6 +92,14 @@ export async function Footer() {
             <ul className="mt-5 space-y-3">
               <li>
                 <a
+                  href={`mailto:${PLATFORM.email}`}
+                  className="text-sm text-white/65 transition-colors hover:text-white"
+                >
+                  {PLATFORM.email}
+                </a>
+              </li>
+              <li>
+                <a
                   href={waHref}
                   target="_blank"
                   rel="noopener noreferrer"

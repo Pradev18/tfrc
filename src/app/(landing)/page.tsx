@@ -50,6 +50,16 @@ export default async function LandingPage() {
           "@type": "Brand",
           name: PLATFORM.fullName,
         },
+        email: PLATFORM.email,
+        contactPoint: [
+          {
+            "@type": "ContactPoint",
+            contactType: "customer service",
+            email: PLATFORM.email,
+            areaServed: "QA",
+            availableLanguage: ["en", "ar"],
+          },
+        ],
       },
       {
         "@type": "WebSite",

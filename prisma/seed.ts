@@ -339,6 +339,7 @@ async function main() {
     { key: "site_name", value: "TFRC Wholesale Services", group: "general" },
     { key: "site_tagline", value: "One Platform. Curated Catalogues.", group: "general" },
     { key: "site_description", value: "TFRC Wholesale Services — premium wholesale catalogues for pets, home & living, and professional tools in Qatar. Order on WhatsApp.", group: "general" },
+    { key: "contact_email", value: "info@tfrcwholesale.com", group: "general" },
   ];
 
   for (const s of settings) {
