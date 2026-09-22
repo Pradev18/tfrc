@@ -13,6 +13,7 @@ import { buildPageMetadata } from "@/lib/meta-seo";
 import { getEnvironmentHeroImages } from "@/services/category.service";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 import { getEnvironmentConfig } from "@/lib/environments";
+import { CustomerActivityTracker } from "@/components/analytics/CustomerActivityTracker";
 
 export const revalidate = 60;
 
@@ -91,6 +92,10 @@ export default async function EnvironmentLayout({ children, params }: LayoutProp
 
   return (
     <div style={{ ...envStyle(v), backgroundColor: v.sectionAlt }} className="overflow-x-clip">
+      <CustomerActivityTracker
+        environmentSlug={slug}
+        environmentName={environment.config.displayName}
+      />
       <Suspense fallback={<StoreHeaderFallback environment={environment} />}>
         <StoreHeader environment={environment} />
       </Suspense>

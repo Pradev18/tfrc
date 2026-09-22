@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Search } from "lucide-react";
+import { Download, Search, Trash2 } from "lucide-react";
 import { formatInquiryEventLabel } from "@/lib/inquiry-types";
 import { UiSelect } from "@/components/ui/UiSelect";
 
@@ -17,6 +17,7 @@ interface InquiryItem {
 interface InquiryRow {
   id: string;
   eventType: string;
+  sessionId: string | null;
   customerName: string | null;
   customerPhone: string | null;
   city: string | null;
@@ -29,6 +30,7 @@ interface InquiryRow {
   currency: string;
   whatsappMessage: string | null;
   pagePath: string | null;
+  referrer: string | null;
   createdAt: string;
   items: InquiryItem[];
 }
@@ -56,6 +58,9 @@ export function InquiriesClient({
   const [eventType, setEventType] = useState("");
   const [environmentSlug, setEnvironmentSlug] = useState("");
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const exportUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -78,8 +83,77 @@ export function InquiriesClient({
       const data = await res.json();
       setRows(data.inquiries ?? []);
       setTotal(data.total ?? 0);
+      setSelectedIds(new Set());
     } finally {
       setLoading(false);
+    }
+  }
+
+  const allVisibleSelected =
+    rows.length > 0 && rows.every((row) => selectedIds.has(row.id));
+
+  function toggleAllVisible() {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (allVisibleSelected) {
+        rows.forEach((row) => next.delete(row.id));
+      } else {
+        rows.forEach((row) => next.add(row.id));
+      }
+      return next;
+    });
+  }
+
+  function toggleRow(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function deleteActivity(deleteAll: boolean) {
+    const ids = [...selectedIds];
+    if (!deleteAll && ids.length === 0) return;
+
+    const confirmed = window.confirm(
+      deleteAll
+        ? "Permanently delete every customer activity record, including records outside the current filters? This cannot be undone."
+        : `Permanently delete ${ids.length} selected activity record${
+            ids.length === 1 ? "" : "s"
+          }? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const response = await fetch("/api/admin/inquiries", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(deleteAll ? { all: true } : { ids }),
+      });
+      const data = (await response.json()) as { error?: string; deleted?: number };
+      if (!response.ok) {
+        throw new Error(data.error || "Could not delete customer activity.");
+      }
+
+      if (deleteAll) {
+        setRows([]);
+        setTotal(0);
+      } else {
+        const deletedIds = new Set(ids);
+        setRows((current) => current.filter((row) => !deletedIds.has(row.id)));
+        setTotal((current) => Math.max(0, current - (data.deleted ?? ids.length)));
+      }
+      setSelectedIds(new Set());
+    } catch (cause) {
+      setDeleteError(
+        cause instanceof Error ? cause.message : "Could not delete customer activity."
+      );
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -145,21 +219,53 @@ export function InquiriesClient({
           <Download className="h-4 w-4" />
           Download Excel
         </a>
+        <button
+          type="button"
+          onClick={() => void deleteActivity(false)}
+          disabled={deleting || selectedIds.size === 0}
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-red-300 px-4 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Trash2 className="h-4 w-4" />
+          Delete selected ({selectedIds.size})
+        </button>
+        <button
+          type="button"
+          onClick={() => void deleteActivity(true)}
+          disabled={deleting || total === 0}
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Trash2 className="h-4 w-4" />
+          Delete all activity
+        </button>
       </div>
 
       <p className="text-sm text-text-muted">
-        {total} record{total === 1 ? "" : "s"} — cart activity and WhatsApp orders (admin only,
-        invisible to customers).
+        {total} record{total === 1 ? "" : "s"} — page visits, cart activity and WhatsApp
+        orders (admin only, invisible to customers).
       </p>
+      {deleteError && (
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {deleteError}
+        </p>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-border bg-surface-muted text-xs uppercase tracking-wide text-text-muted">
             <tr>
+              <th className="w-10 px-4 py-3">
+                <input
+                  type="checkbox"
+                  aria-label="Select all visible activity"
+                  checked={allVisibleSelected}
+                  onChange={toggleAllVisible}
+                />
+              </th>
               <th className="px-4 py-3">When</th>
               <th className="px-4 py-3">Event</th>
               <th className="px-4 py-3">Customer</th>
               <th className="px-4 py-3">Place</th>
+              <th className="px-4 py-3">Page</th>
               <th className="px-4 py-3">Cart / products</th>
               <th className="px-4 py-3">Message</th>
             </tr>
@@ -167,13 +273,21 @@ export function InquiriesClient({
           <tbody className="divide-y divide-border">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-text-muted">
+                <td colSpan={8} className="px-4 py-10 text-center text-text-muted">
                   No customer activity recorded yet.
                 </td>
               </tr>
             ) : (
               rows.map((row) => (
                 <tr key={row.id} className="align-top hover:bg-surface-muted/50">
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select activity from ${new Date(row.createdAt).toLocaleString()}`}
+                      checked={selectedIds.has(row.id)}
+                      onChange={() => toggleRow(row.id)}
+                    />
+                  </td>
                   <td className="whitespace-nowrap px-4 py-3 text-text-muted">
                     {new Date(row.createdAt).toLocaleString()}
                   </td>
@@ -183,13 +297,26 @@ export function InquiriesClient({
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="font-medium text-text">{row.customerName || "—"}</p>
+                    <p className="font-medium text-text">
+                      {row.customerName ||
+                        (row.sessionId ? `Visitor ${row.sessionId.slice(0, 8)}` : "Anonymous visitor")}
+                    </p>
                     <p className="text-xs text-text-muted">{row.customerPhone || "No phone"}</p>
                     <p className="text-xs text-text-subtle">
                       {row.environmentName ?? row.environmentSlug ?? ""}
                     </p>
                   </td>
                   <td className="px-4 py-3 text-text-muted">{formatPlace(row)}</td>
+                  <td className="max-w-xs px-4 py-3">
+                    <p className="break-all text-xs font-medium text-text">
+                      {row.pagePath || "—"}
+                    </p>
+                    {row.referrer && (
+                      <p className="mt-1 line-clamp-2 break-all text-[11px] text-text-subtle">
+                        From: {row.referrer}
+                      </p>
+                    )}
+                  </td>
                   <td className="max-w-xs px-4 py-3">
                     {row.items.length > 0 ? (
                       <ul className="space-y-1 text-xs">

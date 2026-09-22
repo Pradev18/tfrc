@@ -1,4 +1,5 @@
 export type InquiryEventType =
+  | "PAGE_VIEW"
   | "ADD_TO_CART"
   | "REMOVE_FROM_CART"
   | "CART_CHECKOUT"
@@ -49,6 +50,7 @@ export interface InquiryListFilters {
 
 export function formatInquiryEventLabel(eventType: string): string {
   const labels: Record<string, string> = {
+    PAGE_VIEW: "Page viewed",
     ADD_TO_CART: "Added to cart",
     REMOVE_FROM_CART: "Removed from cart",
     CART_CHECKOUT: "Cart checkout (WhatsApp)",

@@ -1,3 +1,10 @@
+import { CustomerActivityTracker } from "@/components/analytics/CustomerActivityTracker";
+
 export default function LandingLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <CustomerActivityTracker />
+      {children}
+    </>
+  );
 }

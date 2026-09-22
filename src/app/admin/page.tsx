@@ -35,7 +35,7 @@ export default async function AdminDashboard() {
     {
       href: "/admin/inquiries",
       title: "Customer activity",
-      desc: "Cart & WhatsApp orders — download Excel",
+      desc: "Page visits, cart activity & WhatsApp orders",
       icon: "📋",
     },
     {

@@ -17,6 +17,7 @@ const inquiryItemSchema = z.object({
 
 const inquirySchema = z.object({
   eventType: z.enum([
+    "PAGE_VIEW",
     "ADD_TO_CART",
     "REMOVE_FROM_CART",
     "CART_CHECKOUT",

@@ -125,3 +125,30 @@ export async function getInquiriesForExport(filters: InquiryListFilters = {}) {
     take: 10000,
   });
 }
+
+/**
+ * Permanently removes activity records and their item rows.
+ * There is deliberately no soft-delete or recovery path.
+ */
+export async function permanentlyDeleteCustomerInquiries(
+  options: { ids: string[] } | { all: true }
+): Promise<number> {
+  return prisma.$transaction(async (tx) => {
+    if ("all" in options) {
+      await tx.customerInquiryItem.deleteMany({});
+      const deleted = await tx.customerInquiry.deleteMany({});
+      return deleted.count;
+    }
+
+    const ids = [...new Set(options.ids.filter(Boolean))];
+    if (ids.length === 0) return 0;
+
+    await tx.customerInquiryItem.deleteMany({
+      where: { inquiryId: { in: ids } },
+    });
+    const deleted = await tx.customerInquiry.deleteMany({
+      where: { id: { in: ids } },
+    });
+    return deleted.count;
+  });
+}

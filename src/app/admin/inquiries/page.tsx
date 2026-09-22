@@ -17,6 +17,7 @@ export default async function AdminInquiriesPage() {
   ]);
 
   const eventTypes = [
+    "PAGE_VIEW",
     "ADD_TO_CART",
     "REMOVE_FROM_CART",
     "CART_CHECKOUT",
@@ -29,6 +30,7 @@ export default async function AdminInquiriesPage() {
   const rows = inquiries.map((inquiry) => ({
     id: inquiry.id,
     eventType: inquiry.eventType,
+    sessionId: inquiry.sessionId,
     customerName: inquiry.customerName,
     customerPhone: inquiry.customerPhone,
     city: inquiry.city,
@@ -41,6 +43,7 @@ export default async function AdminInquiriesPage() {
     currency: inquiry.currency,
     whatsappMessage: inquiry.whatsappMessage,
     pagePath: inquiry.pagePath,
+    referrer: inquiry.referrer,
     createdAt: inquiry.createdAt.toISOString(),
     items: inquiry.items.map((item) => ({
       productId: item.productId,
@@ -56,7 +59,8 @@ export default async function AdminInquiriesPage() {
     <div>
       <h1 className="text-display text-3xl text-primary">Customer activity</h1>
       <p className="mt-1 text-text-muted">
-        Cart additions and WhatsApp order attempts — recorded silently for admin only.
+        Catalogue visits, cart actions and WhatsApp order attempts — recorded silently for
+        admin only.
       </p>
       <div className="mt-6">
         <InquiriesClient
