@@ -355,7 +355,7 @@ export function CatalogueUnlockGate({
         disabled={!ready || busy || changeBusy}
         onChange={(e) => setPassword(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") void unlock();
+          if (e.key === "Enter" && !changingPassword) void unlock();
         }}
       />
       {error && (
@@ -368,33 +368,28 @@ export function CatalogueUnlockGate({
           {changeMessage}
         </p>
       )}
-      <button
-        type="button"
-        disabled={!ready || busy || changeBusy || !password.trim()}
-        className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-        onClick={() => void unlock()}
-      >
-        {busy ? "Checking…" : ready ? "Unlock" : "Preparing…"}
-      </button>
 
-      <div className="mt-4 border-t border-amber-200 pt-4">
+      {/* Always visible under the lock password field — before Unlock */}
+      <div className="mt-3 rounded-xl border border-amber-300 bg-white p-3">
         {!changingPassword ? (
           <button
             type="button"
             disabled={!ready || busy || changeBusy}
-            className="w-full rounded-lg border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-950 disabled:opacity-50"
+            className="w-full rounded-lg bg-amber-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
             onClick={() => {
               setChangingPassword(true);
               setChangeError(null);
               setChangeMessage(null);
+              setError(null);
             }}
           >
             Change password
           </button>
         ) : (
           <div className="space-y-3">
+            <p className="text-sm font-medium text-amber-950">Change catalogue password</p>
             <p className="text-sm text-amber-900">
-              Confirm your admin portal password first, then set the new catalogue password.
+              Enter your admin portal login password first, then the new catalogue password.
             </p>
             <input
               type="password"
@@ -445,7 +440,7 @@ export function CatalogueUnlockGate({
               <button
                 type="button"
                 disabled={changeBusy}
-                className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm text-amber-950 disabled:opacity-50"
+                className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-950 disabled:opacity-50"
                 onClick={() => {
                   setChangingPassword(false);
                   setAdminPassword("");
@@ -460,6 +455,15 @@ export function CatalogueUnlockGate({
           </div>
         )}
       </div>
+
+      <button
+        type="button"
+        disabled={!ready || busy || changeBusy || !password.trim()}
+        className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+        onClick={() => void unlock()}
+      >
+        {busy ? "Checking…" : ready ? "Unlock" : "Preparing…"}
+      </button>
     </div>
   );
 }
