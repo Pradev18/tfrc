@@ -140,6 +140,59 @@ function imageFormat(src: string): "PNG" | "JPEG" | "WEBP" | null {
   return null;
 }
 
+function encodedImageDimensions(
+  src: string,
+  format: "PNG" | "JPEG" | "WEBP"
+): { width: number; height: number } | null {
+  const comma = src.indexOf(",");
+  if (comma < 0 || !/;base64/i.test(src.slice(0, comma))) return null;
+
+  try {
+    const bytes = Buffer.from(src.slice(comma + 1), "base64");
+    if (
+      format === "PNG" &&
+      bytes.length >= 24 &&
+      bytes.subarray(1, 4).toString("ascii") === "PNG"
+    ) {
+      return {
+        width: bytes.readUInt32BE(16),
+        height: bytes.readUInt32BE(20),
+      };
+    }
+
+    if (format === "JPEG" && bytes.length >= 10) {
+      let offset = 2;
+      while (offset + 9 < bytes.length) {
+        if (bytes[offset] !== 0xff) {
+          offset += 1;
+          continue;
+        }
+        const marker = bytes[offset + 1]!;
+        const isStartOfFrame =
+          marker >= 0xc0 &&
+          marker <= 0xcf &&
+          ![0xc4, 0xc8, 0xcc].includes(marker);
+        if (isStartOfFrame) {
+          return {
+            height: bytes.readUInt16BE(offset + 5),
+            width: bytes.readUInt16BE(offset + 7),
+          };
+        }
+        if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
+          offset += 2;
+          continue;
+        }
+        const segmentLength = bytes.readUInt16BE(offset + 2);
+        if (segmentLength < 2) break;
+        offset += 2 + segmentLength;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function drawImageContained(
   doc: jsPDF,
   src: string | null,
@@ -154,9 +207,19 @@ function drawImageContained(
   if (!format) return false;
 
   try {
-    const properties = doc.getImageProperties(src);
-    const sourceWidth = Number(properties.width) || width;
-    const sourceHeight = Number(properties.height) || height;
+    let sourceWidth = width;
+    let sourceHeight = height;
+    try {
+      const properties = doc.getImageProperties(src);
+      sourceWidth = Number(properties.width) || width;
+      sourceHeight = Number(properties.height) || height;
+    } catch {
+      // jsPDF cannot auto-detect some valid ICC/CMYK JPEGs even though
+      // explicit JPEG embedding works. Read dimensions from the file header.
+      const dimensions = encodedImageDimensions(src, format);
+      sourceWidth = dimensions?.width || width;
+      sourceHeight = dimensions?.height || height;
+    }
     const scale = Math.min(width / sourceWidth, height / sourceHeight);
     const renderedWidth = sourceWidth * scale;
     const renderedHeight = sourceHeight * scale;
