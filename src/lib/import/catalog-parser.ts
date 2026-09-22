@@ -1,4 +1,7 @@
 import * as XLSX from "xlsx";
+import { Worker } from "node:worker_threads";
+import fs from "node:fs";
+import path from "node:path";
 import { parsePriceString } from "@/lib/utils";
 import { createProductSlug, createCategorySlug, parseCategoryPath } from "@/lib/slug";
 import { validatePrices } from "@/lib/pricing";
@@ -78,26 +81,11 @@ function parseTags(row: Record<string, unknown>): string[] {
   return tags;
 }
 
-export function parseExcelBuffer(
-  buffer: Buffer,
+function mapSheetRowsToCatalog(
+  rawInput: Record<string, unknown>[],
   departmentSource: string
 ): ParsedCatalog {
-  const workbook = XLSX.read(buffer, { type: "buffer" });
-  const sheetName =
-    workbook.SheetNames.find((s) => s.toLowerCase().includes("meta")) ??
-    workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  if (!sheet) {
-    return {
-      rows: [],
-      errors: [{ row: 1, message: "The workbook does not contain a readable worksheet" }],
-      whatsappNumber: null,
-    };
-  }
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-    defval: "",
-  }).map(normalizeRow);
-
+  const raw = rawInput.map(normalizeRow);
   const rows: CatalogRow[] = [];
   const errors: Array<{ row: number; message: string }> = [];
   let whatsappNumber: string | null = null;
@@ -105,30 +93,31 @@ export function parseExcelBuffer(
 
   if (raw.length === 0) {
     errors.push({ row: 1, message: "The selected worksheet is empty" });
-  } else {
-    const headers = new Set(Object.keys(raw[0]));
-    const requiredColumns = [
-      { label: "id", aliases: ["id", "product_id", "item_id"] },
-      { label: "title", aliases: ["title", "name", "product_name"] },
-      { label: "price", aliases: ["price"] },
-      { label: "image_link", aliases: ["image_link", "image_url"] },
-    ];
-    const missing = requiredColumns
-      .filter((column) => !column.aliases.some((alias) => headers.has(alias)))
-      .map((column) => column.label);
-    if (missing.length > 0) {
-      return {
-        rows: [],
-        errors: [
-          {
-            row: 1,
-            message:
-              `This is not a supported Meta catalogue Excel sheet. Missing required Meta columns: ${missing.join(", ")}.`,
-          },
-        ],
-        whatsappNumber: null,
-      };
-    }
+    return { rows, errors, whatsappNumber };
+  }
+
+  const headers = new Set(Object.keys(raw[0]!));
+  const requiredColumns = [
+    { label: "id", aliases: ["id", "product_id", "item_id"] },
+    { label: "title", aliases: ["title", "name", "product_name"] },
+    { label: "price", aliases: ["price"] },
+    { label: "image_link", aliases: ["image_link", "image_url"] },
+  ];
+  const missing = requiredColumns
+    .filter((column) => !column.aliases.some((alias) => headers.has(alias)))
+    .map((column) => column.label);
+  if (missing.length > 0) {
+    return {
+      rows: [],
+      errors: [
+        {
+          row: 1,
+          message:
+            `This is not a supported Meta catalogue Excel sheet. Missing required Meta columns: ${missing.join(", ")}.`,
+        },
+      ],
+      whatsappNumber: null,
+    };
   }
 
   raw.forEach((row, index) => {
@@ -161,7 +150,7 @@ export function parseExcelBuffer(
     }
 
     const saleRaw = parsePriceString(row.sale_price);
-    let salePrice: number | null = saleRaw;
+    const salePrice: number | null = saleRaw;
 
     try {
       validatePrices(price, salePrice);
@@ -224,6 +213,112 @@ export function parseExcelBuffer(
   return { rows, errors, whatsappNumber };
 }
 
+function decodeCatalogueSheetOffThread(
+  buffer: Buffer
+): Promise<Record<string, unknown>[]> {
+  const workerPath = path.join(
+    process.cwd(),
+    "scripts",
+    "catalogue-excel-parse-worker.cjs"
+  );
+  if (!fs.existsSync(workerPath)) {
+    return Promise.reject(new Error("Catalogue Excel parser worker is unavailable."));
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const worker = new Worker(workerPath, {
+      workerData: { buffer },
+    });
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      void worker.terminate();
+      reject(new Error("Catalogue Excel decoding timed out."));
+    }, 120_000);
+
+    function finish() {
+      clearTimeout(timeout);
+      void worker.terminate();
+    }
+
+    worker.once(
+      "message",
+      (message: { ok?: boolean; rows?: Record<string, unknown>[]; error?: string }) => {
+        if (settled) return;
+        settled = true;
+        finish();
+        if (!message.ok || !Array.isArray(message.rows)) {
+          reject(new Error(message.error || "Catalogue Excel decoding failed."));
+          return;
+        }
+        resolve(message.rows);
+      }
+    );
+    worker.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      finish();
+      reject(error);
+    });
+    worker.once("exit", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (code === 0) {
+        reject(new Error("Catalogue Excel parser worker exited without a result."));
+      } else {
+        reject(new Error(`Catalogue Excel parser worker exited with code ${code}.`));
+      }
+    });
+  });
+}
+
+/** Sync parse kept for seed/scripts. Prefer parseExcelBufferAsync in HTTP handlers. */
+export function parseExcelBuffer(
+  buffer: Buffer,
+  departmentSource: string
+): ParsedCatalog {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheetName =
+    workbook.SheetNames.find((s) => s.toLowerCase().includes("meta")) ??
+    workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  if (!sheet) {
+    return {
+      rows: [],
+      errors: [{ row: 1, message: "The workbook does not contain a readable worksheet" }],
+      whatsappNumber: null,
+    };
+  }
+  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    defval: "",
+  });
+  return mapSheetRowsToCatalog(raw, departmentSource);
+}
+
+/** Production path: decode XLSX off the event loop, then map rows. */
+export async function parseExcelBufferAsync(
+  buffer: Buffer,
+  departmentSource: string
+): Promise<ParsedCatalog> {
+  try {
+    const raw = await decodeCatalogueSheetOffThread(buffer);
+    return mapSheetRowsToCatalog(raw, departmentSource);
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") {
+      throw error instanceof Error
+        ? error
+        : new Error("Catalogue Excel decoding failed.");
+    }
+    console.warn(
+      "[catalogue-import] parser worker unavailable; using inline fallback:",
+      error
+    );
+    return parseExcelBuffer(buffer, departmentSource);
+  }
+}
+
 export function rowToProductSlug(row: CatalogRow): string {
   return createProductSlug(row.title, row.id);
 }
@@ -264,7 +359,6 @@ export const CATALOG_FILES = [
 ] as const;
 
 export function readCatalogFile(filePath: string, department: string): ParsedCatalog {
-  const fs = require("fs") as typeof import("fs");
   const buffer = fs.readFileSync(filePath);
   return parseExcelBuffer(buffer, department);
 }

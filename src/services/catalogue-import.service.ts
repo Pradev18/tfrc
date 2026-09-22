@@ -1,5 +1,5 @@
 import prisma from "@/lib/db";
-import { parseExcelBuffer } from "@/lib/import/catalog-parser";
+import { parseExcelBufferAsync } from "@/lib/import/catalog-parser";
 import {
   createCategorySlug,
   rowToProductSlug,
@@ -8,12 +8,22 @@ import {
 } from "@/lib/import/catalog-parser";
 import { Prisma, ProductStatus } from "@prisma/client";
 import { generateShopCategories, updateCatalogue } from "@/services/catalogue-admin.service";
-import { persistRuntimeCatalogueData } from "@/lib/persist-runtime-data.server";
+import { persistRuntimeCatalogueDataSafely } from "@/lib/persist-runtime-data.server";
 import {
   classifyProductVariants,
   compareVariantLabels,
 } from "@/lib/product-variants";
 
+function yieldEventLoop(ms = 0): Promise<void> {
+  return new Promise((resolve) => {
+    if (ms > 0) {
+      setTimeout(resolve, ms);
+      return;
+    }
+    if (typeof setImmediate === "function") setImmediate(resolve);
+    else setTimeout(resolve, 0);
+  });
+}
 function parseSaleWindow(value: string | null): {
   saleStart: Date | null;
   saleEnd: Date | null;
@@ -100,6 +110,8 @@ async function validateProductOwnership(
     for (const product of existing) {
       conflicts.set(product.productId, product.environment?.name ?? "another catalogue");
     }
+    // Keep storefront / other admin requests responsive during ownership scans.
+    await yieldEventLoop(offset > 0 && offset % 2000 === 0 ? 10 : 0);
   }
 
   return rows
@@ -132,7 +144,8 @@ function summarizeValidationErrors(
 
 export async function importCatalogueExcel(options: ImportCatalogueOptions) {
   const { buffer, fileName, department, environmentId, environmentSlug, userId, preview } = options;
-  const parsed = parseExcelBuffer(buffer, department);
+  const parsed = await parseExcelBufferAsync(buffer, department);
+  await yieldEventLoop();
   const ownershipErrors = await validateProductOwnership(parsed.rows, environmentId);
   const validationErrors = [...parsed.errors, ...ownershipErrors].sort((a, b) => a.row - b.row);
   const totalRows = parsed.rows.length + parsed.errors.length;
@@ -411,7 +424,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
           }
         }
       },
-      { maxWait: 10_000, timeout: 120_000 }
+      { maxWait: 15_000, timeout: 180_000 }
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Product import failed";
@@ -448,11 +461,8 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
 
   await updateCatalogue(environmentId, { status: "ACTIVE" }, userId);
   await generateShopCategories(environmentId, environmentSlug);
-  try {
-    await persistRuntimeCatalogueData();
-  } catch (error) {
-    console.error("[catalog-import] persist after import failed:", error);
-  }
+  // Cache rebuild is heavy; run without blocking the HTTP success path callers.
+  void persistRuntimeCatalogueDataSafely();
 
   await prisma.importJob.update({
     where: { id: job.id },

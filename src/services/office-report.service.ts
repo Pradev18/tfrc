@@ -143,8 +143,12 @@ async function getCachedParse(importId: string, fileName = "workbook.xlsx"): Pro
   try {
     decodedSheets = await decodeWorkbookOffThread(buffer);
   } catch (error) {
-    // Development or unusual deployment layouts may omit the worker script.
-    // Keep the import functional, but production normally stays off-thread.
+    // Development may omit the worker script; production stays off-thread only.
+    if (process.env.NODE_ENV === "production") {
+      throw error instanceof Error
+        ? error
+        : new Error("Report Excel decoding failed.");
+    }
     console.warn("[reports] parser worker unavailable; using inline fallback:", error);
   }
 

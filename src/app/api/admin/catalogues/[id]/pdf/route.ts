@@ -7,6 +7,12 @@ import {
 import { getSiteUrl } from "@/lib/site-config";
 import { requireCatalogueUnlocked } from "@/lib/catalogue-lock";
 import { getCataloguePdfPayload, type CataloguePdfPayload } from "@/services/catalogue-pdf.service";
+import {
+  HeavyJobBusyError,
+  heavyJobBusyResponse,
+  releaseHeavyJob,
+  tryAcquireHeavyJob,
+} from "@/lib/admin-heavy-job";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -50,6 +56,11 @@ function startCataloguePdfJob(
     return existing;
   }
 
+  const acquired = tryAcquireHeavyJob("catalogue-pdf");
+  if (!acquired.ok) {
+    throw new HeavyJobBusyError(acquired.busyWith);
+  }
+
   const job: CataloguePdfJob = {
     status: "processing",
     createdAt: Date.now(),
@@ -68,17 +79,22 @@ function startCataloguePdfJob(
     if (!payload) throw new Error("Catalogue not found");
     const { pdf } = await assembleCataloguePdfDocument(payload, { origin });
     return { pdf, payload };
-  })().then((result) => {
-    job.status = "ready";
-    job.result = result;
-    scheduleCleanup();
-    return result;
-  }).catch((error) => {
-    job.status = "failed";
-    job.error = error;
-    scheduleCleanup();
-    throw error;
-  });
+  })()
+    .then((result) => {
+      job.status = "ready";
+      job.result = result;
+      scheduleCleanup();
+      return result;
+    })
+    .catch((error) => {
+      job.status = "failed";
+      job.error = error;
+      scheduleCleanup();
+      throw error;
+    })
+    .finally(() => {
+      releaseHeavyJob("catalogue-pdf", acquired.token);
+    });
 
   // The request that starts a background job does not await it. Attach a
   // rejection handler so a failed image source never becomes unhandled.
@@ -88,6 +104,13 @@ function startCataloguePdfJob(
 }
 
 function errorResponse(error: unknown): NextResponse {
+  if (error instanceof HeavyJobBusyError) {
+    const busy = heavyJobBusyResponse(error);
+    return NextResponse.json(busy.body, {
+      status: busy.status,
+      headers: { "Retry-After": "15" },
+    });
+  }
   if (error instanceof CataloguePdfImageError) {
     return NextResponse.json(
       {
@@ -140,10 +163,14 @@ export async function POST(req: NextRequest, context: RouteContext) {
   if ("response" in authorized) return authorized.response;
 
   const origin = (req.nextUrl.origin || getSiteUrl()).replace(/\/$/, "");
-  const job = startCataloguePdfJob(authorized.id, origin, false);
-  if (job.status === "ready") return NextResponse.json({ status: "ready" });
-  if (job.status === "failed") return errorResponse(job.error);
-  return NextResponse.json({ status: "processing" }, { status: 202 });
+  try {
+    const job = startCataloguePdfJob(authorized.id, origin, false);
+    if (job.status === "ready") return NextResponse.json({ status: "ready" });
+    if (job.status === "failed") return errorResponse(job.error);
+    return NextResponse.json({ status: "processing" }, { status: 202 });
+  } catch (error) {
+    return errorResponse(error);
+  }
 }
 
 export async function GET(req: NextRequest, context: RouteContext) {
@@ -153,18 +180,19 @@ export async function GET(req: NextRequest, context: RouteContext) {
   const origin = (req.nextUrl.origin || getSiteUrl()).replace(/\/$/, "");
   const polling = req.nextUrl.searchParams.get("poll") === "1";
   const existing = generationJobs.get(authorized.id);
-  const job =
-    polling && existing
-      ? existing
-      : startCataloguePdfJob(authorized.id, origin, true);
-
-  if (polling && job.status === "processing") {
-    return NextResponse.json({ status: "processing" }, { status: 202 });
-  }
-  if (job.status === "ready" && job.result) return pdfResponse(job.result);
-  if (job.status === "failed") return errorResponse(job.error);
 
   try {
+    const job =
+      polling && existing
+        ? existing
+        : startCataloguePdfJob(authorized.id, origin, true);
+
+    if (polling && job.status === "processing") {
+      return NextResponse.json({ status: "processing" }, { status: 202 });
+    }
+    if (job.status === "ready" && job.result) return pdfResponse(job.result);
+    if (job.status === "failed") return errorResponse(job.error);
+
     return pdfResponse(await job.promise);
   } catch (error) {
     return errorResponse(error);

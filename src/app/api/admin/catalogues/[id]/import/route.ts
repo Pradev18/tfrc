@@ -6,6 +6,11 @@ import { getCatalogueById } from "@/services/catalogue-admin.service";
 import { importCatalogueExcel } from "@/services/catalogue-import.service";
 import { touchSiteRevision } from "@/lib/site-revision.server";
 import { requireCatalogueUnlocked } from "@/lib/catalogue-lock";
+import {
+  HeavyJobBusyError,
+  heavyJobBusyResponse,
+  withHeavyJob,
+} from "@/lib/admin-heavy-job";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -16,6 +21,7 @@ const ALLOWED_EXTENSIONS = new Set(["xlsx", "xls"]);
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest, context: RouteContext) {
   const { session, error } = await requireAdminSession();
@@ -51,18 +57,19 @@ export async function POST(req: NextRequest, context: RouteContext) {
   const department = catalogue.departmentSource ?? catalogue.name;
 
   try {
-    const result = await importCatalogueExcel({
-      buffer,
-      fileName: file.name,
-      department,
-      environmentId: id,
-      environmentSlug: catalogue.slug,
-      userId: session!.user?.id,
-      preview,
-    });
+    const result = await withHeavyJob("catalogue-import", () =>
+      importCatalogueExcel({
+        buffer,
+        fileName: file.name,
+        department,
+        environmentId: id,
+        environmentSlug: catalogue.slug,
+        userId: session!.user?.id,
+        preview,
+      })
+    );
 
     if (!preview && result.applied) {
-      // Defer cache bust so the HTTP response returns while storefront can keep serving.
       const slug = catalogue.slug;
       after(() => {
         void touchSiteRevision()
@@ -87,6 +94,13 @@ export async function POST(req: NextRequest, context: RouteContext) {
       headers: { "Cache-Control": "no-store, max-age=0" },
     });
   } catch (e) {
+    if (e instanceof HeavyJobBusyError) {
+      const busy = heavyJobBusyResponse(e);
+      return NextResponse.json(busy.body, {
+        status: busy.status,
+        headers: { "Cache-Control": "no-store", "Retry-After": "15" },
+      });
+    }
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Import failed" },
       { status: 400, headers: { "Cache-Control": "no-store" } }

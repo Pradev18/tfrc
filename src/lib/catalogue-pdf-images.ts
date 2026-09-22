@@ -229,6 +229,8 @@ export async function embedCatalogueImages(
       if (dataUri) embedded.set(url, dataUri);
       else failures.set(url, error || "image download failed");
     }
+    // Yield between batches so storefront/admin stay responsive during large PDFs.
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
   return { embedded, failures };
