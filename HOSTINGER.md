@@ -1,15 +1,15 @@
-# Deploying TFRC Vita Nova on Hostinger
+# Deploying TFRC Wholesale Services on Hostinger
 
 Guide for **Hostinger Node.js** (Deployments panel) and **Docker VPS**.
 
-Repository Hostinger must use: https://github.com/Pradev18/vitanovaservice
+Repository Hostinger must use: https://github.com/Pradev18/tfrc
 (Do not connect Hostinger to `tfrc` — that repo is a copy, not the live deploy source.)
 
 ---
 
 ## Hostinger Node.js panel (your setup)
 
-Use these **exact settings** in **Websites → vitanovaservices.com → Deployments → Settings and redeploy**:
+Use these **exact settings** in **Websites → tfrcwholesale.com → Deployments → Settings and redeploy**:
 
 | Setting | Value |
 |---------|--------|
@@ -29,14 +29,14 @@ Use these **exact settings** in **Websites → vitanovaservices.com → Deployme
 
 **Remove** all `SMTP_*` variables — they are from the old visa site and are **not used** by this catalogue app.
 
-**Use these only** (copy from `env.vitanovaservices.com.example`):
+**Use these only** (copy from `env.tfrcwholesale.com.example`):
 
 ```env
 DATABASE_URL=file:./prod.db
 AUTH_SECRET=<your-secret>
-AUTH_URL=https://www.vitanovaservices.com
-NEXT_PUBLIC_SITE_URL=https://www.vitanovaservices.com
-NEXT_PUBLIC_SITE_NAME=TFRC Vita Nova
+AUTH_URL=https://tfrcwholesale.com
+NEXT_PUBLIC_SITE_URL=https://tfrcwholesale.com
+NEXT_PUBLIC_SITE_NAME=TFRC Wholesale Services
 NEXT_PUBLIC_WHATSAPP_PHONE=97455049229
 MEDIA_STORAGE=local
 NODE_ENV=production
@@ -60,7 +60,7 @@ Then **Save and redeploy** or restart the app.
 
 ### Admin login (change password immediately)
 
-- URL: `https://www.vitanovaservices.com/admin`
+- URL: `https://tfrcwholesale.com/admin`
 - Email: `admin@pawmart.qa`
 - Password: use the securely provisioned administrator password
 
@@ -123,7 +123,7 @@ AUTH_URL="https://shop.yourdomain.com"
 
 # Site — REQUIRED (must match your live HTTPS domain)
 NEXT_PUBLIC_SITE_URL="https://shop.yourdomain.com"
-NEXT_PUBLIC_SITE_NAME="TFRC Vita Nova"
+NEXT_PUBLIC_SITE_NAME="TFRC Wholesale Services"
 
 # WhatsApp — must match Admin → WhatsApp settings
 NEXT_PUBLIC_WHATSAPP_PHONE="97455049229"

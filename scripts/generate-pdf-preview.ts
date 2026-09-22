@@ -74,7 +74,7 @@ async function main() {
       origin: getSiteUrl(),
     });
 
-    if (!stats.websiteUrl.startsWith("https://www.vitanovaservices.com/")) {
+    if (!stats.websiteUrl.startsWith("https://tfrcwholesale.com/")) {
       throw new Error(
         `Website QR must use the public catalogue host, got: ${stats.websiteUrl}`
       );

@@ -232,9 +232,13 @@ export function ReportsAdminClient({
       if (inputEl) inputEl.value = "";
       return;
     }
-    if (typeof window !== "undefined" && window.location.hostname === "vitanovaservices.com") {
+    if (
+      process.env.NODE_ENV === "production" &&
+      typeof window !== "undefined" &&
+      window.location.hostname !== "tfrcwholesale.com"
+    ) {
       setError(
-        "Open admin on https://www.vitanovaservices.com/admin/reports (with www), sign in again, then upload."
+        "Open admin on https://tfrcwholesale.com/admin/reports, sign in again, then upload."
       );
       if (inputEl) inputEl.value = "";
       return;
@@ -355,7 +359,7 @@ export function ReportsAdminClient({
         </label>
         <p className="mt-2 text-xs text-text-muted">
           Supported: .xlsx / .xls · Max 30 MB · Large files upload in safe chunks
-          (use https://www.vitanovaservices.com — with www)
+          (use https://tfrcwholesale.com)
         </p>
         {progressLabel && (
           <p className="mt-3 text-sm font-medium text-primary">{progressLabel}</p>

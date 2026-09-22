@@ -53,7 +53,7 @@ function payload(
       tagline: "Data-driven product range",
       description: "A fixture that uses the same production PDF renderer.",
     },
-    websiteUrl: "https://www.vitanovaservices.com/future-catalogue",
+    websiteUrl: "https://tfrcwholesale.com/future-catalogue",
     whatsappUrl: "https://api.whatsapp.com/send/?phone=97450000000&text=Hello",
     whatsappPhone: "97450000000",
     websiteQrDataUrl: TINY_PNG,
@@ -139,7 +139,7 @@ describe("catalogue PDF links and assets", () => {
     const source = pdfSource(result.bytes);
     expect(result.stats.linkAnnotations).toBe(5);
     expect(linkAnnotationCount(result.bytes)).toBe(5);
-    expect(source).toContain("/URI (https://www.vitanovaservices.com/future-catalogue)");
+    expect(source).toContain("/URI (https://tfrcwholesale.com/future-catalogue)");
     expect(source).toContain("/URI (https://wa.me/9745000");
     expect(result.stats.renderedProductImages).toBe(3);
     expect(result.stats.fallbackProductImages).toBe(0);

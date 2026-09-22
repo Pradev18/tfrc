@@ -1,27 +1,25 @@
 /** Central site + Meta/Facebook ad configuration */
 
-/** Apex domain serves Hostinger parking; app lives on www. */
+const CANONICAL_SITE_URL = "https://tfrcwholesale.com";
+
+/** All public links use the single TFRC production domain. */
 export function normalizePublicSiteUrl(url: string): string {
   const trimmed = url.trim().replace(/\/$/, "");
-  try {
-    const parsed = new URL(trimmed);
-    if (parsed.hostname === "vitanovaservices.com") {
-      parsed.hostname = "www.vitanovaservices.com";
-    }
-    return parsed.toString().replace(/\/$/, "");
-  } catch {
-    return trimmed;
-  }
+  return isLocalSiteUrl(trimmed) ? trimmed : CANONICAL_SITE_URL;
 }
 
 export function getSiteUrl(): string {
-  const url = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const url =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    (process.env.NODE_ENV === "production"
+      ? CANONICAL_SITE_URL
+      : "http://localhost:3000");
   return normalizePublicSiteUrl(url);
 }
 
 /**
- * Prefer the host the browser actually used (www), then env.
- * Prevents approval emails linking to the Hostinger parked apex domain.
+ * Prefer the browser request in development, while all public hosts normalize
+ * to the single TFRC production domain.
  */
 export function getRequestSiteUrl(headers: Headers, fallbackOrigin?: string): string {
   const forwardedHost = headers.get("x-forwarded-host")?.split(",")[0]?.trim();
@@ -55,7 +53,7 @@ export function getPublicCatalogueSiteUrl(): string {
     if (url && !isLocalSiteUrl(url)) return normalizePublicSiteUrl(url);
   }
 
-  return "https://www.vitanovaservices.com";
+  return CANONICAL_SITE_URL;
 }
 
 function isLocalSiteUrl(url: string): boolean {

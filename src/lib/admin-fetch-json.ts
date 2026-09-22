@@ -21,7 +21,7 @@ export function errorFromHttpStatus(status: number, fallback = "Request failed")
     return "File is too large for the server. Use an .xlsx under 30 MB, or split the workbook.";
   }
   if (status === 401 || status === 403) {
-    return "Upload was blocked (403/401). Sign in again on https://www.vitanovaservices.com/admin — and use the www address. Special characters in the Excel file name are stripped automatically; retry the upload.";
+    return "Upload was blocked (403/401). Sign in again on https://tfrcwholesale.com/admin. Special characters in the Excel file name are stripped automatically; retry the upload.";
   }
   if (status === 404) {
     return "That report endpoint was not found. Redeploy, then retry.";
