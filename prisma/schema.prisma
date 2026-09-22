@@ -20,6 +20,26 @@ model User {
   roles        UserRole[]
   auditLogs    AuditLog[]
   importJobs   ImportJob[]
+  loginApprovals LoginApproval[]
+}
+
+model LoginApproval {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestTokenHash String    @unique
+  pollTokenHash    String
+  grantTokenHash   String    @unique
+  status           String    @default("PENDING")
+  requesterIp      String?
+  userAgent        String?
+  expiresAt        DateTime
+  approvedAt       DateTime?
+  consumedAt       DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([userId, status, createdAt])
+  @@index([expiresAt])
 }
 
 model LoginThrottle {

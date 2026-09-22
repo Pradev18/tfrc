@@ -1,7 +1,7 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 function safeAdminCallback(raw: string | null): string {
@@ -25,34 +25,116 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [waitingApproval, setWaitingApproval] = useState(false);
+  const attemptRef = useRef(0);
   const searchParams = useSearchParams();
   const callbackUrl = safeAdminCallback(searchParams.get("callbackUrl"));
 
+  async function waitForApproval(input: {
+    requestId: string;
+    pollToken: string;
+    grantToken: string;
+    attempt: number;
+  }) {
+    for (let index = 0; index < 300; index += 1) {
+      if (attemptRef.current !== input.attempt) return;
+      await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+
+      const res = await fetch("/api/auth/login-approval/status", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId: input.requestId,
+          pollToken: input.pollToken,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        status?: string;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Could not check approval status.");
+
+      if (data.status === "APPROVED") {
+        const result = await signIn("credentials", {
+          email,
+          password,
+          approvalGrant: input.grantToken,
+          redirect: false,
+          callbackUrl,
+        });
+        if (result?.error) {
+          throw new Error("Approval could not be consumed. Request a new login approval.");
+        }
+        window.location.href = callbackUrl;
+        return;
+      }
+      if (data.status === "EXPIRED" || data.status === "CONSUMED") {
+        throw new Error("The approval request expired. Submit your login again.");
+      }
+    }
+    throw new Error("The approval request expired. Submit your login again.");
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const attempt = attemptRef.current + 1;
+    attemptRef.current = attempt;
     setLoading(true);
     setError("");
 
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-      callbackUrl,
-    });
+    try {
+      const response = await fetch("/api/auth/login-approval/request", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        approvalRequired?: boolean;
+        requestId?: string;
+        pollToken?: string;
+        grantToken?: string;
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(data.error || "Invalid email or password");
+      }
+      if (data.approvalRequired === false) {
+        const result = await signIn("credentials", {
+          email,
+          password,
+          redirect: false,
+          callbackUrl,
+        });
+        if (result?.error) throw new Error("Invalid email or password");
+        window.location.href = callbackUrl;
+        return;
+      }
+      if (!data.requestId || !data.pollToken || !data.grantToken) {
+        throw new Error("Login approval could not be created.");
+      }
 
-    setLoading(false);
-    if (result?.error) {
-      setError("Invalid email or password");
-      return;
+      setWaitingApproval(true);
+      await waitForApproval({
+        requestId: data.requestId,
+        pollToken: data.pollToken,
+        grantToken: data.grantToken,
+        attempt,
+      });
+    } catch (cause) {
+      if (attemptRef.current !== attempt) return;
+      setError(cause instanceof Error ? cause.message : "Login approval failed");
+      setWaitingApproval(false);
+      setLoading(false);
     }
-    window.location.href = callbackUrl;
   }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-muted px-4">
       <div className="w-full max-w-md rounded-lg border border-border bg-surface p-8 shadow-[var(--shadow-card)]">
         <h1 className="text-display text-2xl text-primary">TFRC Admin</h1>
-        <p className="mt-2 text-sm text-text-muted">Staff sign-in — manage catalogues, products & settings</p>
+        <p className="mt-2 text-sm text-text-muted">Staff sign-in</p>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">
           <div>
@@ -64,7 +146,8 @@ function LoginForm() {
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="username"
               required
-              className="w-full rounded-md border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              disabled={loading}
+              className="w-full rounded-md border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none disabled:opacity-60"
             />
           </div>
           <div>
@@ -76,13 +159,41 @@ function LoginForm() {
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
               required
-              className="w-full rounded-md border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              disabled={loading}
+              className="w-full rounded-md border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none disabled:opacity-60"
             />
           </div>
           {error && <p className="text-sm text-error">{error}</p>}
+          {waitingApproval && (
+            <div className="rounded-lg border border-[#d9bce2] bg-[#faf5fc] p-4 text-sm">
+              <p className="font-semibold text-[#6d237d]">Approval email sent</p>
+              <p className="mt-1 leading-6 text-text-muted">
+                Waiting for authentication from info@tfrcwholesale.com. This page will sign in
+                automatically after approval.
+              </p>
+            </div>
+          )}
           <button type="submit" disabled={loading} className="btn-primary w-full">
-            {loading ? "Signing in..." : "Sign In"}
+            {waitingApproval
+              ? "Waiting for approval…"
+              : loading
+                ? "Verifying credentials…"
+                : "Sign In"}
           </button>
+          {waitingApproval && (
+            <button
+              type="button"
+              className="w-full rounded-md border border-border px-4 py-2 text-sm"
+              onClick={() => {
+                attemptRef.current += 1;
+                setWaitingApproval(false);
+                setLoading(false);
+                setPassword("");
+              }}
+            >
+              Cancel request
+            </button>
+          )}
         </form>
       </div>
     </div>
