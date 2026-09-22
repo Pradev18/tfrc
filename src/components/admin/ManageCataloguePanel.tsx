@@ -250,21 +250,47 @@ export function ManageCataloguePanel({
         adminNotify(message);
         return;
       }
-      const blobUrl = URL.createObjectURL(pdfBlob);
+
+      const disposition = res.headers.get("content-disposition") || "";
+      const named =
+        disposition.match(/filename\*?=(?:UTF-8''|")?([^\";]+)/i)?.[1] ||
+        `${catalogueSlug || "catalogue"}-product-brochure.pdf`;
+      const filename = decodeURIComponent(named.replace(/["']/g, "").trim());
+      const typedBlob = new Blob([pdfBlob], { type: "application/pdf" });
+      const blobUrl = URL.createObjectURL(typedBlob);
+
+      if (autoPrint) {
+        // Chrome's PDF viewer often fails downloading blob: tabs with
+        // "Check internet connection". Force a real file download instead.
+        const anchor = document.createElement("a");
+        anchor.href = blobUrl;
+        anchor.download = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
+        anchor.rel = "noopener";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+        setMessage(`Catalogue PDF downloaded as ${anchor.download}.`);
+        adminNotify("Catalogue PDF downloaded.");
+        return;
+      }
+
       const popup = window.open(blobUrl, "_blank", "noopener,noreferrer");
       if (!popup) {
         adminNotify(
-          "Popup was blocked. Allow popups for this site, then try Download PDF again. Opening in this tab now…"
+          "Popup was blocked. Allow popups for this site, then try Preview again. Downloading instead…"
         );
-        window.location.href = blobUrl;
+        const anchor = document.createElement("a");
+        anchor.href = blobUrl;
+        anchor.download = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
         return;
       }
       window.setTimeout(() => URL.revokeObjectURL(blobUrl), 120_000);
-      setMessage(
-        autoPrint
-          ? "Catalogue PDF opened — use the PDF viewer to save or print it."
-          : "Catalogue PDF preview opened with working links."
-      );
+      setMessage("Catalogue PDF preview opened with working links.");
     } catch (cause) {
       const message =
         cause instanceof Error ? cause.message : "Could not generate catalogue PDF";
