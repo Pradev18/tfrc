@@ -1,8 +1,41 @@
 /** Central site + Meta/Facebook ad configuration */
 
+/** Apex domain serves Hostinger parking; app lives on www. */
+export function normalizePublicSiteUrl(url: string): string {
+  const trimmed = url.trim().replace(/\/$/, "");
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.hostname === "vitanovaservices.com") {
+      parsed.hostname = "www.vitanovaservices.com";
+    }
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return trimmed;
+  }
+}
+
 export function getSiteUrl(): string {
   const url = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-  return url.replace(/\/$/, "");
+  return normalizePublicSiteUrl(url);
+}
+
+/**
+ * Prefer the host the browser actually used (www), then env.
+ * Prevents approval emails linking to the Hostinger parked apex domain.
+ */
+export function getRequestSiteUrl(headers: Headers, fallbackOrigin?: string): string {
+  const forwardedHost = headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = forwardedHost || headers.get("host")?.trim() || "";
+  const proto =
+    headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
+    (fallbackOrigin?.startsWith("http://") ? "http" : "https");
+
+  if (host && !/^localhost(:\d+)?$/i.test(host) && host !== "127.0.0.1") {
+    return normalizePublicSiteUrl(`${proto}://${host}`);
+  }
+
+  if (fallbackOrigin) return normalizePublicSiteUrl(fallbackOrigin);
+  return getSiteUrl();
 }
 
 /**
@@ -19,7 +52,7 @@ export function getPublicCatalogueSiteUrl(): string {
 
   for (const candidate of candidates) {
     const url = candidate?.trim().replace(/\/$/, "");
-    if (url && !isLocalSiteUrl(url)) return url;
+    if (url && !isLocalSiteUrl(url)) return normalizePublicSiteUrl(url);
   }
 
   return "https://www.vitanovaservices.com";

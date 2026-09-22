@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/db";
-import { getSiteUrl } from "@/lib/site-config";
+import { getRequestSiteUrl } from "@/lib/site-config";
 import {
   LOGIN_APPROVAL_TTL_MS,
   adminEmailApprovalRequired,
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
 
   const approvalUrl = new URL(
     "/api/auth/login-approval/approve",
-    getSiteUrl()
+    getRequestSiteUrl(req.headers, req.nextUrl.origin)
   );
   approvalUrl.searchParams.set("token", requestToken);
 
