@@ -49,7 +49,6 @@ export function StoreCatalogueUnlockGate({
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-[#6b6560]">
           Enter the catalogue password to browse products and place WhatsApp orders.
-          This is the same password set when the catalogue was locked in admin.
         </p>
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4">

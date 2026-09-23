@@ -9,11 +9,12 @@ import {
   disableCatalogueLock,
   enableCatalogueLock,
   getCatalogueLockState,
+  getCatalogueLockVersion,
   hasCatalogueUnlockCookie,
   requireCatalogueUnlocked,
   verifyCatalogueLockPassword,
 } from "@/lib/catalogue-lock";
-import { persistRuntimeCatalogueDataSafely } from "@/lib/persist-runtime-data.server";
+import { persistRuntimeCatalogueData } from "@/lib/persist-runtime-data.server";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -21,6 +22,14 @@ interface RouteContext {
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+async function refreshLockCache() {
+  try {
+    await persistRuntimeCatalogueData();
+  } catch (error) {
+    console.error("[catalogue-lock] cache refresh failed:", error);
+  }
+}
 
 export async function GET(_req: NextRequest, context: RouteContext) {
   const { error } = await requireAdminSession();
@@ -76,8 +85,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
       if (!ok) {
         return NextResponse.json({ error: "Incorrect lock password." }, { status: 401 });
       }
+      const version = await getCatalogueLockVersion(id);
       const res = NextResponse.json({ ok: true, isLocked: true, unlocked: true });
-      applyCatalogueUnlockCookie(res, id);
+      applyCatalogueUnlockCookie(res, id, version);
       return res;
     }
 
@@ -92,9 +102,11 @@ export async function POST(req: NextRequest, context: RouteContext) {
         );
       }
       await enableCatalogueLock(id, password);
-      void persistRuntimeCatalogueDataSafely();
+      await refreshLockCache();
+      const version = await getCatalogueLockVersion(id);
+      // Admin stays unlocked; public users with old cookies are invalidated by new version.
       const res = NextResponse.json({ ok: true, isLocked: true, unlocked: true });
-      applyCatalogueUnlockCookie(res, id);
+      applyCatalogueUnlockCookie(res, id, version);
       return res;
     }
 
@@ -122,25 +134,22 @@ export async function POST(req: NextRequest, context: RouteContext) {
           { status: 400 }
         );
       }
-      const alreadyUnlocked = await hasCatalogueUnlockCookie(id);
       await enableCatalogueLock(id, password);
-      void persistRuntimeCatalogueDataSafely();
+      await refreshLockCache();
+      const version = await getCatalogueLockVersion(id);
+      // New lock version instantly invalidates every previous public unlock cookie.
       const res = NextResponse.json({
         ok: true,
         isLocked: true,
-        unlocked: alreadyUnlocked,
+        unlocked: true,
       });
-      if (alreadyUnlocked) {
-        applyCatalogueUnlockCookie(res, id);
-      } else {
-        clearCatalogueUnlockCookie(res, id);
-      }
+      applyCatalogueUnlockCookie(res, id, version);
       return res;
     }
 
     if (action === "disable") {
       await disableCatalogueLock(id, password);
-      void persistRuntimeCatalogueDataSafely();
+      await refreshLockCache();
       const res = NextResponse.json({ ok: true, isLocked: false, unlocked: true });
       clearCatalogueUnlockCookie(res, id);
       return res;

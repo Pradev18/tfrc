@@ -3,6 +3,7 @@ import { resolveEnvironment } from "@/services/environment.service";
 import {
   applyCatalogueUnlockCookie,
   getCatalogueLockState,
+  getCatalogueLockVersion,
   isCatalogueLockedFromSettings,
   verifyCatalogueLockPassword,
 } from "@/lib/catalogue-lock";
@@ -50,7 +51,7 @@ export async function POST(
     }
 
     const res = NextResponse.json({ unlocked: true, locked: true });
-    applyCatalogueUnlockCookie(res, env.id);
+    applyCatalogueUnlockCookie(res, env.id, await getCatalogueLockVersion(env.id));
     return res;
   } catch (error) {
     return NextResponse.json(

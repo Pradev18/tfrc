@@ -85,19 +85,32 @@ function cookieName(catalogueId: string): string {
   return `cat_ul_${catalogueId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48)}`;
 }
 
-function signUnlockToken(catalogueId: string, expiresAt: number): string {
-  const payload = `${catalogueId}.${expiresAt}`;
+function lockVersionFromSettings(settingsJson: string | null | undefined): string {
+  const lock = readLock(parseSettings(settingsJson));
+  return String(lock.updatedAt || "");
+}
+
+function signUnlockToken(
+  catalogueId: string,
+  expiresAt: number,
+  lockVersion: string
+): string {
+  const payload = `${catalogueId}.${expiresAt}.${lockVersion}`;
   const sig = createHmac("sha256", secret()).update(payload).digest("hex");
   return `${expiresAt}.${sig}`;
 }
 
-function verifyUnlockToken(catalogueId: string, token: string | undefined): boolean {
+function verifyUnlockToken(
+  catalogueId: string,
+  token: string | undefined,
+  lockVersion: string
+): boolean {
   if (!token) return false;
   const [expRaw, sig] = token.split(".");
   const expiresAt = Number(expRaw);
   if (!expRaw || !sig || !Number.isFinite(expiresAt) || Date.now() > expiresAt) return false;
   const expected = createHmac("sha256", secret())
-    .update(`${catalogueId}.${expiresAt}`)
+    .update(`${catalogueId}.${expiresAt}.${lockVersion}`)
     .digest("hex");
   try {
     const a = Buffer.from(sig, "utf8");
@@ -111,18 +124,40 @@ function verifyUnlockToken(catalogueId: string, token: string | undefined): bool
 
 export async function hasCatalogueUnlockCookie(catalogueId: string): Promise<boolean> {
   const jar = await cookies();
-  return verifyUnlockToken(catalogueId, jar.get(cookieName(catalogueId))?.value);
+  const token = jar.get(cookieName(catalogueId))?.value;
+  if (!token) return false;
+
+  const env = await prisma.environment.findUnique({
+    where: { id: catalogueId },
+    select: { settings: true },
+  });
+  if (!env) return false;
+
+  const lock = readLock(parseSettings(env.settings));
+  // Lock removed → treat as unlocked for everyone immediately.
+  if (!lock.enabled || !lock.passwordHash) return true;
+
+  // Cookie must match current lock version so password changes invalidate old sessions.
+  return verifyUnlockToken(catalogueId, token, lockVersionFromSettings(env.settings));
 }
 
-export function applyCatalogueUnlockCookie(res: NextResponse, catalogueId: string) {
+export function applyCatalogueUnlockCookie(
+  res: NextResponse,
+  catalogueId: string,
+  lockVersion = ""
+) {
   const expiresAt = Date.now() + UNLOCK_TTL_MS;
-  res.cookies.set(cookieName(catalogueId), signUnlockToken(catalogueId, expiresAt), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: Math.floor(UNLOCK_TTL_MS / 1000),
-  });
+  res.cookies.set(
+    cookieName(catalogueId),
+    signUnlockToken(catalogueId, expiresAt, lockVersion),
+    {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: Math.floor(UNLOCK_TTL_MS / 1000),
+    }
+  );
 }
 
 export function clearCatalogueUnlockCookie(res: NextResponse, catalogueId: string) {
@@ -133,6 +168,15 @@ export function clearCatalogueUnlockCookie(res: NextResponse, catalogueId: strin
     path: "/",
     maxAge: 0,
   });
+}
+
+/** Current lock version (updatedAt) — include in unlock cookies after password set/change. */
+export async function getCatalogueLockVersion(catalogueId: string): Promise<string> {
+  const env = await prisma.environment.findUnique({
+    where: { id: catalogueId },
+    select: { settings: true },
+  });
+  return lockVersionFromSettings(env?.settings);
 }
 
 export async function enableCatalogueLock(catalogueId: string, password: string) {
