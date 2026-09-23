@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import type { ProductWithRelations } from "@/services/product.service";
 import { mapProductPrices } from "@/lib/pricing";
 import { getEnvVisual } from "@/lib/env-visuals";
+import { productPath } from "@/lib/product-url";
 
 interface PromoBannerProps {
   products: ProductWithRelations[];
@@ -18,7 +19,9 @@ export function PromoBanner({
   title = "Deals & offers",
 }: PromoBannerProps) {
   const v = getEnvVisual(environmentSlug);
-  const items = products.filter((p) => p.images.length > 0).slice(0, 8);
+  const items = products
+    .filter((p) => (p.images?.length ?? 0) > 0)
+    .slice(0, 8);
 
   if (items.length === 0) return null;
 
@@ -43,12 +46,14 @@ export function PromoBanner({
 
         <div className="-mx-5 flex gap-3 overflow-x-auto px-5 pb-1 scrollbar-hide md:mx-0 md:px-0">
           {items.map((product) => {
-            const img = product.images.find((i) => i.isPrimary) ?? product.images[0];
+            const img =
+              product.images?.find((i) => i.isPrimary) ?? product.images?.[0];
+            if (!img?.url) return null;
             const { pricing } = mapProductPrices(product);
             return (
               <Link
                 key={product.id}
-                href={`/${environmentSlug}/product/${product.slug}`}
+                href={productPath(environmentSlug, product.slug)}
                 className="group w-[8.5rem] shrink-0 md:w-[10rem]"
               >
                 <div

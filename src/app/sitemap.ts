@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import prisma from "@/lib/db";
 import { getSiteUrl } from "@/lib/site-config";
+import { productPath } from "@/lib/product-url";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...products
       .filter((p) => p.environment?.slug)
       .map((p) => ({
-        url: `${baseUrl}/${p.environment!.slug}/product/${p.slug}`,
+        url: `${baseUrl}${productPath(p.environment!.slug, p.slug)}`,
         lastModified: p.updatedAt,
         changeFrequency: "weekly" as const,
         priority: 0.8,

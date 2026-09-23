@@ -1,5 +1,6 @@
 import prisma from "@/lib/db";
 import { absoluteUrl } from "@/lib/site-config";
+import { productPath } from "@/lib/product-url";
 import { getEffectivePrice } from "@/lib/pricing";
 import { getCachedEnvironment, loadCatalogCache } from "@/lib/catalog-cache";
 
@@ -53,8 +54,8 @@ function generateMetaCatalogCsvFromCache(environmentSlug?: string): string {
     const env = getCachedEnvironment(slug);
     if (!env) continue;
     for (const product of env.products) {
-      const regular = product.prices.find((p) => p.type === "REGULAR");
-      const sale = product.prices.find((p) => p.type === "SALE");
+      const regular = product.prices?.find((p) => p.type === "REGULAR");
+      const sale = product.prices?.find((p) => p.type === "SALE");
       const pricing = getEffectivePrice({
         regular: regular?.amount ?? 0,
         sale: sale?.amount,
@@ -62,13 +63,13 @@ function generateMetaCatalogCsvFromCache(environmentSlug?: string): string {
         saleStart: sale?.saleStart ? new Date(sale.saleStart) : null,
         saleEnd: sale?.saleEnd ? new Date(sale.saleEnd) : null,
       });
-      const primaryImage = product.images[0]?.url ?? "";
+      const primaryImage = product.images?.[0]?.url ?? "";
       const inStock = product.inventory?.isInStock ?? true;
       const description =
         product.shortDescription ??
         product.description?.slice(0, 5000) ??
         product.name;
-      const link = absoluteUrl(`/${slug}/product/${product.slug}`);
+      const link = absoluteUrl(productPath(slug, product.slug));
       rows.push(
         [
           product.productId,
@@ -130,8 +131,8 @@ async function generateMetaCatalogCsvFromPrisma(environmentSlug?: string): Promi
 
   const rows = products
     .map((product) => {
-    const regular = product.prices.find((p) => p.type === "REGULAR");
-    const sale = product.prices.find((p) => p.type === "SALE");
+    const regular = product.prices?.find((p) => p.type === "REGULAR");
+    const sale = product.prices?.find((p) => p.type === "SALE");
     const pricing = getEffectivePrice({
       regular: regular?.amount ?? 0,
       sale: sale?.amount,
@@ -141,14 +142,14 @@ async function generateMetaCatalogCsvFromPrisma(environmentSlug?: string): Promi
     });
     const envSlug = product.environment?.slug;
     if (!envSlug) return null;
-    const primaryImage = product.images[0]?.url ?? "";
+    const primaryImage = product.images?.[0]?.url ?? "";
     const inStock = product.inventory?.isInStock ?? true;
     const description =
       product.shortDescription ??
       product.description?.slice(0, 5000) ??
       product.name;
 
-    const link = absoluteUrl(`/${envSlug}/product/${product.slug}`);
+    const link = absoluteUrl(productPath(envSlug, product.slug));
 
     return [
       product.productId,

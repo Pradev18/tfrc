@@ -204,7 +204,9 @@ export function getCachedProducts(
     items = items.filter((p) => p.brand?.slug === opts.brandSlug);
   }
   if (opts.onSale) {
-    items = items.filter((p) => p.prices.some((price) => price.type === "SALE"));
+    items = items.filter((p) =>
+      (p.prices ?? []).some((price) => price.type === "SALE")
+    );
   }
   if (opts.inStock) {
     items = items.filter((p) => p.inventory?.isInStock === true);

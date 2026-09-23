@@ -13,6 +13,7 @@ import {
 import type { EffectivePrice } from "@/lib/pricing";
 import { UiSelect } from "@/components/ui/UiSelect";
 import { useCart } from "@/context/CartContext";
+import { productPath } from "@/lib/product-url";
 import { trackCustomerInquiry } from "@/lib/track-inquiry";
 import { calculateLineTotal } from "@/lib/money";
 import { variantOptionLabel } from "@/lib/product-variants";
@@ -229,7 +230,7 @@ export function ProductPurchasePanel({
               setSelectedSizeSlug(nextSlug);
               if (nextSlug) {
                 router.replace(
-                  `/${environmentSlug}/product/${nextSlug}?sizeSelected=1`,
+                  `${productPath(environmentSlug, nextSlug)}?sizeSelected=1`,
                   { scroll: false }
                 );
               }

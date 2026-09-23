@@ -472,7 +472,8 @@ function hydrateProductFromCache(
       sortOrder: video.sortOrder ?? index,
       productId: hit.id,
     })),
-    images: hit.images.map((image, index) => ({
+    // Incomplete/stale catalog-cache rows must never crash the PDP.
+    images: (hit.images ?? []).map((image, index) => ({
       id: `cache-img-${hit.id}-${index}`,
       url: image.url,
       sortOrder: image.sortOrder ?? index,
@@ -486,7 +487,7 @@ function hydrateProductFromCache(
     tags: [],
     createdAt: new Date(hit.createdAt),
     updatedAt: new Date(hit.createdAt),
-    prices: hit.prices.map((p, index) => ({
+    prices: (hit.prices ?? []).map((p, index) => ({
       id: `cache-price-${hit.id}-${index}`,
       productId: hit.id,
       type: p.type,
@@ -510,11 +511,28 @@ export const getProductBySlug = cache(async function getProductBySlug(
   slug: string,
   environmentSlug?: string
 ) {
+  // Accept accidental multi-segment URLs by normalizing path separators.
+  const normalizedSlug = String(slug ?? "")
+    .replace(/\/+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
   if (environmentSlug) {
     const cached = getCachedEnvironment(environmentSlug);
-    const hit = cached?.products.find((p) => p.slug === slug);
+    const hit = cached?.products.find(
+      (p) => p.slug === slug || p.slug === normalizedSlug
+    );
     if (hit && cached) {
-      return hydrateProductFromCache(hit, environmentSlug, cached.name, cached.id);
+      try {
+        return hydrateProductFromCache(
+          hit,
+          environmentSlug,
+          cached.name,
+          cached.id
+        );
+      } catch (error) {
+        console.error("[products] cache hydrate failed for slug:", slug, error);
+      }
     }
   }
 
@@ -525,7 +543,7 @@ export const getProductBySlug = cache(async function getProductBySlug(
 
     const product = await prisma.product.findFirst({
       where: {
-        slug,
+        OR: [{ slug }, ...(normalizedSlug !== slug ? [{ slug: normalizedSlug }] : [])],
         status: ProductStatus.ACTIVE,
         deletedAt: null,
         ...(environmentId ? { environmentId } : {}),
@@ -557,9 +575,21 @@ export async function getProductVariantFamily(
         .sort((a, b) =>
           compareVariantLabels(a.variantLabel ?? null, b.variantLabel ?? null)
         )
-        .map((hit) =>
-          hydrateProductFromCache(hit, environmentSlug, cached.name, cached.id)
-        );
+        .flatMap((hit) => {
+          try {
+            return [
+              hydrateProductFromCache(
+                hit,
+                environmentSlug,
+                cached.name,
+                cached.id
+              ),
+            ];
+          } catch (error) {
+            console.error("[products] variant hydrate failed:", hit.slug, error);
+            return [];
+          }
+        });
     }
   }
 
@@ -645,9 +675,21 @@ export async function getRelatedProducts(
           return true;
         })
         .slice(0, limit)
-        .map((hit) =>
-          hydrateProductFromCache(hit, environmentSlug, cached.name, cached.id)
-        );
+        .flatMap((hit) => {
+          try {
+            return [
+              hydrateProductFromCache(
+                hit,
+                environmentSlug,
+                cached.name,
+                cached.id
+              ),
+            ];
+          } catch (error) {
+            console.error("[products] related hydrate failed:", hit.slug, error);
+            return [];
+          }
+        });
       if (related.length > 0) return related;
     }
   }

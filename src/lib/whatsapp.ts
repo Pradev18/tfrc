@@ -62,7 +62,9 @@ function buildProductPageUrl(
   if (!siteUrl?.trim()) return "";
   const base = siteUrl.replace(/\/$/, "");
   const envPrefix = item.environmentSlug ? `/${item.environmentSlug}` : "";
-  return `${base}${envPrefix}/product/${item.slug}`;
+  return `${base}${envPrefix}/product/${String(item.slug ?? "")
+    .replace(/\/+/g, "-")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
 }
 
 function formatOrderItemLine(

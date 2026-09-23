@@ -19,6 +19,7 @@ import {
   formatAvailableSizes,
   productDisplayTitle,
 } from "@/lib/product-variants";
+import { productPath as buildProductPath } from "@/lib/product-url";
 import { useT } from "@/context/LanguageContext";
 
 interface ProductCardProps {
@@ -61,16 +62,18 @@ export function ProductCard({
   const v = getEnvVisual(environmentSlug);
   const { pricing } = mapProductPrices(selectedProduct);
   const primaryImage =
-    selectedProduct.images.find((image) => image.isPrimary) ?? selectedProduct.images[0];
+    selectedProduct.images?.find((image) => image.isPrimary) ??
+    selectedProduct.images?.[0];
   const showPrimaryImage =
     Boolean(primaryImage?.url) && failedImageUrl !== primaryImage?.url;
   const inStock = selectedProduct.inventory?.isInStock ?? true;
   // Build-time catalog caches created before video export was added may omit
   // this relation. Never let a stale cache payload crash the whole storefront.
   const hasVideo = (selectedProduct.videos?.length ?? 0) > 0;
-  const productPath = `/${environmentSlug}/product/${selectedProduct.slug}${
-    selectedVariantId ? "?sizeSelected=1" : ""
-  }`;
+  const productPath = `${buildProductPath(
+    environmentSlug,
+    selectedProduct.slug
+  )}${selectedVariantId ? "?sizeSelected=1" : ""}`;
   const compact = variant === "compact";
   const itemCode = selectedProduct.productId || selectedProduct.sku || "";
   const selectedTitle = productDisplayTitle(

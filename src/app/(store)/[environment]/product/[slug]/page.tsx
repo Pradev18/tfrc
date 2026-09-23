@@ -16,6 +16,7 @@ import { generateWhatsAppLinkSync, buildWhatsAppMessage } from "@/lib/whatsapp";
 import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { buildProductMetadata } from "@/lib/meta-seo";
 import { getSiteUrl } from "@/lib/site-config";
+import { productPath } from "@/lib/product-url";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 import { ProductViewTracker } from "@/components/analytics/ProductViewTracker";
 import { TranslatedText } from "@/components/i18n/TranslatedText";
@@ -103,21 +104,22 @@ function buildProductSpecs(product: {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { environment: envSlug, slug } = await params;
-  const product = await getProductBySlug(slug, envSlug);
-  const env = await resolveEnvironment(envSlug);
+  const product = await getProductBySlug(slug, envSlug).catch(() => null);
+  const env = await resolveEnvironment(envSlug).catch(() => null);
   if (!product || !env) return { title: "Product Not Found" };
 
   const { pricing } = mapProductPrices(product);
   const title = product.seoTitle ?? `${product.name} – ${pricing.displayPrice} QAR`;
   const description =
     product.seoDescription ?? product.shortDescription ?? product.description?.slice(0, 160) ?? product.name;
-  const primaryImage = product.images.find((i) => i.isPrimary) ?? product.images[0];
+  const primaryImage =
+    product.images?.find((i) => i.isPrimary) ?? product.images?.[0];
   const inStock = product.inventory?.isInStock ?? true;
 
   return buildProductMetadata({
     title,
     description,
-    path: `/${envSlug}/product/${product.slug}`,
+    path: productPath(envSlug, product.slug),
     image: primaryImage?.url,
     imageAlt: product.name,
     price: pricing.displayPrice,
@@ -132,10 +134,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function EnvironmentProductPage({ params, searchParams }: PageProps) {
   const { environment: envSlug, slug } = await params;
   const query = await searchParams;
-  const environment = await resolveEnvironment(envSlug);
+  const environment = await resolveEnvironment(envSlug).catch(() => null);
   if (!environment) notFound();
 
-  const product = await getProductBySlug(slug, envSlug);
+  const product = await getProductBySlug(slug, envSlug).catch(() => null);
   if (!product) notFound();
 
   const v = getEnvVisual(envSlug);
@@ -148,7 +150,8 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
   const { pricing } = mapProductPrices(product);
   const siteUrl = getSiteUrl();
   const inStock = product.inventory?.isInStock ?? true;
-  const primaryImage = product.images.find((i) => i.isPrimary) ?? product.images[0];
+  const primaryImage =
+    product.images?.find((i) => i.isPrimary) ?? product.images?.[0];
   const itemCode = product.productId || product.sku || "";
   const title = productDisplayName(product.name, product.productId);
   const shortCopy = crispDescription(product.shortDescription, product.description);
@@ -208,11 +211,11 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
     name: product.name,
     description: product.description,
     sku: product.sku,
-    image: product.images.map((i) => i.url),
+    image: (product.images ?? []).map((i) => i.url),
     brand: product.brand ? { "@type": "Brand", name: product.brand.name } : undefined,
     offers: {
       "@type": "Offer",
-      url: `${siteUrl}/${envSlug}/product/${product.slug}`,
+      url: `${siteUrl}${productPath(envSlug, product.slug)}`,
       priceCurrency: pricing.currency,
       price: pricing.displayPrice,
       availability: inStock
@@ -247,7 +250,7 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
           <div className="mt-4 grid gap-8 lg:grid-cols-[1fr_380px] lg:gap-10 xl:grid-cols-[1fr_420px]">
             <div>
               <ProductGallery
-                images={product.images}
+                images={product.images ?? []}
                 videos={product.videos}
                 productName={title}
               />
@@ -311,7 +314,10 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
                     price: mapProductPrices(variant).pricing.displayPrice,
                     currency: mapProductPrices(variant).pricing.currency,
                     imageUrl:
-                      (variant.images.find((image) => image.isPrimary) ?? variant.images[0])?.url,
+                      (
+                        variant.images?.find((image) => image.isPrimary) ??
+                        variant.images?.[0]
+                      )?.url,
                   }))}
                   initialSizeSelected={query.sizeSelected === "1"}
                 />

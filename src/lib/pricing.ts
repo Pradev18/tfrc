@@ -16,18 +16,19 @@ interface PriceInput {
 }
 
 export interface ProductWithPrices {
-  prices: Array<{
+  prices?: Array<{
     type: string;
     amount: number;
     currency: string;
     saleStart?: Date | string | null;
     saleEnd?: Date | string | null;
-  }>;
+  }> | null;
 }
 
 export function mapProductPrices(product: ProductWithPrices) {
-  const regular = product.prices.find((price) => price.type === "REGULAR");
-  const sale = product.prices.find((price) => price.type === "SALE");
+  const prices = product.prices ?? [];
+  const regular = prices.find((price) => price.type === "REGULAR");
+  const sale = prices.find((price) => price.type === "SALE");
   const pricing = getEffectivePrice({
     regular: regular?.amount ?? 0,
     sale: sale?.amount,
