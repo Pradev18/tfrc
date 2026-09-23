@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Lock } from "lucide-react";
 import { TfrcBrand } from "@/components/brand/TfrcBrand";
 import { WhatsAppIcon } from "@/components/icons/WhatsAppIcon";
 import { LANDING_PORTALS } from "@/lib/platform-images";
@@ -21,7 +22,9 @@ export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps)
       href={`/${portal.slug}`}
       className="landing-portal-card group landing-fade-up flex w-32 flex-col items-center sm:w-36"
       style={{ animationDelay: `${index * 0.07}s` }}
-      aria-label={portal.displayName}
+      aria-label={
+        portal.isLocked ? `${portal.displayName} (locked)` : portal.displayName
+      }
     >
       <div
         className="catalogue-logo catalogue-logo--landing relative h-28 w-28 sm:h-32 sm:w-32"
@@ -39,6 +42,14 @@ export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps)
             {portal.displayName.charAt(0)}
           </div>
         )}
+        {portal.isLocked ? (
+          <span
+            className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full bg-[#141414] text-white shadow-sm"
+            title="Password required"
+          >
+            <Lock className="h-3.5 w-3.5" aria-hidden />
+          </span>
+        ) : null}
       </div>
       <span className="mt-3 w-full truncate text-center text-sm font-semibold text-[#292522] sm:text-[15px]">
         {portal.displayName}

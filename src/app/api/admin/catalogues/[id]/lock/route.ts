@@ -13,6 +13,7 @@ import {
   requireCatalogueUnlocked,
   verifyCatalogueLockPassword,
 } from "@/lib/catalogue-lock";
+import { persistRuntimeCatalogueDataSafely } from "@/lib/persist-runtime-data.server";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -91,6 +92,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         );
       }
       await enableCatalogueLock(id, password);
+      void persistRuntimeCatalogueDataSafely();
       const res = NextResponse.json({ ok: true, isLocked: true, unlocked: true });
       applyCatalogueUnlockCookie(res, id);
       return res;
@@ -122,6 +124,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       }
       const alreadyUnlocked = await hasCatalogueUnlockCookie(id);
       await enableCatalogueLock(id, password);
+      void persistRuntimeCatalogueDataSafely();
       const res = NextResponse.json({
         ok: true,
         isLocked: true,
@@ -137,6 +140,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     if (action === "disable") {
       await disableCatalogueLock(id, password);
+      void persistRuntimeCatalogueDataSafely();
       const res = NextResponse.json({ ok: true, isLocked: false, unlocked: true });
       clearCatalogueUnlockCookie(res, id);
       return res;

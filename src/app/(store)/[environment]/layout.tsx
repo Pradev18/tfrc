@@ -17,6 +17,7 @@ import { CustomerActivityTracker } from "@/components/analytics/CustomerActivity
 import {
   hasCatalogueUnlockCookie,
   isCatalogueLockedFromSettings,
+  getCatalogueLockState,
 } from "@/lib/catalogue-lock";
 import { StoreCatalogueUnlockGate } from "@/components/public/StoreCatalogueUnlockGate";
 
@@ -96,13 +97,15 @@ export default async function EnvironmentLayout({ children, params }: LayoutProp
   const v = getEnvVisual(slug);
 
   // Same admin catalogue lock also gates the public storefront.
-  // Unlocked catalogues are unchanged. Static fallbacks cannot be locked.
+  // Always verify against the live DB state (cache settings can be stale).
   let needsUnlock = false;
-  if (
-    !environment.id.startsWith("static-") &&
-    isCatalogueLockedFromSettings(environment.settings)
-  ) {
-    needsUnlock = !(await hasCatalogueUnlockCookie(environment.id));
+  if (!environment.id.startsWith("static-")) {
+    const lockState = await getCatalogueLockState(environment.id);
+    const locked =
+      lockState.isLocked || isCatalogueLockedFromSettings(environment.settings);
+    if (locked) {
+      needsUnlock = !(await hasCatalogueUnlockCookie(environment.id));
+    }
   }
 
   return (

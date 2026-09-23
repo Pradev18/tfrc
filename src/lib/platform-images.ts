@@ -13,6 +13,8 @@ export interface LandingPortal {
   displayName: string;
   tagline: string;
   image: string;
+  /** True when admin catalogue lock is enabled (public password gate). */
+  isLocked?: boolean;
 }
 
 export const LANDING_PORTALS: LandingPortal[] = ENVIRONMENT_CONFIGS.map((env) => ({

@@ -114,7 +114,26 @@ export const getActiveEnvironments = cache(async function getActiveEnvironments(
 
 export const getEnvironmentBySlug = cache(async function getEnvironmentBySlug(slug: string) {
   const fromCache = environmentFromCacheOrConfig(slug);
-  if (fromCache) return fromCache;
+  if (fromCache) {
+    // Catalog-cache can lag behind admin lock toggles. Always refresh id/settings
+    // from SQLite so public catalogue lock stays in sync with admin.
+    try {
+      const fresh = await prisma.environment.findUnique({
+        where: { slug },
+        select: { id: true, settings: true, status: true },
+      });
+      if (fresh && fresh.status === "ACTIVE") {
+        return {
+          ...fromCache,
+          id: fresh.id,
+          settings: fresh.settings,
+        };
+      }
+    } catch (error) {
+      console.error("[env] lock settings refresh failed:", error);
+    }
+    return fromCache;
+  }
 
   try {
     const env = await prisma.environment.findUnique({ where: { slug } });

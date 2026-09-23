@@ -312,6 +312,7 @@ export async function generateShopCategories(environmentId: string, slug: string
 export async function getLandingPortalsFromDb() {
   try {
     const { getActiveEnvironments } = await import("@/services/environment.service");
+    const { isCatalogueLockedFromSettings } = await import("@/lib/catalogue-lock");
     const envs = await getActiveEnvironments();
     return envs
       .filter((env) => !env.slug.startsWith("replace-persist-"))
@@ -332,6 +333,7 @@ export async function getLandingPortalsFromDb() {
           displayName: env.name,
           tagline: env.tagline ?? "",
           image,
+          isLocked: isCatalogueLockedFromSettings(env.settings),
         };
       });
   } catch (error) {

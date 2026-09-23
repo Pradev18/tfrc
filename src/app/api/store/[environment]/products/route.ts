@@ -6,6 +6,7 @@ import type { StoreSort } from "@/lib/store-catalog-filter";
 import {
   hasCatalogueUnlockCookie,
   isCatalogueLockedFromSettings,
+  getCatalogueLockState,
 } from "@/lib/catalogue-lock";
 
 const SORT_VALUES: StoreSort[] = [
@@ -29,29 +30,29 @@ export async function GET(
     }
 
     const env = await resolveEnvironment(environment);
-    if (
-      env &&
-      !env.id.startsWith("static-") &&
-      isCatalogueLockedFromSettings(env.settings) &&
-      !(await hasCatalogueUnlockCookie(env.id))
-    ) {
-      return NextResponse.json(
-        {
-          error: "This catalogue is locked. Enter the catalogue password to continue.",
-          locked: true,
-          items: [],
-          total: 0,
-          page: 1,
-          limit: STORE_PAGE_SIZE,
-          totalPages: 0,
-        },
-        {
-          status: 423,
-          headers: {
-            "Cache-Control": "private, no-store, max-age=0",
+    if (env && !env.id.startsWith("static-")) {
+      const lockState = await getCatalogueLockState(env.id);
+      const locked =
+        lockState.isLocked || isCatalogueLockedFromSettings(env.settings);
+      if (locked && !(await hasCatalogueUnlockCookie(env.id))) {
+        return NextResponse.json(
+          {
+            error: "This catalogue is locked. Enter the catalogue password to continue.",
+            locked: true,
+            items: [],
+            total: 0,
+            page: 1,
+            limit: STORE_PAGE_SIZE,
+            totalPages: 0,
           },
-        }
-      );
+          {
+            status: 423,
+            headers: {
+              "Cache-Control": "private, no-store, max-age=0",
+            },
+          }
+        );
+      }
     }
 
     const sp = request.nextUrl.searchParams;
