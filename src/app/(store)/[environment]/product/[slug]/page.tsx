@@ -13,7 +13,11 @@ import {
   mapProductPrices,
 } from "@/services/product.service";
 import { resolveEnvironment } from "@/services/environment.service";
-import { generateWhatsAppLinkSync, buildWhatsAppMessage } from "@/lib/whatsapp";
+import {
+  generateWhatsAppLinkSync,
+  buildWhatsAppMessage,
+  normalizeWhatsAppSettings,
+} from "@/lib/whatsapp";
 import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { buildProductMetadata } from "@/lib/meta-seo";
 import { getSiteUrl } from "@/lib/site-config";
@@ -152,7 +156,7 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
 
   try {
   const v = getEnvVisual(envSlug);
-  const [related, variants, waSettings] = await Promise.all([
+  const [related, variants, waSettingsRaw] = await Promise.all([
     getRelatedProducts(product, 8, environment.id).catch(() => []),
     getProductVariantFamily(product).catch(() => []),
     getWhatsAppSettings().catch(async () => {
@@ -160,6 +164,7 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
       return DEFAULT_WHATSAPP_SETTINGS;
     }),
   ]);
+  const waSettings = normalizeWhatsAppSettings(waSettingsRaw);
 
   const { pricing } = mapProductPrices(product);
   const siteUrl = getSiteUrl();

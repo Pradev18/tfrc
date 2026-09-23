@@ -38,21 +38,57 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   closingMessage: "Please confirm availability and delivery details. Thank you.",
 };
 
+/** Accept legacy/partial DB settings without ever breaking storefront ordering. */
+export function normalizeWhatsAppSettings(
+  value?: Partial<WhatsAppSettings> | null
+): WhatsAppSettings {
+  const text = (input: unknown, fallback: string): string => {
+    const normalized = typeof input === "string" ? input.trim() : "";
+    return normalized || fallback;
+  };
+  const phone = String(value?.phoneNumber ?? "").replace(/\D/g, "");
+  return {
+    phoneNumber: phone || DEFAULT_WHATSAPP_SETTINGS.phoneNumber,
+    defaultGreeting: text(
+      value?.defaultGreeting,
+      DEFAULT_WHATSAPP_SETTINGS.defaultGreeting
+    ),
+    orderIntro: text(
+      value?.orderIntro,
+      DEFAULT_WHATSAPP_SETTINGS.orderIntro ?? ""
+    ),
+    productTemplate: text(
+      value?.productTemplate,
+      DEFAULT_WHATSAPP_SETTINGS.productTemplate
+    ),
+    closingMessage: text(
+      value?.closingMessage,
+      DEFAULT_WHATSAPP_SETTINGS.closingMessage ?? ""
+    ),
+  };
+}
+
 export function interpolateTemplate(
   template: string,
   vars: Record<string, string>
 ): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? "");
+  return String(template ?? "").replace(
+    /\{\{(\w+)\}\}/g,
+    (_, key) => vars[key] ?? ""
+  );
 }
 
 /** Strip broken replacement chars from greetings copied across encodings */
 function cleanGreeting(greeting: string): string {
-  return greeting.replace(/\uFFFD/g, "").trim();
+  return String(greeting ?? "").replace(/\uFFFD/g, "").trim();
 }
 
 function cleanProductName(name: string, productId: string): string {
-  const escapedId = productId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return name.replace(new RegExp(`(?:\\s+${escapedId})+$`, "i"), "").trim();
+  const safeId = String(productId ?? "");
+  const escapedId = safeId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(name ?? "")
+    .replace(new RegExp(`(?:\\s+${escapedId})+$`, "i"), "")
+    .trim();
 }
 
 function buildProductPageUrl(
@@ -81,7 +117,9 @@ function formatOrderItemLine(
       ? `${formatCurrency(item.displayPrice, item.currency ?? "QAR")} × ${qty}`
       : formatCurrency(item.displayPrice, item.currency ?? "QAR");
   const link = buildProductPageUrl(item, siteUrl);
-  const template = settings.productTemplate.trim() || DEFAULT_WHATSAPP_SETTINGS.productTemplate;
+  const template =
+    settings.productTemplate?.trim() ||
+    DEFAULT_WHATSAPP_SETTINGS.productTemplate;
   let formatted = interpolateTemplate(template, {
     index: String(index),
     name: cleanProductName(item.name, item.productId),

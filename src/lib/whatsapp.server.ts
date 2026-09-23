@@ -4,6 +4,7 @@ import prisma from "@/lib/db";
 import { cache } from "react";
 import {
   DEFAULT_WHATSAPP_SETTINGS,
+  normalizeWhatsAppSettings,
   type WhatsAppSettings,
 } from "@/lib/whatsapp";
 
@@ -27,15 +28,17 @@ export const getWhatsAppSettings = cache(async function getWhatsAppSettings(): P
       }),
     ]);
 
-    const value = !setting
-      ? DEFAULT_WHATSAPP_SETTINGS
-      : {
-          phoneNumber: setting.phoneNumber.replace(/\D/g, ""),
-          defaultGreeting: setting.defaultGreeting,
-          orderIntro: setting.orderIntro,
-          productTemplate: setting.productTemplate,
-          closingMessage: setting.closingMessage,
-        };
+    const value = normalizeWhatsAppSettings(
+      setting
+        ? {
+            phoneNumber: setting.phoneNumber,
+            defaultGreeting: setting.defaultGreeting,
+            orderIntro: setting.orderIntro,
+            productTemplate: setting.productTemplate,
+            closingMessage: setting.closingMessage,
+          }
+        : DEFAULT_WHATSAPP_SETTINGS
+    );
 
     memoryHit = { value, storedAt: Date.now() };
     return value;
