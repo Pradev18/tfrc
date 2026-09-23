@@ -79,6 +79,10 @@ export function ProductCard({
   )}${selectedVariantId ? "?sizeSelected=1" : ""}`;
   const compact = variant === "compact";
   const itemCode = selectedProduct.productId || selectedProduct.sku || "";
+  const itemNo =
+    typeof (selectedProduct as { itemNo?: number | null }).itemNo === "number"
+      ? (selectedProduct as { itemNo?: number | null }).itemNo
+      : null;
   const selectedTitle = productDisplayTitle(
     selectedProduct.name,
     selectedProduct.productId
@@ -210,9 +214,11 @@ export function ProductCard({
             >
               {title}
             </p>
-            {itemCode ? (
+            {itemNo != null || itemCode ? (
               <p className="mt-1 font-sans text-[11px] tabular-nums" style={{ color: v.muted }}>
-                {t("product.itemCode", { code: itemCode })}
+                {itemNo != null ? t("product.itemNo", { no: String(itemNo) }) : null}
+                {itemNo != null && itemCode ? " · " : null}
+                {itemCode ? t("product.itemCode", { code: itemCode }) : null}
               </p>
             ) : null}
             {availableSizesLabel ? (

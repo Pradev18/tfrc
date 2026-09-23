@@ -42,8 +42,8 @@ export const arQA: Dictionary = {
     allBrands: "كل العلامات",
     newest: "الأحدث",
     featured: "مميز",
-    itemNoAsc: "رقم الصنف ↑",
-    itemNoDesc: "رقم الصنف ↓",
+    itemNoAsc: "رقم الصنف ↑ (Excel)",
+    itemNoDesc: "رقم الصنف ↓ (Excel)",
     itemCodeAsc: "رمز الصنف ↑",
     itemCodeDesc: "رمز الصنف ↓",
     priceAsc: "السعر ↑",
@@ -75,6 +75,7 @@ export const arQA: Dictionary = {
   },
 
   product: {
+    itemNo: "رقم الصنف: {no}",
     itemCode: "رمز الصنف: {code}",
     sizesAvailable: "المقاسات المتوفرة: {sizes}",
     selectSize: "اختر المقاس",

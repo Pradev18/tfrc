@@ -40,8 +40,8 @@ export const en = {
     allBrands: "All brands",
     newest: "Newest",
     featured: "Featured",
-    itemNoAsc: "Item no ↑",
-    itemNoDesc: "Item no ↓",
+    itemNoAsc: "Item no ↑ (Excel)",
+    itemNoDesc: "Item no ↓ (Excel)",
     itemCodeAsc: "Item code ↑",
     itemCodeDesc: "Item code ↓",
     priceAsc: "Price ↑",
@@ -73,6 +73,7 @@ export const en = {
   },
 
   product: {
+    itemNo: "Item no: {no}",
     itemCode: "Item code: {code}",
     sizesAvailable: "Sizes available: {sizes}",
     selectSize: "Select size",

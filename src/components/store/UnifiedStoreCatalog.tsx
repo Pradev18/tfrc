@@ -74,7 +74,10 @@ export function UnifiedStoreCatalog({
   const filtersRef = useRef(filters);
   const [searchInput, setSearchInput] = useState(filters.q);
   const [focusedCategorySlug, setFocusedCategorySlug] = useState<string | null>(null);
-  const [showAllProducts, setShowAllProducts] = useState(false);
+  const [showAllProducts, setShowAllProducts] = useState(() => {
+    const sort = parseStoreFilters(Object.fromEntries(searchParams.entries())).sort;
+    return sort === "item_no_asc" || sort === "item_no_desc";
+  });
 
   const debouncedQ = useDebouncedValue(searchInput, STORE_SEARCH_DEBOUNCE_MS);
 
@@ -168,9 +171,12 @@ export function UnifiedStoreCatalog({
 
   const syncFilters = useCallback(
     (patch: Partial<StoreFilters>) => {
-      setFocusedCategorySlug(null);
-      setShowAllProducts(false);
       const next = { ...filtersRef.current, ...patch };
+      const itemNoSort =
+        next.sort === "item_no_asc" || next.sort === "item_no_desc";
+      // Item no sort = full Excel catalogue order (1…N), not a single category slice.
+      setFocusedCategorySlug(null);
+      setShowAllProducts(itemNoSort);
       filtersRef.current = next;
       setFilters(next);
       if ("q" in patch && patch.q !== undefined) setSearchInput(patch.q);
