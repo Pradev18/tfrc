@@ -123,10 +123,14 @@ export function CatalogueFilters({ shopCategories, brands, environmentSlug }: Ca
       <div>
         <p className={labelClass}>Sort</p>
         <UiSelect
-          value={searchParams.get("sort") ?? "newest"}
+          value={searchParams.get("sort") ?? "item_no_asc"}
           onValueChange={(value) => update("sort", value)}
           ariaLabel="Sort products"
           options={[
+            { value: "item_no_asc", label: "Item no ↑" },
+            { value: "item_no_desc", label: "Item no ↓" },
+            { value: "item_code_asc", label: "Item code ↑" },
+            { value: "item_code_desc", label: "Item code ↓" },
             { value: "newest", label: "Newest" },
             { value: "featured", label: "Featured" },
             { value: "price_asc", label: "Price: Low to High" },

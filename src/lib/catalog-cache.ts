@@ -19,6 +19,7 @@ export interface CachedProduct {
   name: string;
   slug: string;
   sku: string | null;
+  itemNo?: number | null;
   description: string | null;
   shortDescription: string | null;
   isFeatured: boolean;
@@ -171,6 +172,18 @@ export function removeCachedEnvironment(slug: string): void {
   }
 }
 
+type CatalogCacheSort =
+  | "featured"
+  | "newest"
+  | "price_asc"
+  | "price_desc"
+  | "discount"
+  | "name"
+  | "item_no_asc"
+  | "item_no_desc"
+  | "item_code_asc"
+  | "item_code_desc";
+
 export function getCachedProducts(
   slug: string,
   opts: {
@@ -183,6 +196,7 @@ export function getCachedProducts(
     shopSlug?: string | null;
     shopDefs?: ShopCategoryDef[];
     includeVariants?: boolean;
+    sort?: CatalogCacheSort;
   } = {}
 ) {
   const env = getCachedEnvironment(slug);
@@ -238,6 +252,10 @@ export function getCachedProducts(
     });
   }
 
+  if (opts.sort) {
+    items = sortCachedProducts(items, opts.sort);
+  }
+
   const page = opts.page ?? 1;
   const limit = opts.limit ?? 24;
   const start = (page - 1) * limit;
@@ -276,4 +294,64 @@ export function getCachedProducts(
     limit,
     totalPages: Math.max(1, Math.ceil(items.length / limit)),
   };
+}
+
+function sortCachedProducts(
+  products: CachedProduct[],
+  sort: CatalogCacheSort
+): CachedProduct[] {
+  const list = [...products];
+  const priceOf = (p: CachedProduct) => {
+    const sale = p.prices?.find((x) => x.type === "SALE")?.amount;
+    const regular = p.prices?.find((x) => x.type === "REGULAR")?.amount;
+    return sale ?? regular ?? 0;
+  };
+  const discountOf = (p: CachedProduct) => {
+    const sale = p.prices?.find((x) => x.type === "SALE")?.amount;
+    const regular = p.prices?.find((x) => x.type === "REGULAR")?.amount;
+    if (sale == null || regular == null || regular <= 0) return 0;
+    return ((regular - sale) / regular) * 100;
+  };
+  const itemNoCmp = (a: CachedProduct, b: CachedProduct, dir: "asc" | "desc") => {
+    const an = a.itemNo;
+    const bn = b.itemNo;
+    if (an == null && bn == null) {
+      return a.productId.localeCompare(b.productId, undefined, { numeric: true });
+    }
+    if (an == null) return 1;
+    if (bn == null) return -1;
+    const diff = an - bn;
+    if (diff !== 0) return dir === "asc" ? diff : -diff;
+    return a.productId.localeCompare(b.productId, undefined, { numeric: true });
+  };
+
+  switch (sort) {
+    case "featured":
+      return list.sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured));
+    case "name":
+      return list.sort((a, b) => a.name.localeCompare(b.name));
+    case "price_asc":
+      return list.sort((a, b) => priceOf(a) - priceOf(b));
+    case "price_desc":
+      return list.sort((a, b) => priceOf(b) - priceOf(a));
+    case "discount":
+      return list.sort((a, b) => discountOf(b) - discountOf(a));
+    case "item_no_asc":
+      return list.sort((a, b) => itemNoCmp(a, b, "asc"));
+    case "item_no_desc":
+      return list.sort((a, b) => itemNoCmp(a, b, "desc"));
+    case "item_code_asc":
+      return list.sort((a, b) =>
+        a.productId.localeCompare(b.productId, undefined, { numeric: true })
+      );
+    case "item_code_desc":
+      return list.sort((a, b) =>
+        b.productId.localeCompare(a.productId, undefined, { numeric: true })
+      );
+    case "newest":
+    default:
+      return list.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+  }
 }

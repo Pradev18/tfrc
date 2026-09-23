@@ -1,7 +1,9 @@
 import prisma from "@/lib/db";
 import {
   OTHER_SHOP_CATEGORY,
+  excelTaxonomyLeafSlug,
   resolvePrimaryShopCategory,
+  shouldUseStrictExcelCategories,
   type ShopCategoryDef,
 } from "@/lib/shop-categories";
 
@@ -28,17 +30,31 @@ export async function syncEnvironmentShopCategories(
     },
   });
 
+  const defSlugs = new Set(defs.map((def) => def.slug));
+  const strictExcel = shouldUseStrictExcelCategories(products);
+
   const updates = new Map<string, string[]>();
   for (const product of products) {
-    const primary = resolvePrimaryShopCategory(
-      {
-        name: product.name,
-        googleCategory: product.googleCategory,
-        fbCategory: product.fbCategory,
-      },
-      defs
-    );
-    const nextSlug = primary?.slug ?? OTHER_SHOP_CATEGORY.slug;
+    const excelSlug = excelTaxonomyLeafSlug(product);
+    let nextSlug: string;
+
+    // TFRC-style Excel: always bucket by the Excel category column, never by product name.
+    if (strictExcel && excelSlug) {
+      nextSlug = excelSlug;
+    } else if (excelSlug && defSlugs.has(excelSlug)) {
+      nextSlug = excelSlug;
+    } else {
+      const primary = resolvePrimaryShopCategory(
+        {
+          name: product.name,
+          googleCategory: product.googleCategory,
+          fbCategory: product.fbCategory,
+        },
+        defs
+      );
+      nextSlug = primary?.slug ?? OTHER_SHOP_CATEGORY.slug;
+    }
+
     if (product.shopCategorySlug === nextSlug) continue;
     const ids = updates.get(nextSlug) ?? [];
     ids.push(product.id);
@@ -69,6 +85,14 @@ export function resolveShopCategorySlugForProduct(
   },
   defs: ShopCategoryDef[]
 ): string {
+  const excelSlug = excelTaxonomyLeafSlug(product);
+  if (
+    excelSlug &&
+    (shouldUseStrictExcelCategories([product]) ||
+      defs.some((d) => d.slug === excelSlug))
+  ) {
+    return excelSlug;
+  }
   return (
     resolvePrimaryShopCategory(
       {

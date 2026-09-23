@@ -27,6 +27,7 @@ export async function refreshCatalogCacheFromDatabase(): Promise<void> {
           name: true,
           slug: true,
           sku: true,
+          itemNo: true,
           description: true,
           shortDescription: true,
           isFeatured: true,

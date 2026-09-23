@@ -4,7 +4,6 @@ import { mapProductPrices } from "@/lib/pricing";
 import { getEnvironmentIdBySlug } from "@/services/environment.service";
 import { getDepartmentForSlug } from "@/lib/environments";
 import {
-  getEffectiveShopCategoryDefs,
   OTHER_SHOP_CATEGORY,
 } from "@/lib/shop-categories";
 import { getCachedEnvironment, getCachedProducts } from "@/lib/catalog-cache";
@@ -24,7 +23,17 @@ export interface ProductFilters {
   tag?: string;
   minPrice?: number;
   maxPrice?: number;
-  sort?: "featured" | "newest" | "price_asc" | "price_desc" | "discount" | "name";
+  sort?:
+    | "featured"
+    | "newest"
+    | "price_asc"
+    | "price_desc"
+    | "discount"
+    | "name"
+    | "item_no_asc"
+    | "item_no_desc"
+    | "item_code_asc"
+    | "item_code_desc";
   page?: number;
   limit?: number;
   listMode?: boolean;
@@ -191,21 +200,8 @@ function getProductsFromCatalogCache(filters: ProductFilters) {
   const cachedEnvironment = getCachedEnvironment(filters.environmentSlug);
   if (!cachedEnvironment?.products.length) return null;
 
-  const categoryDefs = getEffectiveShopCategoryDefs(
-    filters.environmentSlug,
-    cachedEnvironment.products.map((product) => product.name)
-  );
-  const selectedCategory = categoryDefs.find(
-    (category) => category.slug === filters.shopCategorySlug
-  );
-  if (
-    filters.shopCategorySlug &&
-    filters.shopCategorySlug !== OTHER_SHOP_CATEGORY.slug &&
-    !selectedCategory
-  ) {
-    return { items: [] as ProductListItem[], total: 0, page, limit, totalPages: 0 };
-  }
-
+  // Filter by Excel-assigned shopCategorySlug — same buckets as admin / category chips.
+  // Do not remap through preset packs (Tea Sets / Kitchen & Home / etc.).
   const cached = getCachedProducts(filters.environmentSlug, {
     page,
     limit,
@@ -214,8 +210,8 @@ function getProductsFromCatalogCache(filters: ProductFilters) {
     onSale: filters.onSale,
     inStock: filters.inStock,
     shopSlug: filters.shopCategorySlug,
-    shopDefs: categoryDefs,
     includeVariants: filters.includeVariants,
+    sort: filters.sort,
   });
   if (!cached) return null;
 
@@ -333,7 +329,8 @@ async function getProductsFromPrisma(filters: ProductFilters = {}) {
     where.prices = { some: { type: "SALE" } };
   }
 
-  let orderBy: Prisma.ProductOrderByWithRelationInput = { createdAt: "desc" };
+  let orderBy: Prisma.ProductOrderByWithRelationInput | Prisma.ProductOrderByWithRelationInput[] =
+    { createdAt: "desc" };
 
   switch (filters.sort) {
     case "featured":
@@ -341,6 +338,18 @@ async function getProductsFromPrisma(filters: ProductFilters = {}) {
       break;
     case "name":
       orderBy = { name: "asc" };
+      break;
+    case "item_no_asc":
+      orderBy = [{ itemNo: "asc" }, { productId: "asc" }];
+      break;
+    case "item_no_desc":
+      orderBy = [{ itemNo: "desc" }, { productId: "desc" }];
+      break;
+    case "item_code_asc":
+      orderBy = { productId: "asc" };
+      break;
+    case "item_code_desc":
+      orderBy = { productId: "desc" };
       break;
     case "newest":
       orderBy = { createdAt: "desc" };

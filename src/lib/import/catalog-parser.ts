@@ -9,6 +9,7 @@ import { extractPhoneFromWaLink } from "@/lib/whatsapp";
 
 export interface CatalogRow {
   rowNumber: number;
+  item_no: number | null;
   id: string;
   title: string;
   description: string;
@@ -68,6 +69,18 @@ function parseAdditionalImages(value: unknown): string[] {
     .split(",")
     .map((u) => u.trim())
     .filter((u) => u.startsWith("http"));
+}
+
+function parseItemNo(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const n = Math.trunc(value);
+    return n > 0 ? n : null;
+  }
+  const raw = cellStr(value).replace(/,/g, "");
+  if (!raw) return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 function parseTags(row: Record<string, unknown>): string[] {
@@ -182,6 +195,9 @@ function mapSheetRowsToCatalog(
 
     rows.push({
       rowNumber: rowNum,
+      item_no: parseItemNo(
+        row.item_no ?? row.item_number ?? row.itemno ?? row["item no"]
+      ),
       id,
       title,
       description: cellStr(row.description),

@@ -12,6 +12,10 @@ interface CatalogueToolbarProps {
 const SORT_LABELS: Record<string, string> = {
   newest: "Newest",
   featured: "Featured",
+  item_no_asc: "Item no ↑",
+  item_no_desc: "Item no ↓",
+  item_code_asc: "Item code ↑",
+  item_code_desc: "Item code ↓",
   price_asc: "Price: Low to High",
   price_desc: "Price: High to Low",
   discount: "Biggest Discount",

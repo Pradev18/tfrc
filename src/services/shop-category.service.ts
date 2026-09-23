@@ -71,20 +71,67 @@ function getShopCategoriesFromCache(environmentSlug: string): ShopCategoryItem[]
   const cached = getCachedEnvironment(environmentSlug);
   if (!cached) return [];
 
-  const defs = getEffectiveShopCategoryDefs(
-    environmentSlug,
-    cached.products.map((p) => p.name)
+  const products = cached.products.filter((item) => item.isVariantPrimary !== false);
+  if (products.length === 0) return [];
+
+  // 1) Excel-assigned shopCategorySlug (same buckets as admin).
+  const hasAssignedSlugs = products.some(
+    (product) =>
+      Boolean(product.shopCategorySlug) &&
+      product.shopCategorySlug !== OTHER_SHOP_CATEGORY.slug
   );
 
-  const buckets = new Map<string, typeof cached.products>();
+  if (hasAssignedSlugs) {
+    return bucketCachedProductsBySlug(
+      products,
+      (product) => product.shopCategorySlug?.trim() || OTHER_SHOP_CATEGORY.slug
+    );
+  }
+
+  // 2) Stale cache without slugs but with Excel google_product_category —
+  //    bucket by Excel leaf. NEVER remap into household packs.
+  const hasExcelTaxonomy = products.some((product) =>
+    Boolean(product.googleCategory?.trim() || product.fbCategory?.trim())
+  );
+  if (hasExcelTaxonomy) {
+    return bucketCachedProductsBySlug(products, (product) => {
+      const path = (product.googleCategory || product.fbCategory || "").trim();
+      if (!path) return OTHER_SHOP_CATEGORY.slug;
+      const leaf = path.includes(">")
+        ? path.split(">").pop()!.trim()
+        : path.includes("/")
+          ? path.split("/").pop()!.trim()
+          : path;
+      if (!leaf) return OTHER_SHOP_CATEGORY.slug;
+      const slug = leaf
+        .toLowerCase()
+        .replace(/&/g, " and ")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 48);
+      return slug || OTHER_SHOP_CATEGORY.slug;
+    });
+  }
+
+  // 3) Legacy fallback only when products have no Excel taxonomy at all.
+  const defs = getEffectiveShopCategoryDefs(
+    environmentSlug,
+    products.map((p) => p.name)
+  );
+
+  const buckets = new Map<string, typeof products>();
   for (const def of defs) buckets.set(def.slug, []);
   buckets.set(OTHER_SHOP_CATEGORY.slug, []);
 
-  // Match the product grid: variants are represented by their primary card.
-  for (const product of cached.products.filter(
-    (item) => item.isVariantPrimary !== false
-  )) {
-    const primary = resolvePrimaryShopCategory({ name: product.name }, defs);
+  for (const product of products) {
+    const primary = resolvePrimaryShopCategory(
+      {
+        name: product.name,
+        googleCategory: product.googleCategory,
+        fbCategory: product.fbCategory,
+      },
+      defs
+    );
     const slug = primary?.slug ?? OTHER_SHOP_CATEGORY.slug;
     buckets.get(slug)!.push(product);
   }
@@ -97,7 +144,7 @@ function getShopCategoriesFromCache(environmentSlug: string): ShopCategoryItem[]
         slug: def.slug,
         name: def.name,
         productCount: matched.length,
-        imageUrl: matched[0]?.images[0]?.url ?? null,
+        imageUrl: matched[0]?.images?.[0]?.url ?? null,
       };
     })
     .filter(Boolean) as ShopCategoryItem[];
@@ -108,11 +155,78 @@ function getShopCategoriesFromCache(environmentSlug: string): ShopCategoryItem[]
       slug: OTHER_SHOP_CATEGORY.slug,
       name: OTHER_SHOP_CATEGORY.name,
       productCount: other.length,
-      imageUrl: other[0]?.images[0]?.url ?? null,
+      imageUrl: other[0]?.images?.[0]?.url ?? null,
     });
   }
 
   return items;
+}
+
+function bucketCachedProductsBySlug(
+  products: Array<{
+    shopCategorySlug?: string | null;
+    googleCategory?: string | null;
+    fbCategory?: string | null;
+    images?: Array<{ url: string }>;
+  }>,
+  slugOf: (product: (typeof products)[number]) => string
+): ShopCategoryItem[] {
+  const buckets = new Map<string, typeof products>();
+  for (const product of products) {
+    const slug = slugOf(product);
+    const list = buckets.get(slug) ?? [];
+    list.push(product);
+    buckets.set(slug, list);
+  }
+
+  const items: ShopCategoryItem[] = [];
+  for (const [slug, matched] of buckets) {
+    if (matched.length === 0) continue;
+    if (slug === OTHER_SHOP_CATEGORY.slug) continue;
+    items.push({
+      slug,
+      name: displayNameFromCachedProducts(slug, matched),
+      productCount: matched.length,
+      imageUrl: matched[0]?.images?.[0]?.url ?? null,
+    });
+  }
+
+  items.sort((a, b) => b.productCount - a.productCount || a.name.localeCompare(b.name));
+
+  const other = buckets.get(OTHER_SHOP_CATEGORY.slug) ?? [];
+  if (other.length > 0) {
+    items.push({
+      slug: OTHER_SHOP_CATEGORY.slug,
+      name: OTHER_SHOP_CATEGORY.name,
+      productCount: other.length,
+      imageUrl: other[0]?.images?.[0]?.url ?? null,
+    });
+  }
+  return items;
+}
+
+function displayNameFromCachedProducts(
+  slug: string,
+  products: Array<{ googleCategory?: string | null; fbCategory?: string | null }>
+): string {
+  for (const product of products) {
+    const path = (product.googleCategory || product.fbCategory || "").trim();
+    if (!path) continue;
+    const leaf = path.includes(">")
+      ? path.split(">").pop()!.trim()
+      : path.includes("/")
+        ? path.split("/").pop()!.trim()
+        : path;
+    if (!leaf) continue;
+    const leafSlug = leaf
+      .toLowerCase()
+      .replace(/&/g, " and ")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48);
+    if (leafSlug === slug) return leaf;
+  }
+  return slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<ShopCategoryItem[]> {
@@ -144,7 +258,19 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
   const mostlyUncategorized =
     totalActive > 0 && uncategorized / totalActive >= 0.45;
 
-  if (mostlyUncategorized || defs.length === 0) {
+  const assignedCounts = await prisma.product.groupBy({
+    by: ["shopCategorySlug"],
+    where: {
+      ...baseWhere,
+      shopCategorySlug: { not: null },
+      NOT: { shopCategorySlug: OTHER_SHOP_CATEGORY.slug },
+    },
+    _count: { _all: true },
+  });
+  const hasAssignedSlugs = assignedCounts.some((row) => (row._count._all ?? 0) > 0);
+
+  // Name-based remapping only when products were never assigned Excel slugs.
+  if (!hasAssignedSlugs && (mostlyUncategorized || defs.length === 0)) {
     const fromCache = getShopCategoriesFromCache(environmentSlug);
     if (fromCache.length > 0) return fromCache;
 
@@ -202,7 +328,7 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
     return items;
   }
 
-  if (defs.length === 0) return [];
+  if (defs.length === 0 && !hasAssignedSlugs) return [];
 
   const counts = await prisma.product.groupBy({
     by: ["shopCategorySlug"],
@@ -232,10 +358,13 @@ async function getShopCategoriesFromPrisma(environmentSlug: string): Promise<Sho
   });
   const imageBySlug = new Map(dbRows.map((r) => [r.slug, r.imageUrl]));
 
-  const slugsNeedingThumb = defs
-    .map((d) => d.slug)
-    .concat(OTHER_SHOP_CATEGORY.slug)
-    .filter((slug) => (countBySlug.get(slug) ?? 0) > 0 && !imageBySlug.get(slug));
+  const slugsNeedingThumb = [
+    ...defs.map((d) => d.slug),
+    ...[...countBySlug.keys()].filter(
+      (slug) => slug !== OTHER_SHOP_CATEGORY.slug && !defs.some((d) => d.slug === slug)
+    ),
+    OTHER_SHOP_CATEGORY.slug,
+  ].filter((slug) => (countBySlug.get(slug) ?? 0) > 0 && !imageBySlug.get(slug));
 
   const thumbBySlug = new Map<string, string | null>();
   await Promise.all(

@@ -335,12 +335,46 @@ export function getShopCategoryDefs(environmentSlug: string): ShopCategoryDef[] 
 }
 
 /**
- * Pick the best keyword pack for ANY catalogue (including newly created ones).
- * Never requires the catalogue slug to be pawmart/hardware/household.
- *
- * When Excel already has google_product_category filled for most products,
- * prefer those names on the shop — do not force a household/pet/tools pack
- * that makes the owner look like they miscategorised the file.
+ * True when the upload looks like a TFRC-style sheet: most products have
+ * google_product_category filled with short custom labels
+ * (e.g. "Tea Cup", "Camping Tent") rather than full Google taxonomy paths.
+ */
+export function shouldUseStrictExcelCategories(
+  products: ShopCategoryProductInput[]
+): boolean {
+  if (products.length === 0) return false;
+  const filled = products.filter((p) =>
+    Boolean(p.googleCategory?.trim() || p.fbCategory?.trim())
+  );
+  if (filled.length === 0) return false;
+  if (filled.length / products.length < 0.4) return false;
+
+  const shortLabels = filled.filter((p) => {
+    const path = (p.googleCategory || p.fbCategory || "").trim();
+    return Boolean(path) && !path.includes(">") && !path.includes("/");
+  });
+  return shortLabels.length / filled.length >= 0.5;
+}
+
+/** Leaf slug from Excel google_product_category / fb_product_category. */
+export function excelTaxonomyLeafSlug(
+  product: ShopCategoryProductInput
+): string | null {
+  const path = (product.googleCategory || product.fbCategory || "").trim();
+  if (!path) return null;
+  const segments = path
+    .split(/>|\//)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const leaf = segments[segments.length - 1];
+  if (!leaf) return null;
+  const slug = slugifyCategoryLabel(leaf);
+  return slug || null;
+}
+
+/**
+ * Pick categories for ANY catalogue (including newly created ones).
+ * TFRC-style Excel uploads always follow google_product_category exactly.
  */
 export function resolveCatalogueShopCategoryPack(input: {
   slug?: string | null;
@@ -355,31 +389,22 @@ export function resolveCatalogueShopCategoryPack(input: {
     input.products ??
     (input.productNames ?? []).map((name) => ({ name }));
 
-  const curatedSlugs = new Set(["pawmart", "hardware", "household"]);
-  const known = slug && SHOP_CATEGORIES[slug]?.length ? SHOP_CATEGORIES[slug]! : null;
-
-  const withExcelCategory = productInputs.filter((product) =>
-    Boolean((product.googleCategory || product.fbCategory || "").trim())
-  ).length;
-  const excelCoverage =
-    productInputs.length > 0 ? withExcelCategory / productInputs.length : 0;
-  const taxonomy = discoverShopCategoriesFromTaxonomy(productInputs, 24);
-
-  // Excel taxonomy wins for custom catalogues (and for curated ones that fit poorly).
-  if (taxonomy.length >= 2 && excelCoverage >= 0.5) {
-    if (!known || !curatedSlugs.has(slug)) {
-      return taxonomy;
-    }
-    const otherRatio = estimateOtherRatio(productInputs, known);
-    if (otherRatio >= 0.45) return taxonomy;
+  // Upcoming Excel uploads like TFRC template: categories = Excel column values.
+  // Never remap into household / pet / hardware packs.
+  if (shouldUseStrictExcelCategories(productInputs)) {
+    const taxonomy = discoverShopCategoriesFromTaxonomy(productInputs);
+    if (taxonomy.length > 0) return taxonomy;
   }
 
-  if (known) {
+  // Curated catalogues (pawmart / hardware / household) keep their packs
+  // unless Excel short-labels already handled above.
+  if (slug && SHOP_CATEGORIES[slug]?.length) {
+    const known = SHOP_CATEGORIES[slug]!;
     if (productInputs.length === 0) return known;
     const otherRatio = estimateOtherRatio(productInputs, known);
     if (otherRatio < 0.45) return known;
+    const taxonomy = discoverShopCategoriesFromTaxonomy(productInputs);
     if (taxonomy.length === 0) return known;
-    // Keep known pack, append taxonomy buckets so Excel categories still surface.
     const seen = new Set(known.map((d) => d.slug));
     const merged = [...known];
     for (const def of taxonomy) {
@@ -388,6 +413,15 @@ export function resolveCatalogueShopCategoryPack(input: {
       merged.push({ ...def, sortOrder: known.length + merged.length });
     }
     return merged;
+  }
+
+  // Any Excel taxonomy (including full Google paths) beats name-keyword packs.
+  const hasExcelTaxonomy = productInputs.some((p) =>
+    Boolean(p.googleCategory?.trim() || p.fbCategory?.trim())
+  );
+  if (hasExcelTaxonomy) {
+    const taxonomy = discoverShopCategoriesFromTaxonomy(productInputs);
+    if (taxonomy.length > 0) return taxonomy;
   }
 
   const haystack = [
@@ -450,16 +484,16 @@ export function resolveCatalogueShopCategoryPack(input: {
     pack = SHOP_CATEGORIES.household ?? [];
   }
 
-  // If a keyword pack would dump most products into "More to explore",
-  // prefer Excel taxonomy (google/fb category) discovery instead.
   if (pack.length > 0 && productInputs.length > 0) {
     const otherRatio = estimateOtherRatio(productInputs, pack);
     if (otherRatio >= 0.45) {
+      const taxonomy = discoverShopCategoriesFromTaxonomy(productInputs);
       if (taxonomy.length > 0) return taxonomy;
     }
     return pack;
   }
 
+  const taxonomy = discoverShopCategoriesFromTaxonomy(productInputs);
   if (taxonomy.length > 0) return taxonomy;
 
   if (productInputs.length > 0) {
@@ -478,21 +512,13 @@ function slugifyCategoryLabel(label: string): string {
     .slice(0, 48);
 }
 
-function titleCaseLabel(label: string): string {
-  return label
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ");
-}
-
 /**
  * Build shop categories from Excel google_product_category / fb_product_category
  * leaf segments — the real taxonomy already present in Meta uploads.
  */
 export function discoverShopCategoriesFromTaxonomy(
   products: ShopCategoryProductInput[],
-  maxCategories = 12
+  maxCategories = 200
 ): ShopCategoryDef[] {
   const freq = new Map<
     string,
@@ -500,7 +526,7 @@ export function discoverShopCategoriesFromTaxonomy(
   >();
 
   for (const product of products) {
-    const path = product.googleCategory || product.fbCategory || "";
+    const path = (product.googleCategory || product.fbCategory || "").trim();
     const segments = path
       .split(/>|\//)
       .map((part) => part.trim())
@@ -510,34 +536,35 @@ export function discoverShopCategoriesFromTaxonomy(
     const leaf = segments[segments.length - 1]!;
     const parent = segments.length > 1 ? segments[segments.length - 2] : null;
     const slug = slugifyCategoryLabel(leaf);
-    if (!slug || slug.length < 3) continue;
+    if (!slug || slug.length < 2) continue;
 
     const entry = freq.get(slug) ?? {
       count: 0,
+      // Keep the Excel label spelling as-is (first seen).
       label: leaf,
       keywords: new Set<string>(),
     };
     entry.count += 1;
     entry.keywords.add(leaf.toLowerCase());
     for (const token of leaf.toLowerCase().split(/[^a-z0-9]+/)) {
-      if (token.length >= 4 && !STOP_WORDS.has(token)) entry.keywords.add(token);
+      if (token.length >= 3 && !STOP_WORDS.has(token)) entry.keywords.add(token);
     }
     if (parent) {
       entry.keywords.add(parent.toLowerCase());
       for (const token of parent.toLowerCase().split(/[^a-z0-9]+/)) {
-        if (token.length >= 4 && !STOP_WORDS.has(token)) entry.keywords.add(token);
+        if (token.length >= 3 && !STOP_WORDS.has(token)) entry.keywords.add(token);
       }
     }
     freq.set(slug, entry);
   }
 
   return [...freq.entries()]
-    .filter(([, meta]) => meta.count >= 2)
+    .filter(([, meta]) => meta.count >= 1)
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, maxCategories)
     .map(([slug, meta], index) => ({
       slug,
-      name: titleCaseLabel(meta.label),
+      name: meta.label.trim(),
       keywords: [...meta.keywords],
       sortOrder: index + 1,
     }));
@@ -600,6 +627,22 @@ export function resolvePrimaryShopCategory(
   defs: ShopCategoryDef[]
 ): ShopCategoryDef | null {
   const product = normalizeProductInput(input);
+
+  // Exact Excel leaf → category slug match first (same labeling as the upload sheet).
+  const taxonomyPath = (product.googleCategory || product.fbCategory || "").trim();
+  if (taxonomyPath) {
+    const segments = taxonomyPath
+      .split(/>|\//)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const leaf = segments[segments.length - 1];
+    if (leaf) {
+      const leafSlug = slugifyCategoryLabel(leaf);
+      const exact = defs.find((def) => !def.isFallback && def.slug === leafSlug);
+      if (exact) return exact;
+    }
+  }
+
   const text = buildMatchText(product).toLowerCase();
   let best: ShopCategoryDef | null = null;
   let bestScore = 0;

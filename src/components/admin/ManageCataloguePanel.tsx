@@ -19,6 +19,7 @@ interface ProductRow {
   id: string;
   name: string;
   productId: string;
+  itemNo?: number | null;
   status: string;
   prices: { amount: number; type: string }[];
   inventory?: { quantity: number; isInStock: boolean } | null;
@@ -50,6 +51,7 @@ export function ManageCataloguePanel({
   const [q, setQ] = useState("");
   const [appliedQ, setAppliedQ] = useState("");
   const [selectedCategorySlug, setSelectedCategorySlug] = useState("");
+  const [sort, setSort] = useState("item_no_asc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(15);
   const [loading, setLoading] = useState(false);
@@ -68,7 +70,7 @@ export function ManageCataloguePanel({
     setError("");
     try {
       const res = await fetch(
-        `/api/admin/catalogues/${catalogueId}/products?q=${encodeURIComponent(appliedQ)}&shop=${encodeURIComponent(selectedCategorySlug)}&page=${page}&limit=${pageSize}&_=${Date.now()}`,
+        `/api/admin/catalogues/${catalogueId}/products?q=${encodeURIComponent(appliedQ)}&shop=${encodeURIComponent(selectedCategorySlug)}&sort=${encodeURIComponent(sort)}&page=${page}&limit=${pageSize}&_=${Date.now()}`,
         { cache: "no-store", headers: { "Cache-Control": "no-store" } }
       );
       const data = await res.json();
@@ -86,7 +88,7 @@ export function ManageCataloguePanel({
     } finally {
       setLoading(false);
     }
-  }, [appliedQ, catalogueId, selectedCategorySlug, page, pageSize]);
+  }, [appliedQ, catalogueId, selectedCategorySlug, sort, page, pageSize]);
 
   const loadCategories = useCallback(async () => {
     const res = await fetch(`/api/admin/catalogues/${catalogueId}/categories?_=${Date.now()}`, {
@@ -388,6 +390,22 @@ export function ManageCataloguePanel({
               placeholder="Search products…"
               className="min-w-0 flex-1 rounded-lg border border-border px-3 py-2 text-sm"
             />
+            <UiSelect
+              value={sort}
+              onValueChange={(value) => {
+                setSort(value);
+                setPage(1);
+              }}
+              ariaLabel="Sort products"
+              options={[
+                { value: "item_no_asc", label: "Item no ↑" },
+                { value: "item_no_desc", label: "Item no ↓" },
+                { value: "item_code_asc", label: "Item code ↑" },
+                { value: "item_code_desc", label: "Item code ↓" },
+                { value: "updated", label: "Recently updated" },
+              ]}
+              className="min-h-[44px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm sm:w-52"
+            />
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={searchProducts} className="btn-primary px-4 py-2 text-sm">
                 Search
@@ -452,6 +470,7 @@ export function ManageCataloguePanel({
                           }}
                         />
                         <p className="text-xs text-text-muted">
+                          {p.itemNo != null ? `#${p.itemNo} · ` : ""}
                           {p.productId} · {p.brand?.name ?? "No brand"} · {p.status}
                         </p>
                       </div>

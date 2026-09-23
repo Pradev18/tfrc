@@ -60,7 +60,7 @@ export function StickyStoreToolbar({
       filters.brand ||
       filters.sale ||
       filters.inStock ||
-      filters.sort !== "newest" ||
+      filters.sort !== "item_no_asc" ||
       Boolean(activeCategorySlug)
   );
 
@@ -125,6 +125,10 @@ export function StickyStoreToolbar({
               }
               ariaLabel={t("store.sortProducts")}
               options={[
+                { value: "item_no_asc", label: t("store.itemNoAsc") },
+                { value: "item_no_desc", label: t("store.itemNoDesc") },
+                { value: "item_code_asc", label: t("store.itemCodeAsc") },
+                { value: "item_code_desc", label: t("store.itemCodeDesc") },
                 { value: "newest", label: t("store.newest") },
                 { value: "featured", label: t("store.featured") },
                 { value: "price_asc", label: t("store.priceAsc") },

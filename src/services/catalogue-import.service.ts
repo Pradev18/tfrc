@@ -289,6 +289,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
       const productData = {
         productId: row.id,
         sku: row.id,
+        itemNo: row.item_no,
         name: row.title,
         slug,
         description: row.description,

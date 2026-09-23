@@ -23,6 +23,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
   const sp = req.nextUrl.searchParams;
   const q = sp.get("q")?.trim() ?? "";
   const shop = sp.get("shop")?.trim() ?? "";
+  const sort = sp.get("sort")?.trim() ?? "updated";
   const page = Math.max(1, parseInt(sp.get("page") ?? "1", 10) || 1);
   const limit = Math.min(50, Math.max(1, parseInt(sp.get("limit") ?? "20", 10) || 20));
   const skip = (page - 1) * limit;
@@ -58,7 +59,16 @@ export async function GET(req: NextRequest, context: RouteContext) {
   const [products, total, catalogueTotal] = await Promise.all([
     prisma.product.findMany({
       where,
-      orderBy: { updatedAt: "desc" },
+      orderBy:
+        sort === "item_no_asc"
+          ? [{ itemNo: "asc" }, { productId: "asc" }]
+          : sort === "item_no_desc"
+            ? [{ itemNo: "desc" }, { productId: "desc" }]
+            : sort === "item_code_asc"
+              ? { productId: "asc" }
+              : sort === "item_code_desc"
+                ? { productId: "desc" }
+                : { updatedAt: "desc" },
       skip,
       take: limit,
       include: {

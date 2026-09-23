@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 
 export const META_CATALOGUE_HEADERS = [
+  "item_no",
   "id",
   "title",
   "description",
@@ -25,6 +26,7 @@ export const META_CATALOGUE_HEADERS = [
 ] as const;
 
 const EXAMPLE_ROW = [
+  "1",
   "NEW-1001",
   "Sample product name",
   "Short product description",

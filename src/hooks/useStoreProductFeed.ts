@@ -30,7 +30,7 @@ export interface InitialStoreFeed extends FeedPayload {
 const FEED_CACHE_TTL_MS = 30_000;
 // Bust stale CDN responses created by older deployments. Current API responses
 // are no-store; this version prevents an already-cached empty feed from winning.
-const STORE_FEED_SCHEMA_VERSION = "20260921-2";
+const STORE_FEED_SCHEMA_VERSION = "20260923-item-sort";
 const feedCache = new Map<string, { data: FeedPayload; storedAt: number }>();
 const prefetching = new Map<string, Promise<FeedPayload | null>>();
 

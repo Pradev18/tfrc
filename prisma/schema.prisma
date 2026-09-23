@@ -204,6 +204,8 @@ model Product {
   id               String                 @id @default(cuid())
   productId        String                 @unique
   sku              String                 @unique
+  /** Optional Excel row number (item_no column) for catalogue sort order. */
+  itemNo           Int?
   name             String
   slug             String                 @unique
   shortDescription String?
@@ -261,6 +263,7 @@ model Product {
   @@index([environmentId, shopCategorySlug])
   @@index([environmentId, variantGroupKey, isVariantPrimary])
   @@index([environmentId, status, isVariantPrimary, deletedAt])
+  @@index([environmentId, itemNo])
 }
 
 enum ProductStatus {

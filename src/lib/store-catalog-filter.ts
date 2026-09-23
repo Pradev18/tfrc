@@ -6,7 +6,17 @@ import {
   resolvePrimaryShopCategory,
 } from "@/lib/shop-categories";
 
-export type StoreSort = "featured" | "newest" | "price_asc" | "price_desc" | "discount" | "name";
+export type StoreSort =
+  | "featured"
+  | "newest"
+  | "price_asc"
+  | "price_desc"
+  | "discount"
+  | "name"
+  | "item_no_asc"
+  | "item_no_desc"
+  | "item_code_asc"
+  | "item_code_desc";
 const STORE_SORTS = new Set<StoreSort>([
   "featured",
   "newest",
@@ -14,6 +24,10 @@ const STORE_SORTS = new Set<StoreSort>([
   "price_desc",
   "discount",
   "name",
+  "item_no_asc",
+  "item_no_desc",
+  "item_code_asc",
+  "item_code_desc",
 ]);
 
 export interface StoreFilters {
@@ -37,7 +51,7 @@ export const DEFAULT_STORE_FILTERS: StoreFilters = {
   brand: null,
   sale: false,
   inStock: false,
-  sort: "newest",
+  sort: "item_no_asc",
 };
 
 export function parseStoreFilters(params: Record<string, string | undefined>): StoreFilters {
@@ -48,7 +62,7 @@ export function parseStoreFilters(params: Record<string, string | undefined>): S
     brand: params.brand ?? null,
     sale: params.sale === "true",
     inStock: params.inStock === "true",
-    sort: requestedSort && STORE_SORTS.has(requestedSort) ? requestedSort : "newest",
+    sort: requestedSort && STORE_SORTS.has(requestedSort) ? requestedSort : "item_no_asc",
   };
 }
 
@@ -77,12 +91,45 @@ export function sortProducts(
           (mapProductPrices(b).pricing.discountPercent ?? 0) -
           (mapProductPrices(a).pricing.discountPercent ?? 0)
       );
+    case "item_no_asc":
+      return list.sort((a, b) => compareItemNo(a, b, "asc"));
+    case "item_no_desc":
+      return list.sort((a, b) => compareItemNo(a, b, "desc"));
+    case "item_code_asc":
+      return list.sort((a, b) =>
+        String(a.productId).localeCompare(String(b.productId), undefined, { numeric: true })
+      );
+    case "item_code_desc":
+      return list.sort((a, b) =>
+        String(b.productId).localeCompare(String(a.productId), undefined, { numeric: true })
+      );
     case "newest":
     default:
       return list.sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
   }
+}
+
+function compareItemNo(
+  a: { itemNo?: number | null; productId?: string },
+  b: { itemNo?: number | null; productId?: string },
+  direction: "asc" | "desc"
+): number {
+  const an = a.itemNo;
+  const bn = b.itemNo;
+  if (an == null && bn == null) {
+    return String(a.productId ?? "").localeCompare(String(b.productId ?? ""), undefined, {
+      numeric: true,
+    });
+  }
+  if (an == null) return 1;
+  if (bn == null) return -1;
+  const diff = an - bn;
+  if (diff !== 0) return direction === "asc" ? diff : -diff;
+  return String(a.productId ?? "").localeCompare(String(b.productId ?? ""), undefined, {
+    numeric: true,
+  });
 }
 
 export function filterProducts(
@@ -121,6 +168,62 @@ export function groupProductsByShopCategory(
   products: ProductWithRelations[],
   environmentSlug: string
 ): CategoryProductGroup[] {
+  const hasAssignedSlugs = products.some((product) => {
+    const slug = (product as { shopCategorySlug?: string | null }).shopCategorySlug;
+    return Boolean(slug) && slug !== OTHER_SHOP_CATEGORY.slug;
+  });
+
+  if (hasAssignedSlugs) {
+    const buckets = new Map<string, ProductWithRelations[]>();
+    const names = new Map<string, string>();
+
+    for (const product of products) {
+      const slug =
+        (product as { shopCategorySlug?: string | null }).shopCategorySlug?.trim() ||
+        OTHER_SHOP_CATEGORY.slug;
+      const list = buckets.get(slug) ?? [];
+      list.push(product);
+      buckets.set(slug, list);
+
+      if (!names.has(slug) && slug !== OTHER_SHOP_CATEGORY.slug) {
+        const path = (
+          (product as { googleCategory?: string | null }).googleCategory ||
+          (product as { fbCategory?: string | null }).fbCategory ||
+          ""
+        ).trim();
+        if (path) {
+          const leaf = path.includes(">")
+            ? path.split(">").pop()!.trim()
+            : path.includes("/")
+              ? path.split("/").pop()!.trim()
+              : path;
+          if (leaf) names.set(slug, leaf);
+        }
+      }
+    }
+
+    const groups: CategoryProductGroup[] = [...buckets.entries()]
+      .filter(([slug, list]) => slug !== OTHER_SHOP_CATEGORY.slug && list.length > 0)
+      .map(([slug, list]) => ({
+        slug,
+        name:
+          names.get(slug) ??
+          slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        products: list,
+      }))
+      .sort((a, b) => b.products.length - a.products.length || a.name.localeCompare(b.name));
+
+    const other = buckets.get(OTHER_SHOP_CATEGORY.slug) ?? [];
+    if (other.length > 0) {
+      groups.push({
+        slug: OTHER_SHOP_CATEGORY.slug,
+        name: OTHER_SHOP_CATEGORY.name,
+        products: other,
+      });
+    }
+    return groups;
+  }
+
   const defs = getEffectiveShopCategoryDefs(
     environmentSlug,
     products.map((p) => p.name)
@@ -170,6 +273,6 @@ export function filtersToSearchParams(filters: StoreFilters): URLSearchParams {
   if (filters.brand) params.set("brand", filters.brand);
   if (filters.sale) params.set("sale", "true");
   if (filters.inStock) params.set("inStock", "true");
-  if (filters.sort !== "newest") params.set("sort", filters.sort);
+  if (filters.sort !== "item_no_asc") params.set("sort", filters.sort);
   return params;
 }

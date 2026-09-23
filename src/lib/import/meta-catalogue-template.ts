@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 
 export const META_CATALOGUE_TEMPLATE_HEADERS = [
+  "item_no",
   "id",
   "title",
   "description",
@@ -24,6 +25,7 @@ export const META_CATALOGUE_TEMPLATE_HEADERS = [
 export const PAWMART_TEMPLATE_ROWS: Array<Record<(typeof META_CATALOGUE_TEMPLATE_HEADERS)[number], string>> =
   [
     {
+      item_no: "1",
       id: "TFRC-PM-EXAMPLE-001",
       title: "Black Pet Hat (L)",
       description: "Soft black pet hat. Size Large. Replace this example row with your own product.",
@@ -44,6 +46,7 @@ export const PAWMART_TEMPLATE_ROWS: Array<Record<(typeof META_CATALOGUE_TEMPLATE
       link: "",
     },
     {
+      item_no: "2",
       id: "TFRC-PM-EXAMPLE-002",
       title: "Black Pet Hat (M)",
       description: "Soft black pet hat. Size Medium. Same product family as the Large hat.",
@@ -64,6 +67,7 @@ export const PAWMART_TEMPLATE_ROWS: Array<Record<(typeof META_CATALOGUE_TEMPLATE
       link: "",
     },
     {
+      item_no: "3",
       id: "TFRC-PM-EXAMPLE-003",
       title: "Foldable Pet Carrier",
       description: "Lightweight foldable carrier for cats and small dogs. Replace with your product.",
@@ -94,12 +98,13 @@ const INSTRUCTIONS = [
   ["Keep the first sheet named Meta Catalogue. Do not rename or delete the header row."],
   [""],
   ["Required columns you must fill for every product:"],
-  ["id", "Unique product code. Do not reuse an ID from another catalogue."],
+  ["id", "Unique product code (item code). Do not reuse an ID from another catalogue."],
   ["title", "Product name, for example Black Pet Hat (L)"],
   ["price", "Write as QAR 45.00"],
   ["image_link", "Full https image URL"],
   [""],
   ["Optional but useful:"],
+  ["item_no", "Row number for sorting (1, 2, 3…). Used by Item no ↑ / ↓ filters."],
   ["sale_price", "Must be lower than price"],
   ["size", "L, M, S, XL"],
   ["item_group_id", "Same value for all sizes of one product"],
