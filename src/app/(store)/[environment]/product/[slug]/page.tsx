@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { breadcrumbSchema } from "@/components/public/Breadcrumbs";
+import { breadcrumbSchema } from "@/lib/breadcrumb-schema";
 import {
   getProductBySlug,
   getProductVariantFamily,
