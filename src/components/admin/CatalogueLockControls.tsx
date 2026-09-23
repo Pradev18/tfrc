@@ -101,8 +101,8 @@ export function CatalogueLockControls({
           </h2>
           <p className="mt-1 text-sm text-text-muted">
             {localLocked
-              ? "Locked — password is required every time someone opens this catalogue."
-              : "Optional. Lock this catalogue so staff must enter a password before managing it."}
+              ? "Locked — the same password is required in admin and on the public catalogue page before browsing or ordering."
+              : "Optional. Lock this catalogue so staff and customers must enter a password before opening it."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

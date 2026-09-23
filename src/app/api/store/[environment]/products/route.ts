@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isValidEnvironmentSlug } from "@/services/environment.service";
+import { isValidEnvironmentSlug, resolveEnvironment } from "@/services/environment.service";
 import { getProducts } from "@/services/product.service";
 import { STORE_MAX_PAGE_SIZE, STORE_PAGE_SIZE } from "@/lib/store-constants";
 import type { StoreSort } from "@/lib/store-catalog-filter";
+import {
+  hasCatalogueUnlockCookie,
+  isCatalogueLockedFromSettings,
+} from "@/lib/catalogue-lock";
 
 const SORT_VALUES: StoreSort[] = [
   "featured",
@@ -22,6 +26,32 @@ export async function GET(
   try {
     if (!(await isValidEnvironmentSlug(environment))) {
       return NextResponse.json({ error: "Invalid environment" }, { status: 404 });
+    }
+
+    const env = await resolveEnvironment(environment);
+    if (
+      env &&
+      !env.id.startsWith("static-") &&
+      isCatalogueLockedFromSettings(env.settings) &&
+      !(await hasCatalogueUnlockCookie(env.id))
+    ) {
+      return NextResponse.json(
+        {
+          error: "This catalogue is locked. Enter the catalogue password to continue.",
+          locked: true,
+          items: [],
+          total: 0,
+          page: 1,
+          limit: STORE_PAGE_SIZE,
+          totalPages: 0,
+        },
+        {
+          status: 423,
+          headers: {
+            "Cache-Control": "private, no-store, max-age=0",
+          },
+        }
+      );
     }
 
     const sp = request.nextUrl.searchParams;

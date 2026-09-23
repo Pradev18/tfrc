@@ -14,6 +14,11 @@ import { getEnvironmentHeroImages } from "@/services/category.service";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 import { getEnvironmentConfig } from "@/lib/environments";
 import { CustomerActivityTracker } from "@/components/analytics/CustomerActivityTracker";
+import {
+  hasCatalogueUnlockCookie,
+  isCatalogueLockedFromSettings,
+} from "@/lib/catalogue-lock";
+import { StoreCatalogueUnlockGate } from "@/components/public/StoreCatalogueUnlockGate";
 
 export const revalidate = 60;
 
@@ -90,6 +95,16 @@ export default async function EnvironmentLayout({ children, params }: LayoutProp
 
   const v = getEnvVisual(slug);
 
+  // Same admin catalogue lock also gates the public storefront.
+  // Unlocked catalogues are unchanged. Static fallbacks cannot be locked.
+  let needsUnlock = false;
+  if (
+    !environment.id.startsWith("static-") &&
+    isCatalogueLockedFromSettings(environment.settings)
+  ) {
+    needsUnlock = !(await hasCatalogueUnlockCookie(environment.id));
+  }
+
   return (
     <div style={{ ...envStyle(v), backgroundColor: v.sectionAlt }} className="overflow-x-clip">
       <CustomerActivityTracker
@@ -99,7 +114,16 @@ export default async function EnvironmentLayout({ children, params }: LayoutProp
       <Suspense fallback={<StoreHeaderFallback environment={environment} />}>
         <StoreHeader environment={environment} />
       </Suspense>
-      <main>{children}</main>
+      <main>
+        {needsUnlock ? (
+          <StoreCatalogueUnlockGate
+            environmentSlug={slug}
+            environmentName={environment.config.displayName}
+          />
+        ) : (
+          children
+        )}
+      </main>
       <StoreFooter environment={environment} />
     </div>
   );
