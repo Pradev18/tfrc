@@ -89,7 +89,80 @@ export async function readReportImportWorkbook(importId: string): Promise<Buffer
 }
 
 export async function deleteReportImportWorkbook(importId: string): Promise<void> {
+  if (!/^[a-z0-9_-]+$/i.test(importId)) return;
   await deleteEverywhere(`${importId}.xlsx`);
+  await deleteReportParsedArtifacts(importId);
+}
+
+export type ReportParsedMeta = {
+  inventorySheetName: string;
+  imageSheetName: string | null;
+  iqsSheetName: string | null;
+  inventoryHeaders: string[];
+  columnMap: Record<string, string>;
+  duplicateInventoryCodes: string[];
+  iqsFormMeta: Record<string, string>;
+  iqsSeedRows: Array<{ itemCode: string; wholesalePriceApproval: string }>;
+  inventoryRowCount: number;
+  imageLinkCount: number;
+  uniqueItemCount: number;
+  inventoryChunks: number;
+  imageChunks: number;
+  rowsPerChunk: number;
+};
+
+export function reportParsedOutDir(): string {
+  return writeDirectories()[0] ?? path.join(process.cwd(), "uploads", "report-imports");
+}
+
+export async function readReportParsedMeta(
+  importId: string
+): Promise<ReportParsedMeta | null> {
+  if (!/^[a-z0-9_-]+$/i.test(importId)) return null;
+  const raw = await readFirst(`${importId}.parsed-meta.json`);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw.toString("utf8")) as ReportParsedMeta;
+  } catch {
+    return null;
+  }
+}
+
+export async function readReportParsedChunkLines(
+  importId: string,
+  kind: "inv" | "img",
+  chunkIndex: number
+): Promise<string[]> {
+  if (!/^[a-z0-9_-]+$/i.test(importId)) return [];
+  if (!Number.isInteger(chunkIndex) || chunkIndex < 0) return [];
+  const raw = await readFirst(`${importId}.${kind}.${chunkIndex}.jsonl`);
+  if (!raw) return [];
+  return raw
+    .toString("utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+export async function deleteReportParsedArtifacts(importId: string): Promise<void> {
+  if (!/^[a-z0-9_-]+$/i.test(importId)) return;
+  await deleteEverywhere(`${importId}.parsed-meta.json`);
+  for (const dir of storeDirectories()) {
+    try {
+      const names = await readdir(dir);
+      await Promise.all(
+        names
+          .filter(
+            (name) =>
+              name.startsWith(`${importId}.inv.`) ||
+              name.startsWith(`${importId}.img.`)
+          )
+          .map((name) => unlink(path.join(dir, name)).catch(() => null))
+      );
+    } catch {
+      // ignore
+    }
+  }
 }
 
 type UploadMeta = {

@@ -36,8 +36,8 @@ type ReportListItem = {
 const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
 /** Keep each JSON chunk small so Hostinger/Cloudflare WAF does not 403 the upload. */
 const UPLOAD_CHUNK_BYTES = 256 * 1024;
-/** Short pause between ingest POSTs — long enough for shop reads, not crawl-speed. */
-const INGEST_YIELD_MS = 45;
+/** Pause between ingest POSTs so the storefront stays responsive during big reports. */
+const INGEST_YIELD_MS = 350;
 /** Import is resumable from DB counts, so ride out Hostinger restarts instead of failing. */
 const MAX_TRANSIENT_RETRIES = 25;
 
@@ -143,7 +143,7 @@ export function ReportsAdminClient({
           String(data.phase || "")
         );
         if (data.done) return;
-        await sleep(data.phase === "parsing" ? 1500 : INGEST_YIELD_MS);
+        await sleep(data.phase === "parsing" ? 2000 : INGEST_YIELD_MS);
       } catch (e) {
         const message = e instanceof Error ? e.message : "Import failed";
         const excelProblem = message.startsWith("Excel problem");

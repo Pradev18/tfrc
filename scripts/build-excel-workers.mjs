@@ -8,7 +8,7 @@ const outputDir = path.join(root, "scripts", "runtime");
 await mkdir(outputDir, { recursive: true });
 
 const workers = [
-  ["office-report-parse-worker.cjs", "office-report-parse-worker.cjs"],
+  ["office-report-parse-worker.ts", "office-report-parse-worker.cjs"],
   ["catalogue-excel-parse-worker.cjs", "catalogue-excel-parse-worker.cjs"],
 ];
 

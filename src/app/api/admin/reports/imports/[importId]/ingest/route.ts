@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/admin-auth";
-import { ingestOfficeReportSourceBatch } from "@/services/office-report.service";
+import { progressOfficeReportIngest } from "@/services/office-report.service";
 import {
   HeavyJobBusyError,
   heavyJobBusyResponse,
-  withHeavyJob,
 } from "@/lib/admin-heavy-job";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 90;
+export const maxDuration = 60;
 
 export async function POST(
   _req: NextRequest,
@@ -22,9 +21,7 @@ export async function POST(
     if (!importId?.trim()) {
       return NextResponse.json({ error: "Missing import id" }, { status: 400 });
     }
-    const result = await withHeavyJob("report-ingest", () =>
-      ingestOfficeReportSourceBatch(importId)
-    );
+    const result = await progressOfficeReportIngest(importId);
     return NextResponse.json(result);
   } catch (e) {
     if (e instanceof HeavyJobBusyError) {

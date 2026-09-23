@@ -6,9 +6,7 @@ import prisma from "@/lib/db";
 import {
   lookupOfficeFormsFields,
   parseOfficeFormsWorkbook,
-  parseOfficeFormsSheetRows,
   type OfficeFormsColumnMap,
-  type OfficeFormsSheetRows,
   type ParsedImageLink,
   type ParsedInventoryRow,
   type ParsedOfficeFormsWorkbook,
@@ -20,33 +18,38 @@ import {
 } from "@/lib/report/report-image-src";
 import {
   deleteReportImportWorkbook,
+  deleteReportParsedArtifacts,
   readReportImportWorkbook,
+  readReportParsedChunkLines,
+  readReportParsedMeta,
+  reportParsedOutDir,
   saveReportImportWorkbook,
+  type ReportParsedMeta,
 } from "@/lib/report/office-report-upload-store";
 import { explainExcelParseFailure } from "@/lib/report/excel-file-guard";
 
 /**
- * Balanced for Hostinger single-process:
- * - Smaller bursts so storefront stays instant during 70k imports
- * - Sub-batches + event-loop yields so shop never waits on SQLite locks
+ * Hostinger-safe pacing:
+ * - Tiny SQLite bursts so storefront catalogue reads stay smooth
+ * - Long yields between bursts so the event loop can serve shoppers
  */
-const INGEST_SUB_BATCH = 80;
-const INGEST_ROWS_PER_REQUEST = 320;
+const INGEST_SUB_BATCH = 40;
+const INGEST_ROWS_PER_REQUEST = 80;
 /** Pause between sub-batches so public cache reads stay unblocked */
-const INGEST_YIELD_MS = 25;
+const INGEST_YIELD_MS = 120;
 /** @deprecated kept for old seed route callers */
 const SEED_BATCH = 250;
 
 type CachedParse = {
-  parsed: ParsedOfficeFormsWorkbook;
+  meta: import("@/lib/report/office-report-upload-store").ReportParsedMeta;
   uniqueItemCount: number;
 };
 
 const parseCache = new Map<string, CachedParse>();
 const parseInFlight = new Map<string, Promise<CachedParse>>();
 const parseErrors = new Map<string, Error>();
-/** Stay well under the Hostinger/Cloudflare ~60s gateway timeout. */
-const PARSE_WAIT_PER_REQUEST_MS = 15_000;
+/** Keep HTTP ingest short so Cloudflare/Hostinger never 504 the shop. */
+const PARSE_WAIT_PER_REQUEST_MS = 2_500;
 
 function sourceTotal(inventoryRowCount: number, imageLinkCount: number): number {
   return Math.max(0, inventoryRowCount) + Math.max(0, imageLinkCount);
@@ -70,10 +73,18 @@ function yieldEventLoop(ms = 0): Promise<void> {
 const PARSE_WORKER_TIMEOUT_MS = 300_000;
 
 /**
- * XLSX decoding is CPU-heavy and synchronous. Run it outside the Next.js
- * process event loop so a 70k-row workbook cannot freeze public requests.
+ * XLSX decode + row normalize run in a worker. Results are written as small
+ * JSONL chunks on disk — the main process only receives tiny meta (no 70k clone).
  */
-function decodeWorkbookOffThread(buffer: Buffer): Promise<OfficeFormsSheetRows> {
+function decodeWorkbookOffThread(
+  buffer: Buffer,
+  importId: string,
+  fileName: string
+): Promise<{
+  inventoryRowCount: number;
+  imageLinkCount: number;
+  uniqueItemCount: number;
+}> {
   const workerPath = path.join(
     process.cwd(),
     "scripts",
@@ -84,10 +95,16 @@ function decodeWorkbookOffThread(buffer: Buffer): Promise<OfficeFormsSheetRows> 
     return Promise.reject(new Error("Report parser worker is unavailable."));
   }
 
+  const outDir = reportParsedOutDir();
   return new Promise((resolve, reject) => {
     let settled = false;
     const worker = new Worker(workerPath, {
-      workerData: { buffer },
+      workerData: {
+        buffer,
+        fileName,
+        importId,
+        outDir,
+      },
     });
     const timeout = setTimeout(() => {
       if (settled) return;
@@ -103,15 +120,25 @@ function decodeWorkbookOffThread(buffer: Buffer): Promise<OfficeFormsSheetRows> 
 
     worker.once(
       "message",
-      (message: { ok?: boolean; sheets?: OfficeFormsSheetRows; error?: string }) => {
+      (message: {
+        ok?: boolean;
+        error?: string;
+        inventoryRowCount?: number;
+        imageLinkCount?: number;
+        uniqueItemCount?: number;
+      }) => {
         if (settled) return;
         settled = true;
         finish();
-        if (!message.ok || !message.sheets) {
+        if (!message.ok) {
           reject(new Error(message.error || "Excel decoding failed."));
           return;
         }
-        resolve(message.sheets);
+        resolve({
+          inventoryRowCount: Number(message.inventoryRowCount ?? 0),
+          imageLinkCount: Number(message.imageLinkCount ?? 0),
+          uniqueItemCount: Number(message.uniqueItemCount ?? 0),
+        });
       }
     );
     worker.once("error", (error) => {
@@ -136,6 +163,17 @@ function decodeWorkbookOffThread(buffer: Buffer): Promise<OfficeFormsSheetRows> 
 async function getCachedParse(importId: string, fileName = "workbook.xlsx"): Promise<CachedParse> {
   const hit = parseCache.get(importId);
   if (hit) return hit;
+
+  const existingMeta = await readReportParsedMeta(importId);
+  if (existingMeta) {
+    const entry = {
+      meta: existingMeta,
+      uniqueItemCount: existingMeta.uniqueItemCount,
+    };
+    parseCache.set(importId, entry);
+    return entry;
+  }
+
   const buffer = await readReportImportWorkbook(importId);
   if (!buffer) {
     throw new Error(
@@ -143,10 +181,9 @@ async function getCachedParse(importId: string, fileName = "workbook.xlsx"): Pro
     );
   }
   await yieldEventLoop();
-  let parsed: ParsedOfficeFormsWorkbook;
-  let decodedSheets: OfficeFormsSheetRows | null = null;
+
   try {
-    decodedSheets = await decodeWorkbookOffThread(buffer);
+    await decodeWorkbookOffThread(buffer, importId, fileName);
   } catch (error) {
     // Development may omit the worker script; production stays off-thread only.
     if (process.env.NODE_ENV === "production") {
@@ -155,25 +192,69 @@ async function getCachedParse(importId: string, fileName = "workbook.xlsx"): Pro
         : new Error("Report Excel decoding failed.");
     }
     console.warn("[reports] parser worker unavailable; using inline fallback:", error);
+    let parsed: ParsedOfficeFormsWorkbook;
+    try {
+      parsed = parseOfficeFormsWorkbook(buffer, fileName);
+    } catch (parseError) {
+      throw explainExcelParseFailure(parseError, fileName);
+    }
+    // Inline fallback still avoids holding sheets: write through the same disk format via a one-shot.
+    const { writeFile, mkdir } = await import("node:fs/promises");
+    const outDir = reportParsedOutDir();
+    await mkdir(outDir, { recursive: true });
+    const uniqueItemCount = new Set(parsed.inventoryRows.map((row) => row.itemCode)).size;
+    const rowsPerChunk = 400;
+    const writeChunks = async (prefix: string, rows: unknown[]) => {
+      let chunks = 0;
+      for (let start = 0; start < rows.length; start += rowsPerChunk) {
+        const slice = rows.slice(start, start + rowsPerChunk);
+        const body = slice.map((row) => JSON.stringify(row)).join("\n") + (slice.length ? "\n" : "");
+        await writeFile(path.join(outDir, `${importId}.${prefix}.${chunks}.jsonl`), body, "utf8");
+        chunks += 1;
+      }
+      return chunks;
+    };
+    const inventoryChunks = await writeChunks("inv", parsed.inventoryRows);
+    const imageChunks = await writeChunks("img", parsed.imageLinks);
+    const meta: ReportParsedMeta = {
+      inventorySheetName: parsed.inventorySheetName,
+      imageSheetName: parsed.imageSheetName,
+      iqsSheetName: parsed.iqsSheetName,
+      inventoryHeaders: parsed.inventoryHeaders,
+      columnMap: parsed.columnMap as unknown as Record<string, string>,
+      duplicateInventoryCodes: parsed.duplicateInventoryCodes,
+      iqsFormMeta: parsed.iqsFormMeta as unknown as Record<string, string>,
+      iqsSeedRows: parsed.iqsSeedRows,
+      inventoryRowCount: parsed.inventoryRows.length,
+      imageLinkCount: parsed.imageLinks.length,
+      uniqueItemCount,
+      inventoryChunks,
+      imageChunks,
+      rowsPerChunk,
+    };
+    await writeFile(
+      path.join(outDir, `${importId}.parsed-meta.json`),
+      JSON.stringify(meta),
+      "utf8"
+    );
   }
 
-  try {
-    parsed = decodedSheets
-      ? parseOfficeFormsSheetRows(decodedSheets, fileName)
-      : parseOfficeFormsWorkbook(buffer, fileName);
-  } catch (error) {
-    throw explainExcelParseFailure(error, fileName);
+  await yieldEventLoop(INGEST_YIELD_MS);
+  const meta = await readReportParsedMeta(importId);
+  if (!meta) {
+    throw new Error("Report Excel decoding finished without writable result files.");
   }
-  await yieldEventLoop();
-  const uniqueItemCount = new Set(parsed.inventoryRows.map((row) => row.itemCode)).size;
-  const entry = { parsed, uniqueItemCount };
+  const entry = { meta, uniqueItemCount: meta.uniqueItemCount };
   parseCache.set(importId, entry);
   return entry;
 }
 
-function clearCachedParse(importId: string) {
+function clearCachedParse(importId: string, deleteFiles = false) {
   parseCache.delete(importId);
   parseErrors.delete(importId);
+  if (deleteFiles) {
+    void deleteReportParsedArtifacts(importId).catch(() => null);
+  }
 }
 
 /** Decodes in the background (deduplicated); the HTTP request only waits briefly. */
@@ -275,7 +356,7 @@ export async function createOfficeReportImport(input: {
       needsIngest: true,
     };
   } catch (error) {
-    clearCachedParse(created.id);
+    clearCachedParse(created.id, true);
     await deleteReportImportWorkbook(created.id).catch(() => null);
     await prisma.officeReportImport.delete({ where: { id: created.id } }).catch(() => null);
     throw new Error(
@@ -286,48 +367,111 @@ export async function createOfficeReportImport(input: {
 
 async function syncImportMetaFromParse(
   importId: string,
-  parsed: ParsedOfficeFormsWorkbook,
+  meta: ReportParsedMeta,
   uniqueItemCount: number
 ) {
   const wholesaleByCode: Record<string, string> = {};
-  for (const seed of parsed.iqsSeedRows) {
+  for (const seed of meta.iqsSeedRows ?? []) {
     wholesaleByCode[seed.itemCode] = seed.wholesalePriceApproval;
   }
 
   await prisma.officeReportImport.update({
     where: { id: importId },
     data: {
-      inventorySheetName: parsed.inventorySheetName,
-      imageSheetName: parsed.imageSheetName,
-      iqsSheetName: parsed.iqsSheetName,
-      inventoryHeaders: JSON.stringify(parsed.inventoryHeaders),
-      columnMap: JSON.stringify(parsed.columnMap),
-      inventoryRowCount: parsed.inventoryRows.length,
-      imageLinkCount: parsed.imageLinks.length,
-      duplicateItemCodes: JSON.stringify(parsed.duplicateInventoryCodes),
+      inventorySheetName: meta.inventorySheetName,
+      imageSheetName: meta.imageSheetName,
+      iqsSheetName: meta.iqsSheetName,
+      inventoryHeaders: JSON.stringify(meta.inventoryHeaders ?? []),
+      columnMap: JSON.stringify(meta.columnMap ?? {}),
+      inventoryRowCount: meta.inventoryRowCount,
+      imageLinkCount: meta.imageLinkCount,
+      duplicateItemCodes: JSON.stringify(meta.duplicateInventoryCodes ?? []),
       uniqueItemCount,
       iqsWholesaleByCode: JSON.stringify(wholesaleByCode),
       errorMessage: null,
     },
   });
 
+  const form = meta.iqsFormMeta ?? {};
   await prisma.officeReport.updateMany({
     where: { importId },
     data: {
-      tfrcLabel: parsed.iqsFormMeta.tfrcLabel || "TFRC",
-      customerName: parsed.iqsFormMeta.customerName,
-      requestedBy: parsed.iqsFormMeta.requestedBy,
-      shopBranch: parsed.iqsFormMeta.shopBranch,
-      notes: parsed.iqsFormMeta.notes,
-      reportDate: formatIqsReportDate(parsed.iqsFormMeta.reportDate),
+      tfrcLabel: form.tfrcLabel || "TFRC",
+      customerName: form.customerName || "",
+      requestedBy: form.requestedBy || "",
+      shopBranch: form.shopBranch || "",
+      notes: form.notes || "",
+      reportDate: formatIqsReportDate(form.reportDate || ""),
     },
   });
 }
 
+async function readParsedRowsSlice<T>(
+  importId: string,
+  kind: "inv" | "img",
+  start: number,
+  count: number,
+  rowsPerChunk: number
+): Promise<T[]> {
+  if (count <= 0) return [];
+  const firstChunk = Math.floor(start / rowsPerChunk);
+  const lastChunk = Math.floor((start + count - 1) / rowsPerChunk);
+  const out: T[] = [];
+  for (let chunkIndex = firstChunk; chunkIndex <= lastChunk; chunkIndex++) {
+    const lines = await readReportParsedChunkLines(importId, kind, chunkIndex);
+    const chunkStart = chunkIndex * rowsPerChunk;
+    for (let i = 0; i < lines.length; i++) {
+      const globalIndex = chunkStart + i;
+      if (globalIndex < start) continue;
+      if (globalIndex >= start + count) break;
+      try {
+        out.push(JSON.parse(lines[i]) as T);
+      } catch {
+        // skip corrupt line
+      }
+    }
+    await yieldEventLoop();
+  }
+  return out;
+}
+
+/**
+ * One HTTP tick of report ingest:
+ * - decoding never holds the heavy-job lock (storefront stays live)
+ * - only small SQLite write bursts take the lock
+ */
+export async function progressOfficeReportIngest(importId: string) {
+  const importRecord = await prisma.officeReportImport.findUnique({
+    where: { id: importId },
+  });
+  if (!importRecord) throw new Error("Import not found.");
+  if (importRecord.status === "FAILED") {
+    throw new Error(importRecord.errorMessage || "Import failed.");
+  }
+  if (importRecord.status === "READY") {
+    return {
+      done: true,
+      progress: importRecord.seedProgress,
+      total: sourceTotal(importRecord.inventoryRowCount, importRecord.imageLinkCount),
+      phase: "done" as const,
+    };
+  }
+
+  const ready = await getParseWithinRequest(importId, importRecord.fileName);
+  if (!ready) {
+    return { done: false, progress: 0, total: 0, phase: "parsing" as const };
+  }
+
+  const { withHeavyJob } = await import("@/lib/admin-heavy-job");
+  return withHeavyJob("report-ingest", () =>
+    ingestOfficeReportSourceBatch(importId)
+  );
+}
+
 /**
  * Write the next chunk of inventory / image source rows for lookup.
- * One HTTP call writes several sub-batches (with yields) so 70k imports finish
- * without locking the shop the whole time — and without endless tiny round-trips.
+ * Assumes decode finished (or finishes inside). Prefer progressOfficeReportIngest
+ * from HTTP so parsing does not hold the heavy-job lock.
  */
 export async function ingestOfficeReportSourceBatch(
   importId: string,
@@ -354,28 +498,29 @@ export async function ingestOfficeReportSourceBatch(
     if (!ready) {
       return { done: false, progress: 0, total: 0, phase: "parsing" as const };
     }
-    const { parsed, uniqueItemCount } = ready;
+    const { meta, uniqueItemCount } = ready;
 
     const needsMeta =
       !importRecord.inventorySheetName ||
-      importRecord.inventoryRowCount !== parsed.inventoryRows.length ||
-      importRecord.imageLinkCount !== parsed.imageLinks.length;
+      importRecord.inventoryRowCount !== meta.inventoryRowCount ||
+      importRecord.imageLinkCount !== meta.imageLinkCount;
 
     if (needsMeta) {
-      await syncImportMetaFromParse(importId, parsed, uniqueItemCount);
+      await syncImportMetaFromParse(importId, meta, uniqueItemCount);
       await yieldEventLoop(INGEST_YIELD_MS);
     }
 
-    const inventoryTotal = parsed.inventoryRows.length;
-    const imageTotal = parsed.imageLinks.length;
+    const inventoryTotal = meta.inventoryRowCount;
+    const imageTotal = meta.imageLinkCount;
     const total = inventoryTotal + imageTotal;
+    const rowsPerChunk = Math.max(1, meta.rowsPerChunk || 400);
 
     if (total <= 0) {
       await prisma.officeReportImport.update({
         where: { id: importId },
         data: { status: "READY", seedProgress: 0, errorMessage: null },
       });
-      clearCachedParse(importId);
+      clearCachedParse(importId, true);
       await deleteReportImportWorkbook(importId).catch(() => null);
       return { done: true, progress: 0, total: 0, phase: "done" as const };
     }
@@ -399,9 +544,12 @@ export async function ingestOfficeReportSourceBatch(
 
       if (progress < inventoryTotal) {
         const start = progress;
-        const chunk = parsed.inventoryRows.slice(
+        const chunk = await readParsedRowsSlice<ParsedInventoryRow>(
+          importId,
+          "inv",
           start,
-          Math.min(start + take, inventoryTotal)
+          Math.min(take, inventoryTotal - start),
+          rowsPerChunk
         );
         if (chunk.length > 0) {
           await prisma.officeReportInventoryItem.createMany({
@@ -419,9 +567,12 @@ export async function ingestOfficeReportSourceBatch(
         }
       } else {
         const imageStart = progress - inventoryTotal;
-        const chunk = parsed.imageLinks.slice(
+        const chunk = await readParsedRowsSlice<ParsedImageLink>(
+          importId,
+          "img",
           imageStart,
-          Math.min(imageStart + take, imageTotal)
+          Math.min(take, imageTotal - imageStart),
+          rowsPerChunk
         );
         if (chunk.length > 0) {
           await prisma.officeReportImageLink.createMany({
@@ -442,7 +593,6 @@ export async function ingestOfficeReportSourceBatch(
 
       // Let storefront / admin requests run between SQLite write bursts.
       await yieldEventLoop(INGEST_YIELD_MS);
-      await new Promise((r) => setTimeout(r, 8));
     }
 
     const done = progress >= total;
@@ -459,7 +609,7 @@ export async function ingestOfficeReportSourceBatch(
     });
 
     if (done) {
-      clearCachedParse(importId);
+      clearCachedParse(importId, true);
       await deleteReportImportWorkbook(importId).catch(() => null);
       phase = "done";
     }
@@ -486,7 +636,7 @@ export async function ingestOfficeReportSourceBatch(
           data: { status: "FAILED", errorMessage: message.slice(0, 1000) },
         })
         .catch(() => null);
-      clearCachedParse(importId);
+      clearCachedParse(importId, true);
     }
     throw error instanceof Error ? error : new Error(message);
   }
