@@ -8,7 +8,7 @@ const globalForPrisma = globalThis as unknown as {
   prismaReady?: Promise<void>;
 };
 
-/** Resolve relative SQLite paths; prefer the newest usable DB copy. */
+/** Resolve relative SQLite paths; prefer the richest usable DB copy (not newest mtime). */
 function getDatasourceUrl(): string | undefined {
   const url = process.env.DATABASE_URL ?? "file:./prod.db";
   if (!url.startsWith("file:")) return url;
@@ -20,11 +20,23 @@ function getDatasourceUrl(): string | undefined {
     return `file:${newest}`;
   }
 
+  // Prefer persistent sibling folder before falling back to /tmp.
+  const persistent = path.join(process.cwd(), "..", "tfrc-persistent", "prod.db");
+  try {
+    fs.mkdirSync(path.dirname(persistent), { recursive: true });
+    const probe = path.join(path.dirname(persistent), `.write-test-${process.pid}`);
+    fs.writeFileSync(probe, "ok");
+    fs.unlinkSync(probe);
+    process.env.DATABASE_URL = `file:${persistent}`;
+    return `file:${persistent}`;
+  } catch {
+    /* continue */
+  }
+
   const fallback = path.isAbsolute(preferred)
     ? preferred
     : path.join(process.cwd(), preferred);
 
-  // Last resort: writable /tmp when app directory cannot keep a DB.
   try {
     fs.mkdirSync(path.dirname(fallback), { recursive: true });
     const probe = path.join(path.dirname(fallback), `.write-test-${process.pid}`);

@@ -1,11 +1,21 @@
 /**
  * Ensures SQLite prod DB exists before build/start (Hostinger).
- * Copies committed prisma/prod.db when present; otherwise creates + seeds.
+ *
+ * Live owner catalogues/reports live in ../tfrc-persistent/prod.db (or TFRC_DATA_DIR)
+ * so git deploys NEVER replace them with the default seed database.
  */
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
+import {
+  canWriteDir,
+  copyDbAtomic,
+  persistentDataDir,
+  persistentDbPath,
+  pickBestDbPath,
+  seedDbPath,
+} from "./lib/db-location.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -23,117 +33,73 @@ function resolveSqlitePath(url) {
   return path.isAbsolute(filePath) ? filePath : path.join(root, filePath);
 }
 
-function findBundledDb() {
-  const candidates = [
-    path.join(root, "prisma", "prod.db"),
-    path.join(process.cwd(), "prisma", "prod.db"),
-    path.join(root, "..", "prisma", "prod.db"),
-  ];
-  for (const candidate of candidates) {
-    try {
-      if (fs.existsSync(candidate) && fs.statSync(candidate).size > 1000) {
-        return candidate;
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  return null;
-}
-
-function canWriteDir(dir) {
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-    const probe = path.join(dir, `.write-test-${process.pid}`);
-    fs.writeFileSync(probe, "ok");
-    fs.unlinkSync(probe);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 const url = process.env.DATABASE_URL;
 if (!url.startsWith("file:")) {
   console.log("[db] Non-SQLite DATABASE_URL — skipping auto setup.");
   process.exit(0);
 }
 
-function findNewestExistingDb(preferredPath) {
-  const candidates = [
-    preferredPath,
-    path.join(root, "prod.db"),
-    path.join(root, "prisma", "prod.db"),
-    path.join(root, ".next", "prod.db"),
-    path.join(process.cwd(), "prod.db"),
-    path.join(process.cwd(), "prisma", "prod.db"),
-    path.join("/tmp", "vitanova-prod.db"),
-    path.join("/tmp", "vitanova-db", "prod.db"),
-  ];
-  let best = null;
-  for (const candidate of candidates) {
+const persistDir = persistentDataDir(root);
+let livePath = persistentDbPath(root);
+
+if (!canWriteDir(persistDir)) {
+  const fallbackDir = path.join("/tmp", "vitanova-db");
+  console.warn(`[db] ${persistDir} not writable — using ${fallbackDir}`);
+  fs.mkdirSync(fallbackDir, { recursive: true });
+  livePath = path.join(fallbackDir, "prod.db");
+}
+
+const configured = resolveSqlitePath(url);
+const best = pickBestDbPath(root, configured || livePath);
+const seed = seedDbPath(root);
+
+// If a richer DB already exists anywhere (e.g. previous runtime), adopt it into
+// the persistent path so the next deploy still finds owner data.
+if (best && path.resolve(best.path) !== path.resolve(livePath)) {
+  if (!fs.existsSync(livePath) || fs.statSync(livePath).size < best.size) {
+    console.log(
+      `[db] Promoting richest database (${best.size} bytes) → persistent ${livePath}`
+    );
     try {
-      if (!fs.existsSync(candidate)) continue;
-      const stat = fs.statSync(candidate);
-      if (stat.size < 1000) continue;
-      if (!best || stat.mtimeMs > best.mtimeMs) {
-        best = { path: candidate, mtimeMs: stat.mtimeMs, size: stat.size };
-      }
-    } catch {
-      /* ignore */
+      copyDbAtomic(best.path, livePath);
+    } catch (err) {
+      console.warn("[db] Could not promote to persistent path:", err?.message ?? err);
+      livePath = best.path;
     }
   }
-  return best;
 }
 
-let dbPath = resolveSqlitePath(url);
-const bundled = findBundledDb();
-const newest = findNewestExistingDb(dbPath);
-
-if (!dbPath) {
-  console.error("[db] Could not resolve DATABASE_URL path");
-  process.exit(1);
-}
-
-// Prefer the newest existing copy so a successful runtime import is not
-// silently replaced by an older bundled/build artifact on restart.
-if (newest && path.resolve(newest.path) !== path.resolve(dbPath)) {
-  console.log(
-    `[db] Preferring newest database at ${newest.path} (${newest.size} bytes) over ${dbPath}`
-  );
-  dbPath = newest.path;
-  process.env.DATABASE_URL = `file:${dbPath}`;
-}
-
-let dbDir = path.dirname(dbPath);
-if (!canWriteDir(dbDir)) {
-  const fallbackDir = path.join("/tmp", "vitanova-db");
-  console.warn(`[db] ${dbDir} not writable — using ${fallbackDir}`);
-  fs.mkdirSync(fallbackDir, { recursive: true });
-  dbPath = path.join(fallbackDir, "prod.db");
-  process.env.DATABASE_URL = `file:${dbPath}`;
-  dbDir = fallbackDir;
-}
-
-// Prisma resolves file: URLs relative to prisma/schema.prisma. Always pass an
-// absolute URL so CLI commands and the runtime use the exact same database.
-process.env.DATABASE_URL = `file:${dbPath}`;
-
-const needsCreate = !fs.existsSync(dbPath) || fs.statSync(dbPath).size < 1000;
-
-if (needsCreate) {
-  if (bundled && path.resolve(bundled) !== path.resolve(dbPath)) {
-    console.log(`[db] Copying bundled database → ${dbPath}`);
-    fs.copyFileSync(bundled, dbPath);
-  } else if (bundled && path.resolve(bundled) === path.resolve(dbPath)) {
-    console.log(`[db] Using bundled database at ${dbPath}`);
+if (!fs.existsSync(livePath) || fs.statSync(livePath).size < 1000) {
+  if (seed) {
+    console.log(`[db] First boot — copying seed database → ${livePath}`);
+    copyDbAtomic(seed, livePath);
   } else {
-    console.log(`[db] No bundled DB — creating schema + seeding at ${dbPath}`);
+    console.log(`[db] No seed DB — creating schema + seeding at ${livePath}`);
+    process.env.DATABASE_URL = `file:${livePath}`;
     run("npx prisma db push --skip-generate");
     run("npx tsx prisma/seed.ts");
   }
 } else {
-  console.log(`[db] Found database (${fs.statSync(dbPath).size} bytes) at ${dbPath}`);
+  console.log(
+    `[db] Keeping live owner database (${fs.statSync(livePath).size} bytes) at ${livePath}`
+  );
+}
+
+process.env.DATABASE_URL = `file:${livePath}`;
+
+// Keep a convenience copy inside the app tree for tools that still look under prisma/,
+// but NEVER copy the other way (seed must not overwrite persistent live data).
+try {
+  const appCopy = path.join(root, "prisma", "prod.db");
+  if (
+    !fs.existsSync(appCopy) ||
+    fs.statSync(appCopy).size < fs.statSync(livePath).size
+  ) {
+    copyDbAtomic(livePath, appCopy);
+    console.log(`[db] Synced app copy → ${appCopy}`);
+  }
+} catch (err) {
+  console.warn("[db] Could not sync prisma/prod.db copy:", err?.message ?? err);
 }
 
 try {
@@ -145,3 +111,4 @@ try {
 run("node scripts/migrate-admin-password.mjs");
 
 console.log("[db] Ready. DATABASE_URL=", process.env.DATABASE_URL);
+console.log("[db] Persistent data dir=", path.dirname(livePath));

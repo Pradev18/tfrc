@@ -1,15 +1,24 @@
 /**
  * Export a Prisma-free catalog cache for Hostinger fallback.
- * Written to data/catalog-cache.json and copied into .next on build.
+ * Always reads the richest LIVE database (never a stale default-only file).
  */
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { PrismaClient } from "@prisma/client";
+import { pickBestDbPath, seedDbPath } from "./lib/db-location.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const dbFile = path.join(root, "prisma", "prod.db");
+const best = pickBestDbPath(root);
+const dbFile = best?.path || seedDbPath(root);
 const outFile = path.join(root, "data", "catalog-cache.json");
+
+if (!dbFile || !fs.existsSync(dbFile)) {
+  console.error("[catalog-cache] No database found to export");
+  process.exit(1);
+}
+
+console.log(`[catalog-cache] reading ${dbFile} (${fs.statSync(dbFile).size} bytes)`);
 
 const prisma = new PrismaClient({
   datasources: { db: { url: `file:${dbFile}` } },
@@ -69,7 +78,7 @@ for (const env of envs) {
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
 fs.writeFileSync(outFile, JSON.stringify(cache));
 console.log(
-  `[catalog-cache] wrote ${outFile} (${(fs.statSync(outFile).size / 1024 / 1024).toFixed(2)} MB)`
+  `[catalog-cache] wrote ${outFile} (${(fs.statSync(outFile).size / 1024 / 1024).toFixed(2)} MB) from ${envs.length} catalogue(s)`
 );
 
 await prisma.$disconnect();

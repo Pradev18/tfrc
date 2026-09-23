@@ -32,7 +32,8 @@ Use these **exact settings** in **Websites → tfrcwholesale.com → Deployments
 **Use these only** (copy from `env.tfrcwholesale.com.example`):
 
 ```env
-DATABASE_URL=file:./prod.db
+DATABASE_URL=file:../tfrc-persistent/prod.db
+TFRC_DATA_DIR=../tfrc-persistent
 AUTH_SECRET=<your-secret>
 AUTH_URL=https://tfrcwholesale.com
 NEXT_PUBLIC_SITE_URL=https://tfrcwholesale.com
@@ -43,7 +44,10 @@ NODE_ENV=production
 PORT=3000
 ```
 
-**Hostinger SQLite URL:** use `file:./prod.db`. Prisma resolves relative file URLs from `prisma/schema.prisma`; the startup script converts this to an absolute path.
+**Critical — keep owner catalogues/reports across deploys:**  
+Live data is stored in `../tfrc-persistent/prod.db` (outside the git app folder). Redeploys no longer replace it with the default 3 demo catalogues. After changing these env vars, **Save and redeploy once**, then re-upload catalogues only if this is a brand-new persistent folder.
+
+**Hostinger SQLite URL:** prefer `file:../tfrc-persistent/prod.db`. The startup script also auto-promotes any richer existing DB into that persistent location.
 
 ### After first successful build
 

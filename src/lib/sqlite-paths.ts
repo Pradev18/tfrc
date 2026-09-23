@@ -1,6 +1,19 @@
 import fs from "fs";
 import path from "path";
 
+/** Sibling folder that survives Hostinger app-directory redeploys. */
+export function persistentDataDir(cwd = process.cwd()): string {
+  const fromEnv = process.env.TFRC_DATA_DIR?.trim();
+  if (fromEnv) {
+    return path.isAbsolute(fromEnv) ? fromEnv : path.join(cwd, fromEnv);
+  }
+  return path.join(cwd, "..", "tfrc-persistent");
+}
+
+export function persistentDbPath(cwd = process.cwd()): string {
+  return path.join(persistentDataDir(cwd), "prod.db");
+}
+
 /** All known SQLite locations used across build, Hostinger, and standalone output. */
 export function candidateSqlitePaths(preferredRelative = "prod.db"): string[] {
   const cwd = process.cwd();
@@ -9,6 +22,7 @@ export function candidateSqlitePaths(preferredRelative = "prod.db"): string[] {
   const preferred = path.isAbsolute(cleaned) ? cleaned : path.join(cwd, cleaned);
 
   return [
+    persistentDbPath(cwd),
     preferred,
     path.join(cwd, basename),
     path.join(cwd, "prisma", basename),
@@ -30,6 +44,10 @@ export function sqlitePathFromUrl(url: string | undefined): string | null {
     : path.join(process.cwd(), filePath.replace(/^\.\//, ""));
 }
 
+/**
+ * Prefer the richest DB (size), not newest mtime.
+ * A freshly deployed seed has a new timestamp but must never beat owner data.
+ */
 export function pickNewestSqlitePath(preferredRelative = "prod.db"): string | null {
   const seen = new Set<string>();
   let best: { path: string; mtimeMs: number; size: number } | null = null;
@@ -42,7 +60,11 @@ export function pickNewestSqlitePath(preferredRelative = "prod.db"): string | nu
       if (!fs.existsSync(resolved)) continue;
       const stat = fs.statSync(resolved);
       if (stat.size < 1000) continue;
-      if (!best || stat.mtimeMs > best.mtimeMs) {
+      if (
+        !best ||
+        stat.size > best.size ||
+        (stat.size === best.size && stat.mtimeMs > best.mtimeMs)
+      ) {
         best = { path: resolved, mtimeMs: stat.mtimeMs, size: stat.size };
       }
     } catch {
@@ -71,6 +93,10 @@ export function syncSqliteFileToReplicas(sourcePath: string): string[] {
     seen.add(dest);
     try {
       fs.mkdirSync(path.dirname(dest), { recursive: true });
+      // Never shrink a richer replica with a smaller source.
+      if (fs.existsSync(dest) && fs.statSync(dest).size > fs.statSync(source).size) {
+        continue;
+      }
       const temporary = `${dest}.${process.pid}.tmp`;
       fs.copyFileSync(source, temporary);
       fs.renameSync(temporary, dest);
@@ -95,10 +121,10 @@ export function syncSqliteFileToEssentialReplicas(sourcePath: string): string[] 
   const cwd = process.cwd();
   const basename = path.basename(source);
   const essentials = [
+    persistentDbPath(cwd),
     path.join(cwd, "prisma", basename),
     path.join(cwd, ".next", "standalone", "prisma", basename),
     path.join(cwd, ".next", "standalone", basename),
-    path.join("/tmp", `vitanova-${basename}`),
   ];
 
   const seen = new Set<string>([source]);
@@ -108,6 +134,9 @@ export function syncSqliteFileToEssentialReplicas(sourcePath: string): string[] 
     seen.add(dest);
     try {
       fs.mkdirSync(path.dirname(dest), { recursive: true });
+      if (fs.existsSync(dest) && fs.statSync(dest).size > fs.statSync(source).size) {
+        continue;
+      }
       const temporary = `${dest}.${process.pid}.tmp`;
       fs.copyFileSync(source, temporary);
       fs.renameSync(temporary, dest);
