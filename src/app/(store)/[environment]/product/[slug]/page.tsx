@@ -34,9 +34,20 @@ function looksLikeUrl(value: string) {
   return /^https?:\/\//i.test(value.trim()) || /^wa\.me\//i.test(value.trim());
 }
 
+function asText(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value;
+  if (value == null) return fallback;
+  return String(value);
+}
+
+function asNumber(value: unknown, fallback = 0): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function productDisplayName(name: string, productId: string) {
-  const id = String(productId ?? "").trim();
-  const trimmed = String(name ?? "Product").trim() || "Product";
+  const id = asText(productId).trim();
+  const trimmed = asText(name, "Product").trim() || "Product";
   if (!id) return trimmed;
   if (trimmed.endsWith(id)) {
     return trimmed.slice(0, -id.length).replace(/[\s\-_|]+$/u, "").trim() || trimmed;
@@ -45,7 +56,7 @@ function productDisplayName(name: string, productId: string) {
 }
 
 function crispDescription(shortDescription?: string | null, description?: string | null) {
-  const source = String(shortDescription || description || "").trim();
+  const source = asText(shortDescription || description).trim();
   if (!source) return null;
   const plain = source.replace(/\s+/g, " ").trim();
   if (plain.length <= 220) return plain;
@@ -66,35 +77,47 @@ function buildProductSpecs(product: {
   tags?: Array<{ tag: { name: string } }>;
 }) {
   const rows: Array<{ labelKey: string; label: string; value: string }> = [
-    { labelKey: "product.specs.brand", label: "Brand", value: String(product.brand?.name ?? "") },
+    { labelKey: "product.specs.brand", label: "Brand", value: asText(product.brand?.name) },
     {
       labelKey: "product.specs.condition",
       label: "Condition",
       value:
         product.condition && product.condition !== "new"
-          ? String(product.condition)
+          ? asText(product.condition)
           : "",
     },
-    { labelKey: "product.specs.category", label: "Category", value: String(product.category?.name ?? "") },
+    {
+      labelKey: "product.specs.category",
+      label: "Category",
+      value: asText(product.category?.name),
+    },
     {
       labelKey: "product.specs.subcategory",
       label: "Subcategory",
-      value: String(product.subcategory?.name ?? ""),
+      value: asText(product.subcategory?.name),
     },
-    { labelKey: "product.specs.gtin", label: "GTIN", value: String(product.gtin ?? "") },
-    { labelKey: "product.specs.weight", label: "Weight", value: String(product.weight ?? "") },
-    { labelKey: "product.specs.dimensions", label: "Dimensions", value: String(product.dimensions ?? "") },
-    { labelKey: "product.specs.shipping", label: "Shipping", value: String(product.shippingInfo ?? "") },
+    { labelKey: "product.specs.gtin", label: "GTIN", value: asText(product.gtin) },
+    { labelKey: "product.specs.weight", label: "Weight", value: asText(product.weight) },
+    {
+      labelKey: "product.specs.dimensions",
+      label: "Dimensions",
+      value: asText(product.dimensions),
+    },
+    {
+      labelKey: "product.specs.shipping",
+      label: "Shipping",
+      value: asText(product.shippingInfo),
+    },
     {
       labelKey: "product.specs.productType",
       label: "Product type",
-      value: String(product.googleCategory ?? ""),
+      value: asText(product.googleCategory),
     },
     {
       labelKey: "product.specs.tags",
       label: "Tags",
       value: (product.tags ?? [])
-        .map((t) => String(t?.tag?.name ?? ""))
+        .map((t) => asText(t?.tag?.name))
         .filter(Boolean)
         .join(", "),
     },
@@ -112,6 +135,98 @@ function buildProductSpecs(product: {
   });
 }
 
+/** RSC → client props must be JSON-safe. Prisma Decimal / Date / class instances crash the PDP. */
+function toClientCardProduct(product: {
+  id: string;
+  productId: string;
+  sku?: string | null;
+  name: string;
+  slug: string;
+  shortDescription?: string | null;
+  description?: string | null;
+  variantLabel?: string | null;
+  variantGroupKey?: string | null;
+  isVariantPrimary?: boolean | null;
+  images?: Array<{
+    url: string;
+    altText?: string | null;
+    isPrimary?: boolean;
+    sortOrder?: number;
+  }> | null;
+  videos?: Array<{ url?: string; sortOrder?: number } | { id: string }> | null;
+  prices?: Array<{
+    type: string;
+    amount: unknown;
+    currency: string;
+    saleStart?: unknown;
+    saleEnd?: unknown;
+  }> | null;
+  brand?: { id: string; name: string; slug: string } | null;
+  inventory?: { isInStock?: boolean | null } | null;
+}) {
+  return {
+    id: asText(product.id),
+    productId: asText(product.productId),
+    sku: product.sku ? asText(product.sku) : null,
+    name: asText(product.name, "Product"),
+    slug: asText(product.slug),
+    shortDescription: product.shortDescription
+      ? asText(product.shortDescription)
+      : null,
+    description: product.description ? asText(product.description) : null,
+    variantLabel: product.variantLabel ? asText(product.variantLabel) : null,
+    variantGroupKey: product.variantGroupKey
+      ? asText(product.variantGroupKey)
+      : null,
+    isVariantPrimary: product.isVariantPrimary !== false,
+    images: (product.images ?? []).map((image, index) => ({
+      url: asText(image.url),
+      altText: asText(image.altText),
+      isPrimary: Boolean(image.isPrimary ?? index === 0),
+      sortOrder: asNumber(image.sortOrder, index),
+    })),
+    videos: (product.videos ?? [])
+      .map((video, index) => ({
+        url: asText((video as { url?: string }).url),
+        sortOrder: asNumber((video as { sortOrder?: number }).sortOrder, index),
+      }))
+      .filter((video) => Boolean(video.url)),
+    prices: (product.prices ?? []).map((price) => ({
+      type: asText(price.type),
+      amount: asNumber(price.amount),
+      currency: asText(price.currency, "QAR"),
+      saleStart: null,
+      saleEnd: null,
+    })),
+    brand: product.brand
+      ? {
+          id: asText(product.brand.id),
+          name: asText(product.brand.name),
+          slug: asText(product.brand.slug),
+        }
+      : null,
+    inventory: product.inventory
+      ? { isInStock: product.inventory.isInStock !== false }
+      : null,
+    sizeVariants: [],
+  };
+}
+
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, (_key, current) => {
+      if (typeof current === "bigint") return current.toString();
+      if (typeof current === "number" && !Number.isFinite(current)) return null;
+      if (current instanceof Date) {
+        return Number.isFinite(current.getTime()) ? current.toISOString() : null;
+      }
+      return current;
+    });
+  } catch {
+    return "{}";
+  }
+}
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { environment: envSlug, slug } = await params;
   const product = await getProductBySlug(slug, envSlug).catch(() => null);
@@ -121,7 +236,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { pricing } = mapProductPrices(product);
   const title = product.seoTitle ?? `${product.name} – ${pricing.displayPrice} QAR`;
   const description =
-    product.seoDescription ?? product.shortDescription ?? product.description?.slice(0, 160) ?? product.name;
+    product.seoDescription ??
+    product.shortDescription ??
+    asText(product.description).slice(0, 160) ??
+    product.name;
   const primaryImage =
     product.images?.find((i) => i.isPrimary) ?? product.images?.[0];
   const inStock = product.inventory?.isInStock ?? true;
@@ -132,8 +250,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     path: productPath(envSlug, product.slug),
     image: primaryImage?.url,
     imageAlt: product.name,
-    price: pricing.displayPrice,
-    currency: pricing.currency,
+    price: asNumber(pricing.displayPrice),
+    currency: asText(pricing.currency, "QAR"),
     inStock,
     brand: product.brand?.name,
     productId: product.productId,
@@ -150,11 +268,7 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
   const product = await getProductBySlug(slug, envSlug).catch(() => null);
   if (!product) notFound();
 
-  let renderStage = "initialization";
-  try {
-  renderStage = "visual";
   const v = getEnvVisual(envSlug);
-  renderStage = "related-data";
   const [related, variants, waSettingsRaw] = await Promise.all([
     getRelatedProducts(product, 8, environment.id).catch(() => []),
     getProductVariantFamily(product).catch(() => []),
@@ -163,74 +277,128 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
       return DEFAULT_WHATSAPP_SETTINGS;
     }),
   ]);
-  renderStage = "settings";
   const waSettings = normalizeWhatsAppSettings(waSettingsRaw);
-
-  renderStage = "pricing";
-  const { pricing } = mapProductPrices(product);
+  const mapped = mapProductPrices(product);
+  const pricing = {
+    regular: asNumber(mapped.pricing.regular),
+    sale:
+      mapped.pricing.sale == null ? null : asNumber(mapped.pricing.sale),
+    currency: asText(mapped.pricing.currency, "QAR"),
+    isOnSale: Boolean(mapped.pricing.isOnSale),
+    discountPercent:
+      mapped.pricing.discountPercent == null
+        ? null
+        : asNumber(mapped.pricing.discountPercent),
+    displayPrice: asNumber(mapped.pricing.displayPrice),
+  };
   const siteUrl = getSiteUrl();
   const inStock = product.inventory?.isInStock ?? true;
   const primaryImage =
     product.images?.find((i) => i.isPrimary) ?? product.images?.[0];
-  const itemCode = product.productId || product.sku || "";
+  const itemCode = asText(product.productId || product.sku);
   const title = productDisplayName(product.name, product.productId);
   const shortCopy = crispDescription(product.shortDescription, product.description);
-  const fullDescription = String(product.description ?? "").trim();
-  renderStage = "specifications";
-  let specs: ReturnType<typeof buildProductSpecs> = [];
-  try {
-    specs = buildProductSpecs(product);
-  } catch (error) {
-    console.error("[product-page] specifications skipped:", slug, error);
-  }
+  const fullDescription = asText(product.description).trim();
+  const specs = (() => {
+    try {
+      return buildProductSpecs(product);
+    } catch (error) {
+      console.error("[product-page] specifications skipped:", slug, error);
+      return [];
+    }
+  })();
 
-  renderStage = "suggestions";
-  const suggested = related.filter((p) => p.id !== product.id && p.productId !== product.productId);
+  const suggested = related
+    .filter((p) => p.id !== product.id && p.productId !== product.productId)
+    .map((p) => toClientCardProduct(p));
 
-  renderStage = "whatsapp";
-  // Keep initial PDP rendering independent from editable/legacy message
-  // templates. The interactive purchase panel still builds the configured
-  // message after hydration.
+  const galleryImages = (product.images ?? []).map((image, index) => ({
+    url: asText(image.url),
+    altText:
+      "altText" in image
+        ? asText((image as { altText?: string | null }).altText)
+        : "alt" in image
+          ? asText((image as { alt?: string | null }).alt)
+          : null,
+    isPrimary: Boolean(
+      "isPrimary" in image
+        ? (image as { isPrimary?: boolean }).isPrimary
+        : index === 0
+    ),
+  }));
+  const galleryVideos = (product.videos ?? [])
+    .map((video) => ({ url: asText((video as { url?: string }).url) }))
+    .filter((video) => Boolean(video.url));
+
+  const sizeVariants = variants.map((variant) => {
+    const variantPricing = mapProductPrices(variant).pricing;
+    return {
+      id: asText(variant.id),
+      productId: asText(variant.productId),
+      slug: asText(variant.slug),
+      name: productDisplayName(variant.name, variant.productId),
+      label:
+        productDisplayName(variant.name, variant.productId) ||
+        asText(variant.variantLabel) ||
+        asText(variant.name),
+      inStock: variant.inventory?.isInStock ?? true,
+      price: asNumber(variantPricing.displayPrice),
+      currency: asText(variantPricing.currency, "QAR"),
+      imageUrl: asText(
+        (
+          variant.images?.find((image) => image.isPrimary) ??
+          variant.images?.[0]
+        )?.url
+      ) || undefined,
+    };
+  });
+
   const productUrl = `${siteUrl}${productPath(envSlug, product.slug)}`;
   const whatsappMessage = [
     waSettings.defaultGreeting,
     "",
     `I would like to order ${title}.`,
-    itemCode ? `Item: ${String(itemCode)}` : "",
-    `Price: ${pricing.currency} ${Number(pricing.displayPrice || 0).toFixed(2)}`,
+    itemCode ? `Item: ${itemCode}` : "",
+    `Price: ${pricing.currency} ${pricing.displayPrice.toFixed(2)}`,
     productUrl,
   ]
     .filter(Boolean)
     .join("\n");
   const whatsappPhone =
-    String(waSettings.phoneNumber ?? "").replace(/\D/g, "") || "97455049229";
+    asText(waSettings.phoneNumber).replace(/\D/g, "") || "97455049229";
   const whatsappHref = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(
     whatsappMessage
   )}`;
 
-  renderStage = "breadcrumbs";
+  const categoryName = asText(product.category?.name);
   const breadcrumbItems = [
     { labelKey: "nav.home", href: "/" },
-    { label: environment.config.displayName, href: `/${envSlug}` },
+    { label: asText(environment.config.displayName), href: `/${envSlug}` },
     { labelKey: "store.shop", href: `/${envSlug}#catalog` },
-    ...(product.category
-      ? [{ label: product.category.name, href: `/${envSlug}?q=${encodeURIComponent(product.category.name)}#catalog` }]
+    ...(categoryName
+      ? [
+          {
+            label: categoryName,
+            href: `/${envSlug}?q=${encodeURIComponent(categoryName)}#catalog`,
+          },
+        ]
       : []),
     { label: title },
   ];
 
-  renderStage = "schema";
   const productSchema = {
     "@context": "https://schema.org",
     "@type": "Product",
-    name: product.name,
-    description: product.description,
-    sku: product.sku,
-    image: (product.images ?? []).map((i) => i.url),
-    brand: product.brand ? { "@type": "Brand", name: product.brand.name } : undefined,
+    name: asText(product.name),
+    description: asText(product.description),
+    sku: asText(product.sku),
+    image: galleryImages.map((i) => i.url).filter(Boolean),
+    brand: product.brand
+      ? { "@type": "Brand", name: asText(product.brand.name) }
+      : undefined,
     offers: {
       "@type": "Offer",
-      url: `${siteUrl}${productPath(envSlug, product.slug)}`,
+      url: productUrl,
       priceCurrency: pricing.currency,
       price: pricing.displayPrice,
       availability: inStock
@@ -239,25 +407,24 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
     },
   };
 
-  renderStage = "render";
   return (
     <>
       <ProductWidgetBoundary name="view-tracker">
         <ProductViewTracker
-          productId={product.productId}
-          name={product.name}
+          productId={asText(product.productId)}
+          name={asText(product.name)}
           price={pricing.displayPrice}
           currency={pricing.currency}
         />
       </ProductWidgetBoundary>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }}
+        dangerouslySetInnerHTML={{ __html: safeJson(productSchema) }}
       />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(breadcrumbSchema(breadcrumbItems, siteUrl)),
+          __html: safeJson(breadcrumbSchema(breadcrumbItems, siteUrl)),
         }}
       />
 
@@ -276,8 +443,8 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
                 }
               >
                 <ProductGallery
-                  images={product.images ?? []}
-                  videos={product.videos ?? []}
+                  images={galleryImages}
+                  videos={galleryVideos}
                   productName={title}
                 />
               </ProductWidgetBoundary>
@@ -295,11 +462,11 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
             </div>
 
             <div className="lg:sticky lg:top-[var(--store-header-height)] lg:self-start">
-              {product.brand && (
+              {product.brand?.name ? (
                 <p className="mb-2 font-sans text-xs font-semibold uppercase tracking-wider text-[#9c9690]">
-                  {product.brand.name}
+                  {asText(product.brand.name)}
                 </p>
-              )}
+              ) : null}
               <h1 className="font-sans text-xl font-semibold leading-snug tracking-normal text-[#141414] md:text-2xl">
                 {title}
               </h1>
@@ -321,42 +488,25 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
                     </a>
                   }
                 >
-                <ProductPurchasePanel
-                  dbId={product.id}
-                  productId={product.productId}
-                  slug={product.slug}
-                  name={product.name}
-                  itemCode={itemCode}
-                  shortDescription={shortCopy}
-                  specs={specs}
-                  pricing={pricing}
-                  inStock={inStock}
-                  imageUrl={primaryImage?.url}
-                  environmentSlug={envSlug}
-                  environmentName={environment.config.displayName}
-                  whatsappSettings={waSettings}
-                  siteUrl={siteUrl}
-                  accentColor={v.cta}
-                  sizeVariants={variants.map((variant) => ({
-                    id: variant.id,
-                    productId: variant.productId,
-                    slug: variant.slug,
-                    name: productDisplayName(variant.name, variant.productId),
-                    label:
-                      productDisplayName(variant.name, variant.productId) ||
-                      variant.variantLabel ||
-                      variant.name,
-                    inStock: variant.inventory?.isInStock ?? true,
-                    price: mapProductPrices(variant).pricing.displayPrice,
-                    currency: mapProductPrices(variant).pricing.currency,
-                    imageUrl:
-                      (
-                        variant.images?.find((image) => image.isPrimary) ??
-                        variant.images?.[0]
-                      )?.url,
-                  }))}
-                  initialSizeSelected={query.sizeSelected === "1"}
-                />
+                  <ProductPurchasePanel
+                    dbId={asText(product.id)}
+                    productId={asText(product.productId)}
+                    slug={asText(product.slug)}
+                    name={asText(product.name)}
+                    itemCode={itemCode}
+                    shortDescription={shortCopy}
+                    specs={specs}
+                    pricing={pricing}
+                    inStock={inStock}
+                    imageUrl={primaryImage?.url ? asText(primaryImage.url) : undefined}
+                    environmentSlug={envSlug}
+                    environmentName={asText(environment.config.displayName)}
+                    whatsappSettings={waSettings}
+                    siteUrl={siteUrl}
+                    accentColor={v.cta}
+                    sizeVariants={sizeVariants}
+                    initialSizeSelected={query.sizeSelected === "1"}
+                  />
                 </ProductWidgetBoundary>
               </div>
             </div>
@@ -372,13 +522,13 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
               </h2>
               <ProductWidgetBoundary name="suggested-products">
                 <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 md:gap-4">
-                  {suggested.map((p) => (
+                  {suggested.map((card) => (
                     <ProductCard
-                      key={p.id}
-                      product={p}
+                      key={card.id}
+                      product={card as never}
                       whatsappSettings={waSettings}
                       environmentSlug={envSlug}
-                      environmentName={environment.config.displayName}
+                      environmentName={asText(environment.config.displayName)}
                       siteUrl={siteUrl}
                       variant="compact"
                     />
@@ -390,99 +540,57 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
         </div>
       </div>
 
-      {(variants.length === 0 || query.sizeSelected === "1") && (
+      {(sizeVariants.length === 0 || query.sizeSelected === "1") && (
         <ProductWidgetBoundary name="mobile-order-bar">
-        <ProductMobileOrderBar
-        whatsappSettings={waSettings}
-        siteUrl={siteUrl}
-        singleProductWaHref={whatsappHref}
-        singleProductInquiry={{
-          eventType: "PRODUCT_WHATSAPP",
-          environmentSlug: envSlug,
-          environmentName: environment.config.displayName,
-          itemCount: 1,
-          estimatedTotal: pricing.displayPrice,
-          currency: pricing.currency,
-          whatsappUrl: whatsappHref,
-          whatsappMessage,
-          items: [
-            {
-              productId: product.productId,
-              productName: product.name,
-              slug: product.slug,
+          <ProductMobileOrderBar
+            whatsappSettings={waSettings}
+            siteUrl={siteUrl}
+            singleProductWaHref={whatsappHref}
+            singleProductInquiry={{
+              eventType: "PRODUCT_WHATSAPP",
+              environmentSlug: envSlug,
+              environmentName: asText(environment.config.displayName),
+              itemCount: 1,
+              estimatedTotal: pricing.displayPrice,
+              currency: pricing.currency,
+              whatsappUrl: whatsappHref,
+              whatsappMessage,
+              items: [
+                {
+                  productId: asText(product.productId),
+                  productName: asText(product.name),
+                  slug: asText(product.slug),
+                  price: pricing.displayPrice,
+                  currency: pricing.currency,
+                  environmentSlug: envSlug,
+                  environmentName: asText(environment.config.displayName),
+                  quantity: 1,
+                  size: product.variantLabel
+                    ? asText(product.variantLabel)
+                    : undefined,
+                },
+              ],
+            }}
+            product={{
+              id: asText(product.id),
+              productId: asText(product.productId),
+              slug: asText(product.slug),
+              name: asText(product.name),
               price: pricing.displayPrice,
               currency: pricing.currency,
+              imageUrl: primaryImage?.url
+                ? asText(primaryImage.url)
+                : undefined,
               environmentSlug: envSlug,
-              environmentName: environment.config.displayName,
-              quantity: 1,
-              size: product.variantLabel ?? undefined,
-            },
-          ],
-        }}
-        product={{
-          id: product.id,
-          productId: product.productId,
-          slug: product.slug,
-          name: product.name,
-          price: pricing.displayPrice,
-          currency: pricing.currency,
-          imageUrl: primaryImage?.url,
-          environmentSlug: envSlug,
-          environmentName: environment.config.displayName,
-          variantLabel: product.variantLabel,
-        }}
-        accentColor={v.cta}
-        />
+              environmentName: asText(environment.config.displayName),
+              variantLabel: product.variantLabel
+                ? asText(product.variantLabel)
+                : null,
+            }}
+            accentColor={v.cta}
+          />
         </ProductWidgetBoundary>
       )}
     </>
   );
-  } catch (error) {
-    console.error("[product-page] degraded render:", slug, error);
-    const fallbackName = String(product.name ?? "Product");
-    const fallbackImage = product.images?.[0]?.url;
-    return (
-      <div className="container-pawmart py-10 md:py-16">
-        <div className="mx-auto grid max-w-4xl gap-8 md:grid-cols-2">
-          <div className="flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-[#ebe8e3] bg-white">
-            {fallbackImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={String(fallbackImage)}
-                alt={fallbackName}
-                className="h-full w-full object-contain p-6"
-              />
-            ) : (
-              <span className="text-sm text-[#6b6560]">Product image unavailable</span>
-            )}
-          </div>
-          <div className="flex flex-col justify-center">
-            <p className="text-xs font-semibold uppercase tracking-wider text-[#9c9690]">
-              Item {String(product.productId ?? "")}
-            </p>
-            <h1 className="mt-2 text-2xl font-semibold text-[#141414]">
-              {fallbackName}
-            </h1>
-            <a
-              href={`https://wa.me/97455049229?text=${encodeURIComponent(
-                `Hello, I want to order ${fallbackName} (${String(product.productId ?? "")}).`
-              )}`}
-              className="mt-8 flex min-h-[48px] items-center justify-center rounded-full bg-[#128c47] px-6 text-sm font-semibold text-white"
-            >
-              Order on WhatsApp
-            </a>
-            <a
-              href={`/${envSlug}`}
-              className="mt-3 flex min-h-[44px] items-center justify-center rounded-full border border-[#d4cfc8] px-6 text-sm font-semibold text-[#141414]"
-            >
-              Back to catalogue
-            </a>
-            <p className="mt-4 text-[10px] text-[#9c9690]">
-              Reference: {renderStage}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 }

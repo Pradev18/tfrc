@@ -29,9 +29,13 @@ export function mapProductPrices(product: ProductWithPrices) {
   const prices = product.prices ?? [];
   const regular = prices.find((price) => price.type === "REGULAR");
   const sale = prices.find((price) => price.type === "SALE");
+  const toAmount = (value: unknown): number => {
+    const n = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(n) ? n : 0;
+  };
   const pricing = getEffectivePrice({
-    regular: regular?.amount ?? 0,
-    sale: sale?.amount,
+    regular: toAmount(regular?.amount),
+    sale: sale == null ? null : toAmount(sale.amount),
     currency: regular?.currency ?? "QAR",
     saleStart: sale?.saleStart ? new Date(sale.saleStart) : null,
     saleEnd: sale?.saleEnd ? new Date(sale.saleEnd) : null,
