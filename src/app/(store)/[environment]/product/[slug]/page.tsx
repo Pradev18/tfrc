@@ -13,11 +13,7 @@ import {
   mapProductPrices,
 } from "@/services/product.service";
 import { resolveEnvironment } from "@/services/environment.service";
-import {
-  generateWhatsAppLinkSync,
-  buildWhatsAppMessage,
-  normalizeWhatsAppSettings,
-} from "@/lib/whatsapp";
+import { normalizeWhatsAppSettings } from "@/lib/whatsapp";
 import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { buildProductMetadata } from "@/lib/meta-seo";
 import { getSiteUrl } from "@/lib/site-config";
@@ -154,8 +150,11 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
   const product = await getProductBySlug(slug, envSlug).catch(() => null);
   if (!product) notFound();
 
+  let renderStage = "initialization";
   try {
+  renderStage = "visual";
   const v = getEnvVisual(envSlug);
+  renderStage = "related-data";
   const [related, variants, waSettingsRaw] = await Promise.all([
     getRelatedProducts(product, 8, environment.id).catch(() => []),
     getProductVariantFamily(product).catch(() => []),
@@ -164,8 +163,10 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
       return DEFAULT_WHATSAPP_SETTINGS;
     }),
   ]);
+  renderStage = "settings";
   const waSettings = normalizeWhatsAppSettings(waSettingsRaw);
 
+  renderStage = "pricing";
   const { pricing } = mapProductPrices(product);
   const siteUrl = getSiteUrl();
   const inStock = product.inventory?.isInStock ?? true;
@@ -175,46 +176,39 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
   const title = productDisplayName(product.name, product.productId);
   const shortCopy = crispDescription(product.shortDescription, product.description);
   const fullDescription = String(product.description ?? "").trim();
-  const specs = buildProductSpecs(product);
+  renderStage = "specifications";
+  let specs: ReturnType<typeof buildProductSpecs> = [];
+  try {
+    specs = buildProductSpecs(product);
+  } catch (error) {
+    console.error("[product-page] specifications skipped:", slug, error);
+  }
 
+  renderStage = "suggestions";
   const suggested = related.filter((p) => p.id !== product.id && p.productId !== product.productId);
 
-  const whatsappHref = generateWhatsAppLinkSync(
-    waSettings,
-    {
-      name: product.name,
-      productId: product.productId,
-      regularPrice: pricing.regular,
-      salePrice: pricing.sale,
-      currency: pricing.currency,
-      slug: product.slug,
-      imageUrl: primaryImage?.url,
-      environmentSlug: envSlug,
-      environmentName: environment.config.displayName,
-      quantity: 1,
-      size: product.variantLabel ?? undefined,
-    },
-    siteUrl
-  );
+  renderStage = "whatsapp";
+  // Keep initial PDP rendering independent from editable/legacy message
+  // templates. The interactive purchase panel still builds the configured
+  // message after hydration.
+  const productUrl = `${siteUrl}${productPath(envSlug, product.slug)}`;
+  const whatsappMessage = [
+    waSettings.defaultGreeting,
+    "",
+    `I would like to order ${title}.`,
+    itemCode ? `Item: ${String(itemCode)}` : "",
+    `Price: ${pricing.currency} ${Number(pricing.displayPrice || 0).toFixed(2)}`,
+    productUrl,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const whatsappPhone =
+    String(waSettings.phoneNumber ?? "").replace(/\D/g, "") || "97455049229";
+  const whatsappHref = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(
+    whatsappMessage
+  )}`;
 
-  const whatsappMessage = buildWhatsAppMessage(
-    waSettings,
-    {
-      name: product.name,
-      productId: product.productId,
-      regularPrice: pricing.regular,
-      salePrice: pricing.sale,
-      currency: pricing.currency,
-      slug: product.slug,
-      imageUrl: primaryImage?.url,
-      environmentSlug: envSlug,
-      environmentName: environment.config.displayName,
-      quantity: 1,
-      size: product.variantLabel ?? undefined,
-    },
-    siteUrl
-  );
-
+  renderStage = "breadcrumbs";
   const breadcrumbItems = [
     { labelKey: "nav.home", href: "/" },
     { label: environment.config.displayName, href: `/${envSlug}` },
@@ -225,6 +219,7 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
     { label: title },
   ];
 
+  renderStage = "schema";
   const productSchema = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -244,6 +239,7 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
     },
   };
 
+  renderStage = "render";
   return (
     <>
       <ProductWidgetBoundary name="view-tracker">
@@ -481,6 +477,9 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
             >
               Back to catalogue
             </a>
+            <p className="mt-4 text-[10px] text-[#9c9690]">
+              Reference: {renderStage}
+            </p>
           </div>
         </div>
       </div>
