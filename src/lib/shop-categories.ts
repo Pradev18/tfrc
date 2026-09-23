@@ -337,6 +337,10 @@ export function getShopCategoryDefs(environmentSlug: string): ShopCategoryDef[] 
 /**
  * Pick the best keyword pack for ANY catalogue (including newly created ones).
  * Never requires the catalogue slug to be pawmart/hardware/household.
+ *
+ * When Excel already has google_product_category filled for most products,
+ * prefer those names on the shop — do not force a household/pet/tools pack
+ * that makes the owner look like they miscategorised the file.
  */
 export function resolveCatalogueShopCategoryPack(input: {
   slug?: string | null;
@@ -347,15 +351,33 @@ export function resolveCatalogueShopCategoryPack(input: {
   products?: ShopCategoryProductInput[];
 }): ShopCategoryDef[] {
   const slug = (input.slug ?? "").toLowerCase().trim();
-  if (slug && SHOP_CATEGORIES[slug]?.length) {
-    const known = SHOP_CATEGORIES[slug]!;
-    const productInputs: ShopCategoryProductInput[] =
-      input.products ??
-      (input.productNames ?? []).map((name) => ({ name }));
+  const productInputs: ShopCategoryProductInput[] =
+    input.products ??
+    (input.productNames ?? []).map((name) => ({ name }));
+
+  const curatedSlugs = new Set(["pawmart", "hardware", "household"]);
+  const known = slug && SHOP_CATEGORIES[slug]?.length ? SHOP_CATEGORIES[slug]! : null;
+
+  const withExcelCategory = productInputs.filter((product) =>
+    Boolean((product.googleCategory || product.fbCategory || "").trim())
+  ).length;
+  const excelCoverage =
+    productInputs.length > 0 ? withExcelCategory / productInputs.length : 0;
+  const taxonomy = discoverShopCategoriesFromTaxonomy(productInputs, 24);
+
+  // Excel taxonomy wins for custom catalogues (and for curated ones that fit poorly).
+  if (taxonomy.length >= 2 && excelCoverage >= 0.5) {
+    if (!known || !curatedSlugs.has(slug)) {
+      return taxonomy;
+    }
+    const otherRatio = estimateOtherRatio(productInputs, known);
+    if (otherRatio >= 0.45) return taxonomy;
+  }
+
+  if (known) {
     if (productInputs.length === 0) return known;
     const otherRatio = estimateOtherRatio(productInputs, known);
     if (otherRatio < 0.45) return known;
-    const taxonomy = discoverShopCategoriesFromTaxonomy(productInputs);
     if (taxonomy.length === 0) return known;
     // Keep known pack, append taxonomy buckets so Excel categories still surface.
     const seen = new Set(known.map((d) => d.slug));
@@ -367,10 +389,6 @@ export function resolveCatalogueShopCategoryPack(input: {
     }
     return merged;
   }
-
-  const productInputs: ShopCategoryProductInput[] =
-    input.products ??
-    (input.productNames ?? []).map((name) => ({ name }));
 
   const haystack = [
     slug,
@@ -437,13 +455,11 @@ export function resolveCatalogueShopCategoryPack(input: {
   if (pack.length > 0 && productInputs.length > 0) {
     const otherRatio = estimateOtherRatio(productInputs, pack);
     if (otherRatio >= 0.45) {
-      const taxonomy = discoverShopCategoriesFromTaxonomy(productInputs);
       if (taxonomy.length > 0) return taxonomy;
     }
     return pack;
   }
 
-  const taxonomy = discoverShopCategoriesFromTaxonomy(productInputs);
   if (taxonomy.length > 0) return taxonomy;
 
   if (productInputs.length > 0) {
