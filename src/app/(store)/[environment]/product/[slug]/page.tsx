@@ -14,6 +14,7 @@ import { buildProductMetadata } from "@/lib/meta-seo";
 import { getSiteUrl } from "@/lib/site-config";
 import { productPath } from "@/lib/product-url";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
+import { ProductQuantityOrder } from "@/components/public/ProductQuantityOrder";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -322,17 +323,24 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
     .map((video) => ({ url: asText((video as { url?: string }).url) }))
     .filter((video) => Boolean(video.url));
 
-  const sizeVariants = variants.map((variant) => {
+  const baseVariantLabels = variants.map(
+    (variant) =>
+      asText(variant.variantLabel) ||
+      productDisplayName(variant.name, variant.productId) ||
+      asText(variant.name)
+  );
+  const sizeVariants = variants.map((variant, index) => {
     const variantPricing = mapProductPrices(variant).pricing;
+    const baseLabel = baseVariantLabels[index];
+    const labelIsShared =
+      baseVariantLabels.filter((label) => label === baseLabel).length > 1;
+    const code = asText(variant.productId);
     return {
       id: asText(variant.id),
-      productId: asText(variant.productId),
+      productId: code,
       slug: asText(variant.slug),
       name: productDisplayName(variant.name, variant.productId),
-      label:
-        productDisplayName(variant.name, variant.productId) ||
-        asText(variant.variantLabel) ||
-        asText(variant.name),
+      label: labelIsShared && code ? `${baseLabel} · ${code}` : baseLabel,
       inStock: variant.inventory?.isInStock ?? true,
       price: asNumber(variantPricing.displayPrice),
       currency: asText(variantPricing.currency, "QAR"),
@@ -346,21 +354,17 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
   });
 
   const productUrl = `${siteUrl}${productPath(envSlug, product.slug)}`;
-  const whatsappMessage = [
-    waSettings.defaultGreeting,
+  const whatsappIntro = [
+    asText(waSettings.defaultGreeting),
     "",
     `I would like to order ${title}.`,
     itemCode ? `Item: ${itemCode}` : "",
-    `Price: ${pricing.currency} ${pricing.displayPrice.toFixed(2)}`,
-    productUrl,
   ]
-    .filter(Boolean)
-    .join("\n");
+    .filter((line, index) => index === 1 || Boolean(line))
+    .join("\n")
+    .trim();
   const whatsappPhone =
     asText(waSettings.phoneNumber).replace(/\D/g, "") || "97455049229";
-  const whatsappHref = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(
-    whatsappMessage
-  )}`;
 
   const categoryName = asText(product.category?.name);
   const breadcrumbItems = [
@@ -529,12 +533,13 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
                   </div>
                 ) : null}
 
-                <a
-                  href={whatsappHref}
-                  className="mt-6 flex min-h-[48px] items-center justify-center rounded-full bg-[#128c47] px-6 text-sm font-semibold text-white"
-                >
-                  Order on WhatsApp
-                </a>
+                <ProductQuantityOrder
+                  whatsappPhone={whatsappPhone}
+                  messageIntro={whatsappIntro}
+                  messageOutro={productUrl}
+                  unitPrice={asNumber(pricing.displayPrice)}
+                  currency={asText(pricing.currency, "QAR")}
+                />
               </div>
 
               {specs.length > 0 ? (

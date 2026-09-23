@@ -38,9 +38,23 @@ const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
 const UPLOAD_CHUNK_BYTES = 256 * 1024;
 /** Short pause between ingest POSTs — long enough for shop reads, not crawl-speed. */
 const INGEST_YIELD_MS = 45;
+/** Import is resumable from DB counts, so ride out Hostinger restarts instead of failing. */
+const MAX_TRANSIENT_RETRIES = 25;
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function retryDelayMs(attempt: number): number {
+  return Math.min(1500 * attempt, 8000);
+}
+
+function ingestProgressLabel(progress: number, total: number, phase: string): string {
+  if (phase === "parsing" || !total) {
+    return "Decoding workbook on server (large files can take a minute or two)…";
+  }
+  const label = phase === "images" ? "image links" : "inventory rows";
+  return `Saving ${label} ${progress.toLocaleString()} / ${total.toLocaleString()}…`;
 }
 
 function sanitizeClientExcelName(fileName: string): string {
@@ -114,12 +128,10 @@ export function ReportsAdminClient({
             res.status >= 500 ||
             message.toLowerCase().includes("timed out") ||
             message.toLowerCase().includes("server error");
-          if (transient && transientFails < 8) {
+          if (transient && transientFails < MAX_TRANSIENT_RETRIES) {
             transientFails += 1;
-            setProgressLabel(
-              `Server busy — retrying import (${transientFails}/8)…`
-            );
-            await new Promise((r) => window.setTimeout(r, 1200 * transientFails));
+            setProgressLabel("Server busy — import continues automatically…");
+            await sleep(retryDelayMs(transientFails));
             continue;
           }
           throw new Error(message);
@@ -131,16 +143,14 @@ export function ReportsAdminClient({
           String(data.phase || "")
         );
         if (data.done) return;
-        await sleep(INGEST_YIELD_MS);
+        await sleep(data.phase === "parsing" ? 1500 : INGEST_YIELD_MS);
       } catch (e) {
         const message = e instanceof Error ? e.message : "Import failed";
         const excelProblem = message.startsWith("Excel problem");
-        if (!excelProblem && transientFails < 8) {
+        if (!excelProblem && transientFails < MAX_TRANSIENT_RETRIES) {
           transientFails += 1;
-          setProgressLabel(
-            `Connection issue — retrying import (${transientFails}/8)…`
-          );
-          await new Promise((r) => window.setTimeout(r, 1200 * transientFails));
+          setProgressLabel("Reconnecting — import continues automatically…");
+          await sleep(retryDelayMs(transientFails));
           continue;
         }
         throw e instanceof Error ? e : new Error(message);
@@ -251,14 +261,7 @@ export function ReportsAdminClient({
       if (data.needsIngest && data.importId) {
         setProgressLabel("Preparing workbook (site stays online)…");
         await ingestUntilReady(String(data.importId), (progress, total, phase) => {
-          if (!total) {
-            setProgressLabel("Parsing workbook on server…");
-            return;
-          }
-          const label = phase === "images" ? "image links" : "inventory rows";
-          setProgressLabel(
-            `Saving ${label} ${progress.toLocaleString()} / ${total.toLocaleString()}…`
-          );
+          setProgressLabel(ingestProgressLabel(progress, total, phase));
         });
       }
 
@@ -283,10 +286,7 @@ export function ReportsAdminClient({
     try {
       setProgressLabel("Resuming import…");
       await ingestUntilReady(importId, (progress, total, phase) => {
-        const label = phase === "images" ? "image links" : "inventory rows";
-        setProgressLabel(
-          `Saving ${label} ${progress.toLocaleString()} / ${total.toLocaleString()}…`
-        );
+        setProgressLabel(ingestProgressLabel(progress, total, phase));
       });
       await refresh();
       router.push(`/admin/reports/${reportId}`);

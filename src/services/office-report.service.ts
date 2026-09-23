@@ -43,6 +43,10 @@ type CachedParse = {
 };
 
 const parseCache = new Map<string, CachedParse>();
+const parseInFlight = new Map<string, Promise<CachedParse>>();
+const parseErrors = new Map<string, Error>();
+/** Stay well under the Hostinger/Cloudflare ~60s gateway timeout. */
+const PARSE_WAIT_PER_REQUEST_MS = 15_000;
 
 function sourceTotal(inventoryRowCount: number, imageLinkCount: number): number {
   return Math.max(0, inventoryRowCount) + Math.max(0, imageLinkCount);
@@ -63,7 +67,7 @@ function yieldEventLoop(ms = 0): Promise<void> {
   });
 }
 
-const PARSE_WORKER_TIMEOUT_MS = 120_000;
+const PARSE_WORKER_TIMEOUT_MS = 300_000;
 
 /**
  * XLSX decoding is CPU-heavy and synchronous. Run it outside the Next.js
@@ -169,6 +173,52 @@ async function getCachedParse(importId: string, fileName = "workbook.xlsx"): Pro
 
 function clearCachedParse(importId: string) {
   parseCache.delete(importId);
+  parseErrors.delete(importId);
+}
+
+/** Decodes in the background (deduplicated); the HTTP request only waits briefly. */
+function startBackgroundParse(importId: string, fileName: string): Promise<CachedParse> {
+  const existing = parseInFlight.get(importId);
+  if (existing) return existing;
+  const job = getCachedParse(importId, fileName).finally(() => {
+    parseInFlight.delete(importId);
+  });
+  job.catch((error: unknown) => {
+    parseErrors.set(
+      importId,
+      error instanceof Error ? error : new Error("Report Excel decoding failed.")
+    );
+  });
+  parseInFlight.set(importId, job);
+  return job;
+}
+
+async function getParseWithinRequest(
+  importId: string,
+  fileName: string
+): Promise<CachedParse | null> {
+  const failed = parseErrors.get(importId);
+  if (failed) {
+    parseErrors.delete(importId);
+    throw failed;
+  }
+  const hit = parseCache.get(importId);
+  if (hit) return hit;
+  const job = startBackgroundParse(importId, fileName);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), PARSE_WAIT_PER_REQUEST_MS);
+  });
+  try {
+    const result = await Promise.race([job, timeout]);
+    if (result) parseErrors.delete(importId);
+    return result;
+  } catch (error) {
+    parseErrors.delete(importId);
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**
@@ -300,7 +350,11 @@ export async function ingestOfficeReportSourceBatch(
   }
 
   try {
-    const { parsed, uniqueItemCount } = await getCachedParse(importId, importRecord.fileName);
+    const ready = await getParseWithinRequest(importId, importRecord.fileName);
+    if (!ready) {
+      return { done: false, progress: 0, total: 0, phase: "parsing" as const };
+    }
+    const { parsed, uniqueItemCount } = ready;
 
     const needsMeta =
       !importRecord.inventorySheetName ||
