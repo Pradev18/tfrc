@@ -144,7 +144,10 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
   const [related, variants, waSettings] = await Promise.all([
     getRelatedProducts(product, 8, environment.id).catch(() => []),
     getProductVariantFamily(product).catch(() => []),
-    getWhatsAppSettings(),
+    getWhatsAppSettings().catch(async () => {
+      const { DEFAULT_WHATSAPP_SETTINGS } = await import("@/lib/whatsapp");
+      return DEFAULT_WHATSAPP_SETTINGS;
+    }),
   ]);
 
   const { pricing } = mapProductPrices(product);
