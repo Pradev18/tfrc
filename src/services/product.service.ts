@@ -466,35 +466,52 @@ function hydrateProductFromCache(
     (hit as typeof hit & { updatedAt?: unknown }).updatedAt,
     createdAt
   );
+  const text = (value: unknown, fallback = ""): string =>
+    typeof value === "string"
+      ? value
+      : value == null
+        ? fallback
+        : String(value);
+  const nullableText = (value: unknown): string | null => {
+    const normalized = text(value).trim();
+    return normalized || null;
+  };
 
   return {
     ...hit,
+    id: text(hit.id),
+    productId: text(hit.productId),
+    sku: nullableText(hit.sku),
+    name: text(hit.name, "Product"),
+    slug: text(hit.slug),
+    shortDescription: nullableText(hit.shortDescription),
+    description: nullableText(hit.description),
     status: ProductStatus.ACTIVE,
     deletedAt: null,
     environmentId,
     shopCategorySlug: hit.shopCategorySlug ?? null,
-    condition: hit.condition ?? "new",
-    gtin: hit.gtin ?? null,
-    weight: hit.weight ?? null,
-    dimensions: hit.dimensions ?? null,
-    shippingInfo: hit.shippingInfo ?? null,
-    googleCategory: hit.googleCategory ?? null,
-    fbCategory: hit.fbCategory ?? null,
-    seoTitle: hit.seoTitle ?? null,
-    seoDescription: hit.seoDescription ?? null,
+    condition: nullableText(hit.condition) ?? "new",
+    gtin: nullableText(hit.gtin),
+    weight: nullableText(hit.weight),
+    dimensions: nullableText(hit.dimensions),
+    shippingInfo: nullableText(hit.shippingInfo),
+    googleCategory: nullableText(hit.googleCategory),
+    fbCategory: nullableText(hit.fbCategory),
+    seoTitle: nullableText(hit.seoTitle),
+    seoDescription: nullableText(hit.seoDescription),
     brandId: hit.brandId ?? hit.brand?.id ?? null,
     categoryId: hit.categoryId ?? hit.category?.id ?? null,
     subcategoryId: hit.subcategoryId ?? hit.subcategory?.id ?? null,
     videos: (hit.videos ?? []).map((video, index) => ({
       id: `cache-video-${hit.id}-${index}`,
-      url: video.url,
+      url: text(video.url),
       sortOrder: video.sortOrder ?? index,
       productId: hit.id,
     })),
     // Incomplete/stale catalog-cache rows must never crash the PDP.
     images: (hit.images ?? []).map((image, index) => ({
       id: `cache-img-${hit.id}-${index}`,
-      url: image.url,
+      url: text(image.url),
       sortOrder: image.sortOrder ?? index,
       isPrimary: image.isPrimary ?? index === 0,
       productId: hit.id,
@@ -510,8 +527,8 @@ function hydrateProductFromCache(
       id: `cache-price-${hit.id}-${index}`,
       productId: hit.id,
       type: p.type,
-      amount: p.amount,
-      currency: p.currency,
+      amount: Number.isFinite(Number(p.amount)) ? Number(p.amount) : 0,
+      currency: text(p.currency, "QAR"),
       saleStart: safeOptionalDate(p.saleStart),
       saleEnd: safeOptionalDate(p.saleEnd),
     })),
@@ -519,7 +536,7 @@ function hydrateProductFromCache(
       ? {
           id: `cache-inv-${hit.id}`,
           productId: hit.id,
-          isInStock: hit.inventory.isInStock,
+          isInStock: hit.inventory.isInStock !== false,
           quantity: null,
         }
       : null,

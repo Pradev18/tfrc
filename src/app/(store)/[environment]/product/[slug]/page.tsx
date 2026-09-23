@@ -35,9 +35,9 @@ function looksLikeUrl(value: string) {
 }
 
 function productDisplayName(name: string, productId: string) {
-  const id = productId?.trim();
-  if (!id) return name;
-  const trimmed = name.trim();
+  const id = String(productId ?? "").trim();
+  const trimmed = String(name ?? "Product").trim() || "Product";
+  if (!id) return trimmed;
   if (trimmed.endsWith(id)) {
     return trimmed.slice(0, -id.length).replace(/[\s\-_|]+$/u, "").trim() || trimmed;
   }
@@ -45,7 +45,7 @@ function productDisplayName(name: string, productId: string) {
 }
 
 function crispDescription(shortDescription?: string | null, description?: string | null) {
-  const source = (shortDescription || description || "").trim();
+  const source = String(shortDescription || description || "").trim();
   if (!source) return null;
   const plain = source.replace(/\s+/g, " ").trim();
   if (plain.length <= 220) return plain;
@@ -66,31 +66,37 @@ function buildProductSpecs(product: {
   tags?: Array<{ tag: { name: string } }>;
 }) {
   const rows: Array<{ labelKey: string; label: string; value: string }> = [
-    { labelKey: "product.specs.brand", label: "Brand", value: product.brand?.name ?? "" },
+    { labelKey: "product.specs.brand", label: "Brand", value: String(product.brand?.name ?? "") },
     {
       labelKey: "product.specs.condition",
       label: "Condition",
-      value: product.condition && product.condition !== "new" ? product.condition : "",
+      value:
+        product.condition && product.condition !== "new"
+          ? String(product.condition)
+          : "",
     },
-    { labelKey: "product.specs.category", label: "Category", value: product.category?.name ?? "" },
+    { labelKey: "product.specs.category", label: "Category", value: String(product.category?.name ?? "") },
     {
       labelKey: "product.specs.subcategory",
       label: "Subcategory",
-      value: product.subcategory?.name ?? "",
+      value: String(product.subcategory?.name ?? ""),
     },
-    { labelKey: "product.specs.gtin", label: "GTIN", value: product.gtin ?? "" },
-    { labelKey: "product.specs.weight", label: "Weight", value: product.weight ?? "" },
-    { labelKey: "product.specs.dimensions", label: "Dimensions", value: product.dimensions ?? "" },
-    { labelKey: "product.specs.shipping", label: "Shipping", value: product.shippingInfo ?? "" },
+    { labelKey: "product.specs.gtin", label: "GTIN", value: String(product.gtin ?? "") },
+    { labelKey: "product.specs.weight", label: "Weight", value: String(product.weight ?? "") },
+    { labelKey: "product.specs.dimensions", label: "Dimensions", value: String(product.dimensions ?? "") },
+    { labelKey: "product.specs.shipping", label: "Shipping", value: String(product.shippingInfo ?? "") },
     {
       labelKey: "product.specs.productType",
       label: "Product type",
-      value: product.googleCategory ?? "",
+      value: String(product.googleCategory ?? ""),
     },
     {
       labelKey: "product.specs.tags",
       label: "Tags",
-      value: (product.tags ?? []).map((t) => t.tag.name).filter(Boolean).join(", "),
+      value: (product.tags ?? [])
+        .map((t) => String(t?.tag?.name ?? ""))
+        .filter(Boolean)
+        .join(", "),
     },
   ];
 
@@ -144,6 +150,7 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
   const product = await getProductBySlug(slug, envSlug).catch(() => null);
   if (!product) notFound();
 
+  try {
   const v = getEnvVisual(envSlug);
   const [related, variants, waSettings] = await Promise.all([
     getRelatedProducts(product, 8, environment.id).catch(() => []),
@@ -162,6 +169,7 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
   const itemCode = product.productId || product.sku || "";
   const title = productDisplayName(product.name, product.productId);
   const shortCopy = crispDescription(product.shortDescription, product.description);
+  const fullDescription = String(product.description ?? "").trim();
   const specs = buildProductSpecs(product);
 
   const suggested = related.filter((p) => p.id !== product.id && p.productId !== product.productId);
@@ -273,15 +281,13 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
                 />
               </ProductWidgetBoundary>
 
-              {product.description &&
-              product.description.trim() &&
-              product.description.trim() !== shortCopy ? (
+              {fullDescription && fullDescription !== shortCopy ? (
                 <div className="mt-8 rounded-xl border border-[#ebe8e3] bg-white p-5 md:p-6">
                   <h2 className="mb-3 font-sans text-sm font-semibold uppercase tracking-wide text-[#6b6560]">
                     <TranslatedText k="product.fullDetails" />
                   </h2>
                   <div className="whitespace-pre-line font-sans text-sm leading-relaxed text-[#141414] md:text-base">
-                    {product.description}
+                    {fullDescription}
                   </div>
                 </div>
               ) : null}
@@ -430,4 +436,49 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
       )}
     </>
   );
+  } catch (error) {
+    console.error("[product-page] degraded render:", slug, error);
+    const fallbackName = String(product.name ?? "Product");
+    const fallbackImage = product.images?.[0]?.url;
+    return (
+      <div className="container-pawmart py-10 md:py-16">
+        <div className="mx-auto grid max-w-4xl gap-8 md:grid-cols-2">
+          <div className="flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-[#ebe8e3] bg-white">
+            {fallbackImage ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={String(fallbackImage)}
+                alt={fallbackName}
+                className="h-full w-full object-contain p-6"
+              />
+            ) : (
+              <span className="text-sm text-[#6b6560]">Product image unavailable</span>
+            )}
+          </div>
+          <div className="flex flex-col justify-center">
+            <p className="text-xs font-semibold uppercase tracking-wider text-[#9c9690]">
+              Item {String(product.productId ?? "")}
+            </p>
+            <h1 className="mt-2 text-2xl font-semibold text-[#141414]">
+              {fallbackName}
+            </h1>
+            <a
+              href={`https://wa.me/97455049229?text=${encodeURIComponent(
+                `Hello, I want to order ${fallbackName} (${String(product.productId ?? "")}).`
+              )}`}
+              className="mt-8 flex min-h-[48px] items-center justify-center rounded-full bg-[#128c47] px-6 text-sm font-semibold text-white"
+            >
+              Order on WhatsApp
+            </a>
+            <a
+              href={`/${envSlug}`}
+              className="mt-3 flex min-h-[44px] items-center justify-center rounded-full border border-[#d4cfc8] px-6 text-sm font-semibold text-[#141414]"
+            >
+              Back to catalogue
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 }
