@@ -21,6 +21,9 @@ import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 import { ProductViewTracker } from "@/components/analytics/ProductViewTracker";
 import { TranslatedText } from "@/components/i18n/TranslatedText";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 interface PageProps {
   params: Promise<{ environment: string; slug: string }>;
   searchParams: Promise<Record<string, string | undefined>>;

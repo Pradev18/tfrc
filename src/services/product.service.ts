@@ -448,6 +448,25 @@ function hydrateProductFromCache(
   environmentName: string,
   environmentId: string
 ): ProductWithRelations {
+  const safeDate = (value: unknown, fallback = new Date(0)): Date => {
+    if (value instanceof Date && Number.isFinite(value.getTime())) return value;
+    if (typeof value === "string" || typeof value === "number") {
+      const parsed = new Date(value);
+      if (Number.isFinite(parsed.getTime())) return parsed;
+    }
+    return fallback;
+  };
+  const safeOptionalDate = (value: unknown): Date | null => {
+    if (value == null || value === "") return null;
+    const parsed = safeDate(value, new Date(Number.NaN));
+    return Number.isFinite(parsed.getTime()) ? parsed : null;
+  };
+  const createdAt = safeDate(hit.createdAt);
+  const updatedAt = safeDate(
+    (hit as typeof hit & { updatedAt?: unknown }).updatedAt,
+    createdAt
+  );
+
   return {
     ...hit,
     status: ProductStatus.ACTIVE,
@@ -485,16 +504,16 @@ function hydrateProductFromCache(
     subcategory: hit.subcategory ?? null,
     environment: { id: environmentId, slug: environmentSlug, name: environmentName },
     tags: [],
-    createdAt: new Date(hit.createdAt),
-    updatedAt: new Date(hit.createdAt),
+    createdAt,
+    updatedAt,
     prices: (hit.prices ?? []).map((p, index) => ({
       id: `cache-price-${hit.id}-${index}`,
       productId: hit.id,
       type: p.type,
       amount: p.amount,
       currency: p.currency,
-      saleStart: p.saleStart ? new Date(p.saleStart) : null,
-      saleEnd: p.saleEnd ? new Date(p.saleEnd) : null,
+      saleStart: safeOptionalDate(p.saleStart),
+      saleEnd: safeOptionalDate(p.saleEnd),
     })),
     inventory: hit.inventory
       ? {
