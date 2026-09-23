@@ -1,11 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { ProductGallery } from "@/components/public/ProductGallery";
-import { ProductCard } from "@/components/public/ProductCard";
-import { ProductPurchasePanel } from "@/components/public/ProductPurchasePanel";
-import { ProductWidgetBoundary } from "@/components/public/ProductWidgetBoundary";
-import { ProductMobileOrderBar } from "@/components/store/ProductMobileOrderBar";
-import { Breadcrumbs, breadcrumbSchema } from "@/components/public/Breadcrumbs";
+import { ProductDetailClient } from "@/components/public/ProductDetailClient";
+import { breadcrumbSchema } from "@/components/public/Breadcrumbs";
 import {
   getProductBySlug,
   getProductVariantFamily,
@@ -18,9 +14,6 @@ import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { buildProductMetadata } from "@/lib/meta-seo";
 import { getSiteUrl } from "@/lib/site-config";
 import { productPath } from "@/lib/product-url";
-import { getEnvVisual, envStyle } from "@/lib/env-visuals";
-import { ProductViewTracker } from "@/components/analytics/ProductViewTracker";
-import { TranslatedText } from "@/components/i18n/TranslatedText";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -268,7 +261,6 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
   const product = await getProductBySlug(slug, envSlug).catch(() => null);
   if (!product) notFound();
 
-  const v = getEnvVisual(envSlug);
   const [related, variants, waSettingsRaw] = await Promise.all([
     getRelatedProducts(product, 8, environment.id).catch(() => []),
     getProductVariantFamily(product).catch(() => []),
@@ -407,16 +399,43 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
     },
   };
 
+  const payloadJson = safeJson({
+    envSlug,
+    environmentName: asText(environment.config.displayName),
+    siteUrl,
+    product: {
+      id: asText(product.id),
+      productId: asText(product.productId),
+      slug: asText(product.slug),
+      name: asText(product.name),
+      title,
+      itemCode,
+      brandName: asText(product.brand?.name) || undefined,
+      description:
+        fullDescription && fullDescription !== shortCopy
+          ? fullDescription
+          : undefined,
+      variantLabel: product.variantLabel
+        ? asText(product.variantLabel)
+        : undefined,
+      inStock,
+      imageUrl: primaryImage?.url ? asText(primaryImage.url) : undefined,
+    },
+    pricing,
+    galleryImages,
+    galleryVideos,
+    specs,
+    sizeVariants,
+    suggested,
+    whatsappSettings: waSettings,
+    whatsappHref,
+    whatsappMessage,
+    initialSizeSelected: query.sizeSelected === "1",
+    breadcrumbItems,
+  });
+
   return (
     <>
-      <ProductWidgetBoundary name="view-tracker">
-        <ProductViewTracker
-          productId={asText(product.productId)}
-          name={asText(product.name)}
-          price={pricing.displayPrice}
-          currency={pricing.currency}
-        />
-      </ProductWidgetBoundary>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJson(productSchema) }}
@@ -427,170 +446,7 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
           __html: safeJson(breadcrumbSchema(breadcrumbItems, siteUrl)),
         }}
       />
-
-      <div style={{ ...envStyle(v), backgroundColor: "#f5f3f0" }}>
-        <div className="container-pawmart py-6 md:py-10">
-          <Breadcrumbs items={breadcrumbItems} />
-
-          <div className="mt-4 grid gap-8 lg:grid-cols-[1fr_380px] lg:gap-10 xl:grid-cols-[1fr_420px]">
-            <div>
-              <ProductWidgetBoundary
-                name="gallery"
-                fallback={
-                  <div className="flex aspect-square items-center justify-center rounded-xl border border-[#ebe8e3] bg-white text-sm text-[#6b6560]">
-                    Product image unavailable
-                  </div>
-                }
-              >
-                <ProductGallery
-                  images={galleryImages}
-                  videos={galleryVideos}
-                  productName={title}
-                />
-              </ProductWidgetBoundary>
-
-              {fullDescription && fullDescription !== shortCopy ? (
-                <div className="mt-8 rounded-xl border border-[#ebe8e3] bg-white p-5 md:p-6">
-                  <h2 className="mb-3 font-sans text-sm font-semibold uppercase tracking-wide text-[#6b6560]">
-                    <TranslatedText k="product.fullDetails" />
-                  </h2>
-                  <div className="whitespace-pre-line font-sans text-sm leading-relaxed text-[#141414] md:text-base">
-                    {fullDescription}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="lg:sticky lg:top-[var(--store-header-height)] lg:self-start">
-              {product.brand?.name ? (
-                <p className="mb-2 font-sans text-xs font-semibold uppercase tracking-wider text-[#9c9690]">
-                  {asText(product.brand.name)}
-                </p>
-              ) : null}
-              <h1 className="font-sans text-xl font-semibold leading-snug tracking-normal text-[#141414] md:text-2xl">
-                {title}
-              </h1>
-              {itemCode ? (
-                <p className="mt-1.5 font-sans text-sm tabular-nums text-[#9c9690]">
-                  <TranslatedText k="product.itemCode" vars={{ code: itemCode }} />
-                </p>
-              ) : null}
-
-              <div className="mt-5">
-                <ProductWidgetBoundary
-                  name="purchase-panel"
-                  fallback={
-                    <a
-                      href={whatsappHref}
-                      className="flex min-h-[48px] items-center justify-center rounded-full bg-[#128c47] px-6 text-sm font-semibold text-white"
-                    >
-                      Order on WhatsApp
-                    </a>
-                  }
-                >
-                  <ProductPurchasePanel
-                    dbId={asText(product.id)}
-                    productId={asText(product.productId)}
-                    slug={asText(product.slug)}
-                    name={asText(product.name)}
-                    itemCode={itemCode}
-                    shortDescription={shortCopy}
-                    specs={specs}
-                    pricing={pricing}
-                    inStock={inStock}
-                    imageUrl={primaryImage?.url ? asText(primaryImage.url) : undefined}
-                    environmentSlug={envSlug}
-                    environmentName={asText(environment.config.displayName)}
-                    whatsappSettings={waSettings}
-                    siteUrl={siteUrl}
-                    accentColor={v.cta}
-                    sizeVariants={sizeVariants}
-                    initialSizeSelected={query.sizeSelected === "1"}
-                  />
-                </ProductWidgetBoundary>
-              </div>
-            </div>
-          </div>
-
-          {suggested.length > 0 ? (
-            <section className="mt-12 border-t border-[#ebe8e3] pt-10">
-              <p className="font-sans text-xs font-semibold uppercase tracking-[0.18em] text-[#9c9690]">
-                <TranslatedText k="product.suggested" />
-              </p>
-              <h2 className="mt-1 font-sans text-xl font-semibold text-[#141414] md:text-2xl">
-                <TranslatedText k="product.customersAlsoBought" as="span" />
-              </h2>
-              <ProductWidgetBoundary name="suggested-products">
-                <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 md:gap-4">
-                  {suggested.map((card) => (
-                    <ProductCard
-                      key={card.id}
-                      product={card as never}
-                      whatsappSettings={waSettings}
-                      environmentSlug={envSlug}
-                      environmentName={asText(environment.config.displayName)}
-                      siteUrl={siteUrl}
-                      variant="compact"
-                    />
-                  ))}
-                </div>
-              </ProductWidgetBoundary>
-            </section>
-          ) : null}
-        </div>
-      </div>
-
-      {(sizeVariants.length === 0 || query.sizeSelected === "1") && (
-        <ProductWidgetBoundary name="mobile-order-bar">
-          <ProductMobileOrderBar
-            whatsappSettings={waSettings}
-            siteUrl={siteUrl}
-            singleProductWaHref={whatsappHref}
-            singleProductInquiry={{
-              eventType: "PRODUCT_WHATSAPP",
-              environmentSlug: envSlug,
-              environmentName: asText(environment.config.displayName),
-              itemCount: 1,
-              estimatedTotal: pricing.displayPrice,
-              currency: pricing.currency,
-              whatsappUrl: whatsappHref,
-              whatsappMessage,
-              items: [
-                {
-                  productId: asText(product.productId),
-                  productName: asText(product.name),
-                  slug: asText(product.slug),
-                  price: pricing.displayPrice,
-                  currency: pricing.currency,
-                  environmentSlug: envSlug,
-                  environmentName: asText(environment.config.displayName),
-                  quantity: 1,
-                  size: product.variantLabel
-                    ? asText(product.variantLabel)
-                    : undefined,
-                },
-              ],
-            }}
-            product={{
-              id: asText(product.id),
-              productId: asText(product.productId),
-              slug: asText(product.slug),
-              name: asText(product.name),
-              price: pricing.displayPrice,
-              currency: pricing.currency,
-              imageUrl: primaryImage?.url
-                ? asText(primaryImage.url)
-                : undefined,
-              environmentSlug: envSlug,
-              environmentName: asText(environment.config.displayName),
-              variantLabel: product.variantLabel
-                ? asText(product.variantLabel)
-                : null,
-            }}
-            accentColor={v.cta}
-          />
-        </ProductWidgetBoundary>
-      )}
+      <ProductDetailClient payloadJson={payloadJson} />
     </>
   );
 }
