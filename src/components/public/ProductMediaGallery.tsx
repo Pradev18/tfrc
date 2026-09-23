@@ -109,6 +109,9 @@ export function ProductMediaGallery({
         alt={productName}
         draggable={false}
         onError={() => markFailed(item.url)}
+        fetchPriority={mode === "main" ? "high" : "auto"}
+        decoding="async"
+        loading={mode === "main" ? "eager" : "lazy"}
         className={
           mode === "main"
             ? "h-full w-full select-none object-contain p-6 md:p-8"

@@ -27,6 +27,12 @@ const nextConfig: NextConfig = {
     },
   },
   images: {
+    formats: ["image/avif", "image/webp"],
+    // Cache resized shop thumbnails on the server so repeat views stay fast.
+    minimumCacheTTL: 60 * 60 * 24 * 30,
+    // Card grids are small — do not generate huge desktop variants.
+    deviceSizes: [640, 750, 828, 1080, 1200],
+    imageSizes: [64, 96, 128, 256, 384],
     remotePatterns: [
       {
         protocol: "https",

@@ -122,6 +122,7 @@ export function PaginatedProductGrid({
             siteUrl={siteUrl}
             variantPreselected={includeVariants}
             eagerPrefetch={index < 2}
+            priority={index < 6}
           />
         ))}
       </div>

@@ -228,24 +228,16 @@ export default async function EnvironmentCategoryPage({ params, searchParams }: 
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4">
 
-                {items.map((product) => (
-
+                {items.map((product, index) => (
                   <ProductCard
-
                     key={product.id}
-
                     product={product}
-
                     whatsappSettings={waSettings}
-
                     environmentSlug={envSlug}
-
                     environmentName={environment.config.displayName}
-
                     siteUrl={siteUrl}
-
+                    priority={index < 4}
                   />
-
                 ))}
 
               </div>

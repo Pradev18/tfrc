@@ -34,6 +34,8 @@ interface ProductCardProps {
   variant?: "default" | "premium" | "compact";
   variantPreselected?: boolean;
   eagerPrefetch?: boolean;
+  /** First viewport cards only — faster shop grid LCP without loading all images eagerly. */
+  priority?: boolean;
 }
 
 export function ProductCard({
@@ -46,6 +48,7 @@ export function ProductCard({
   variant = "premium",
   variantPreselected = false,
   eagerPrefetch = false,
+  priority = false,
 }: ProductCardProps) {
   const t = useT();
   const router = useRouter();
@@ -128,10 +131,13 @@ export function ProductCard({
               alt={primaryImage.altText || title}
               fill
               className="bg-white object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
-              sizes="(max-width: 640px) 50vw, 25vw"
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 20vw"
+              quality={70}
               placeholder="blur"
               blurDataURL={MEDIA_BLUR_DATA_URL}
-              unoptimized
+              priority={priority}
+              fetchPriority={priority ? "high" : "auto"}
+              decoding="async"
               onError={() => setFailedImageUrl(primaryImage.url)}
             />
           ) : (

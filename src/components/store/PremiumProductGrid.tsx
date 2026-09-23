@@ -55,7 +55,7 @@ export function PremiumProductGrid({
         </GsapReveal>
 
         <GsapStagger className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-4 lg:grid-cols-4 xl:grid-cols-5">
-          {products.map((product) => (
+          {products.map((product, index) => (
             <ProductCard
               key={product.id}
               product={product}
@@ -63,6 +63,7 @@ export function PremiumProductGrid({
               environmentSlug={environmentSlug}
               environmentName={environmentName}
               siteUrl={siteUrl}
+              priority={index < 6}
             />
           ))}
         </GsapStagger>
