@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { ProductDetailClient } from "@/components/public/ProductDetailClient";
 import { breadcrumbSchema } from "@/components/public/Breadcrumbs";
 import {
   getProductBySlug,
@@ -14,6 +13,7 @@ import { getWhatsAppSettings } from "@/lib/whatsapp.server";
 import { buildProductMetadata } from "@/lib/meta-seo";
 import { getSiteUrl } from "@/lib/site-config";
 import { productPath } from "@/lib/product-url";
+import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -399,41 +399,6 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
     },
   };
 
-  const payloadJson = safeJson({
-    envSlug,
-    environmentName: asText(environment.config.displayName),
-    siteUrl,
-    product: {
-      id: asText(product.id),
-      productId: asText(product.productId),
-      slug: asText(product.slug),
-      name: asText(product.name),
-      title,
-      itemCode,
-      brandName: asText(product.brand?.name) || undefined,
-      description:
-        fullDescription && fullDescription !== shortCopy
-          ? fullDescription
-          : undefined,
-      variantLabel: product.variantLabel
-        ? asText(product.variantLabel)
-        : undefined,
-      inStock,
-      imageUrl: primaryImage?.url ? asText(primaryImage.url) : undefined,
-    },
-    pricing,
-    galleryImages,
-    galleryVideos,
-    specs,
-    sizeVariants,
-    suggested,
-    whatsappSettings: waSettings,
-    whatsappHref,
-    whatsappMessage,
-    initialSizeSelected: query.sizeSelected === "1",
-    breadcrumbItems,
-  });
-
   return (
     <>
       <script
@@ -446,7 +411,194 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
           __html: safeJson(breadcrumbSchema(breadcrumbItems, siteUrl)),
         }}
       />
-      <ProductDetailClient payloadJson={payloadJson} />
+
+      <div style={{ ...envStyle(getEnvVisual(envSlug)), backgroundColor: "#f5f3f0" }}>
+        <div className="container-pawmart py-6 md:py-10">
+          <nav className="mb-6 flex flex-wrap items-center gap-2 text-sm text-[#6b6560]">
+            {breadcrumbItems.map((item, index) => (
+              <span key={`${item.href ?? item.labelKey}-${index}`} className="flex items-center gap-2">
+                {index > 0 ? <span aria-hidden>›</span> : null}
+                {item.href ? (
+                  <a href={item.href} className="hover:text-[#141414]">
+                    {item.label ?? (item.labelKey === "nav.home" ? "Home" : "Shop")}
+                  </a>
+                ) : (
+                  <span className="text-[#141414]">{item.label}</span>
+                )}
+              </span>
+            ))}
+          </nav>
+
+          <div className="grid gap-8 lg:grid-cols-[1fr_380px] lg:gap-10 xl:grid-cols-[1fr_420px]">
+            <div>
+              <div className="overflow-hidden rounded-xl border border-[#ebe8e3] bg-white">
+                {primaryImage?.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={asText(primaryImage.url)}
+                    alt={title}
+                    className="aspect-square h-auto w-full object-contain p-6 md:p-8"
+                  />
+                ) : (
+                  <div className="flex aspect-square items-center justify-center text-sm text-[#6b6560]">
+                    Product image unavailable
+                  </div>
+                )}
+              </div>
+
+              {galleryImages.length > 1 ? (
+                <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6">
+                  {galleryImages.slice(0, 6).map((image, index) => (
+                    <div
+                      key={`${image.url}-${index}`}
+                      className="overflow-hidden rounded-lg border border-[#ebe8e3] bg-white"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={image.url}
+                        alt={`${title} ${index + 1}`}
+                        className="aspect-square h-auto w-full object-contain p-1"
+                        loading="lazy"
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {fullDescription ? (
+                <div className="mt-8 rounded-xl border border-[#ebe8e3] bg-white p-5 md:p-6">
+                  <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[#6b6560]">
+                    Product details
+                  </h2>
+                  <div className="whitespace-pre-line text-sm leading-relaxed text-[#141414] md:text-base">
+                    {fullDescription}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="lg:sticky lg:top-[var(--store-header-height)] lg:self-start">
+              {product.brand?.name ? (
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#9c9690]">
+                  {asText(product.brand.name)}
+                </p>
+              ) : null}
+              <h1 className="text-xl font-semibold leading-snug text-[#141414] md:text-2xl">
+                {title}
+              </h1>
+              {itemCode ? (
+                <p className="mt-1.5 text-sm tabular-nums text-[#9c9690]">
+                  Item code: {itemCode}
+                </p>
+              ) : null}
+
+              <div className="mt-5 rounded-xl border border-[#ebe8e3] bg-white p-5">
+                {pricing.isOnSale && pricing.sale != null ? (
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-2xl font-semibold text-[#141414]">
+                      {pricing.currency} {pricing.sale.toFixed(2)}
+                    </span>
+                    <span className="text-sm text-[#9c9690] line-through">
+                      {pricing.currency} {pricing.regular.toFixed(2)}
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-2xl font-semibold text-[#141414]">
+                    {pricing.currency} {pricing.displayPrice.toFixed(2)}
+                  </p>
+                )}
+
+                {sizeVariants.length > 1 ? (
+                  <div className="mt-5">
+                    <p className="mb-2 text-sm font-semibold text-[#141414]">Choose size</p>
+                    <div className="flex flex-wrap gap-2">
+                      {sizeVariants.map((variant) => (
+                        <a
+                          key={variant.id}
+                          href={`${productPath(envSlug, variant.slug)}?sizeSelected=1`}
+                          className={`rounded-full border px-4 py-2 text-sm font-medium ${
+                            variant.slug === product.slug
+                              ? "border-[#141414] bg-[#141414] text-white"
+                              : "border-[#d4cfc8] bg-white text-[#141414]"
+                          }`}
+                        >
+                          {variant.label}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <a
+                  href={whatsappHref}
+                  className="mt-6 flex min-h-[48px] items-center justify-center rounded-full bg-[#128c47] px-6 text-sm font-semibold text-white"
+                >
+                  Order on WhatsApp
+                </a>
+              </div>
+
+              {specs.length > 0 ? (
+                <dl className="mt-5 divide-y divide-[#ebe8e3] rounded-xl border border-[#ebe8e3] bg-white px-5">
+                  {specs.map((spec) => (
+                    <div key={spec.labelKey} className="grid grid-cols-[120px_1fr] gap-3 py-3 text-sm">
+                      <dt className="text-[#6b6560]">{spec.label}</dt>
+                      <dd className="font-medium text-[#141414]">{spec.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+            </div>
+          </div>
+
+          {suggested.length > 0 ? (
+            <section className="mt-12 border-t border-[#ebe8e3] pt-10">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9c9690]">
+                Suggested products
+              </p>
+              <h2 className="mt-1 text-xl font-semibold text-[#141414] md:text-2xl">
+                Customers also bought
+              </h2>
+              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {suggested.map((card) => {
+                  const image = Array.isArray(card.images) ? card.images[0] : undefined;
+                  const cardPrices = Array.isArray(card.prices) ? card.prices : [];
+                  const regular = cardPrices.find((price) => price.type === "REGULAR");
+                  const sale = cardPrices.find((price) => price.type === "SALE");
+                  const amount = sale?.amount ?? regular?.amount ?? 0;
+                  return (
+                    <a
+                      key={asText(card.id)}
+                      href={productPath(envSlug, asText(card.slug))}
+                      className="overflow-hidden rounded-xl border border-[#ebe8e3] bg-white"
+                    >
+                      <div className="aspect-square overflow-hidden bg-white">
+                        {image?.url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={asText(image.url)}
+                            alt={asText(card.name)}
+                            className="h-full w-full object-contain p-3"
+                            loading="lazy"
+                          />
+                        ) : null}
+                      </div>
+                      <div className="border-t border-[#ebe8e3] p-3">
+                        <p className="line-clamp-2 text-sm font-semibold text-[#141414]">
+                          {productDisplayName(asText(card.name), asText(card.productId))}
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-[#141414]">
+                          {asText(sale?.currency ?? regular?.currency, "QAR")}{" "}
+                          {asNumber(amount).toFixed(2)}
+                        </p>
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+        </div>
+      </div>
     </>
   );
 }
