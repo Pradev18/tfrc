@@ -37,6 +37,8 @@ export async function POST(req: NextRequest, context: RouteContext) {
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   const preview = formData.get("preview") === "true";
+  const mode =
+    formData.get("mode") === "replace" ? ("replace" as const) : ("merge" as const);
 
   if (!file) return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
@@ -66,6 +68,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         environmentSlug: catalogue.slug,
         userId: session!.user?.id,
         preview,
+        mode,
       })
     );
 

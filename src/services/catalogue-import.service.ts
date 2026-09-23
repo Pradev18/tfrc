@@ -88,6 +88,11 @@ export interface ImportCatalogueOptions {
   environmentSlug: string;
   userId?: string;
   preview?: boolean;
+  /**
+   * merge (default): upsert by Excel item code (`id` / productId); keep other catalogue products.
+   * replace: also archive products in this catalogue that are missing from the Excel file.
+   */
+  mode?: "merge" | "replace";
 }
 
 async function validateProductOwnership(
@@ -146,7 +151,9 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
   // Live DB may lag schema after deploy — ensure itemNo exists before any Product query.
   await waitForDbReady();
 
-  const { buffer, fileName, department, environmentId, environmentSlug, userId, preview } = options;
+  const { buffer, fileName, department, environmentId, environmentSlug, userId, preview } =
+    options;
+  const mode = options.mode === "replace" ? "replace" : "merge";
   const parsed = await parseExcelBufferAsync(buffer, department);
   await yieldEventLoop();
   const ownershipErrors = await validateProductOwnership(parsed.rows, environmentId);
@@ -155,6 +162,19 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
   const validRows = Math.max(0, parsed.rows.length - ownershipErrors.length);
   const invalidRows = validationErrors.length;
   const conflictingRows = new Set(ownershipErrors.map((error) => error.row));
+
+  const importableRows = parsed.rows.filter((row) => !conflictingRows.has(row.rowNumber));
+  const existingInCatalogue = await prisma.product.findMany({
+    where: {
+      environmentId,
+      productId: { in: importableRows.map((row) => row.id) },
+      deletedAt: null,
+    },
+    select: { productId: true },
+  });
+  const existingIds = new Set(existingInCatalogue.map((row) => row.productId));
+  const previewCreated = importableRows.filter((row) => !existingIds.has(row.id)).length;
+  const previewUpdated = importableRows.filter((row) => existingIds.has(row.id)).length;
 
   const job = await prisma.importJob.create({
     data: {
@@ -181,17 +201,20 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
       totalRows,
       validRows,
       invalidRows,
-      created: 0,
-      updated: 0,
+      created: previewCreated,
+      updated: previewUpdated,
       failed: invalidRows,
       archived: 0,
+      mode,
       applied: false,
       canImport: validRows > 0 && invalidRows === 0,
       errors: validationErrors,
       errorSummary: summarizeValidationErrors(validationErrors),
-      preview: parsed.rows
-        .filter((row) => !conflictingRows.has(row.rowNumber))
-        .slice(0, 10),
+      preview: importableRows.slice(0, 10).map((row) => ({
+        id: row.id,
+        title: row.title,
+        price: row.price,
+      })),
     };
   }
 
@@ -212,6 +235,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
       created: 0,
       updated: 0,
       archived: 0,
+      mode,
       failed: invalidRows || 1,
       applied: false,
       canImport: false,
@@ -389,29 +413,48 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
           });
         }
 
-        const archivedResult = await tx.product.updateMany({
-          where: {
-            environmentId,
-            productId: { notIn: importedProductIds },
-            deletedAt: null,
-          },
-          data: { status: ProductStatus.ARCHIVED, deletedAt: new Date() },
-        });
-        archived = archivedResult.count;
+        if (mode === "replace") {
+          const archivedResult = await tx.product.updateMany({
+            where: {
+              environmentId,
+              productId: { notIn: importedProductIds },
+              deletedAt: null,
+            },
+            data: { status: ProductStatus.ARCHIVED, deletedAt: new Date() },
+          });
+          archived = archivedResult.count;
+        }
 
-        // Atomic completeness guard: never commit a partial catalogue.
+        // Every Excel row must be live after upsert (merge keeps other catalogue products).
         const importedLiveCount = await tx.product.count({
           where: {
             environmentId,
+            productId: { in: importedProductIds },
             status: ProductStatus.ACTIVE,
             deletedAt: null,
           },
         });
-        if (importedLiveCount !== parsed.rows.length) {
+        if (importedLiveCount !== importedProductIds.length) {
           throw new Error(
-            `Import completeness check failed: Excel has ${parsed.rows.length} valid products, ` +
-              `but ${importedLiveCount} would be live. Nothing was changed.`
+            `Import completeness check failed: Excel has ${importedProductIds.length} products to apply, ` +
+              `but only ${importedLiveCount} are live. Nothing was changed.`
           );
+        }
+
+        if (mode === "replace") {
+          const liveCount = await tx.product.count({
+            where: {
+              environmentId,
+              status: ProductStatus.ACTIVE,
+              deletedAt: null,
+            },
+          });
+          if (liveCount !== importedProductIds.length) {
+            throw new Error(
+              `Replace completeness check failed: expected ${importedProductIds.length} live products, ` +
+                `got ${liveCount}. Nothing was changed.`
+            );
+          }
         }
 
         if (parsed.whatsappNumber) {
@@ -455,6 +498,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
       created: 0,
       updated: 0,
       archived: 0,
+      mode,
       failed: 1,
       applied: false,
       canImport: false,
@@ -475,7 +519,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
       created,
       updated,
       failed: 0,
-      stats: JSON.stringify({ archived }),
+      stats: JSON.stringify({ archived, mode }),
       completedAt: new Date(),
     },
   });
@@ -486,7 +530,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
       action: "IMPORT",
       resource: "Product",
       resourceId: environmentId,
-      newValue: JSON.stringify({ created, updated, archived, failed: 0, fileName }),
+      newValue: JSON.stringify({ created, updated, archived, mode, failed: 0, fileName }),
     },
   });
 
@@ -498,6 +542,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
     created,
     updated,
     archived,
+    mode,
     failed: 0,
     applied: true,
     canImport: true,

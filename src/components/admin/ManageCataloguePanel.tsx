@@ -621,7 +621,9 @@ export function ManageCataloguePanel({
             catalogueName={catalogueName}
             onImported={(importResult) => {
               setMessage(
-                `Catalogue replaced — ${importResult.validRows} products live (created ${importResult.created}, updated ${importResult.updated}, archived ${importResult.archived})`
+                importResult.mode === "replace"
+                  ? `Catalogue replaced — created ${importResult.created}, updated ${importResult.updated}, archived ${importResult.archived}`
+                  : `Catalogue updated by item code — created ${importResult.created}, updated ${importResult.updated} (other products kept)`
               );
               setPage(1);
               setQ("");

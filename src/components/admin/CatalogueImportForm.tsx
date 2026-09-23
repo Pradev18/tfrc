@@ -23,6 +23,7 @@ interface ImportResult {
   updated: number;
   archived: number;
   failed: number;
+  mode?: "merge" | "replace";
   applied: boolean;
   canImport: boolean;
   errors: ImportError[];
@@ -51,6 +52,7 @@ export function CatalogueImportForm({
   const [file, setFile] = useState<File | null>(null);
   const [validatedSignature, setValidatedSignature] = useState("");
   const [previewedSignature, setPreviewedSignature] = useState("");
+  const [replaceMissing, setReplaceMissing] = useState(false);
   const [loading, setLoading] = useState<"preview" | "import" | null>(null);
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -86,25 +88,31 @@ export function CatalogueImportForm({
   async function submit(preview: boolean) {
     if (!file || loading || requestInFlightRef.current) return;
     if (!preview && validatedSignature !== fileSignature(file)) {
-      setError("Preview and validate this file before replacing the catalogue.");
+      setError("Preview and validate this file before updating the catalogue.");
       return;
     }
-    if (
-      !preview &&
-      !window.confirm(
-        `Replace ${catalogueName} with this Excel file?\n\nProducts missing from the file will be removed from the live catalogue.`
-      )
-    ) {
-      return;
+    const mode = replaceMissing ? "replace" : "merge";
+    if (!preview) {
+      const confirmMessage = replaceMissing
+        ? `Replace ${catalogueName} with this Excel file?\n\nProducts missing from the file will be removed from the live catalogue.`
+        : `Update ${catalogueName} from this Excel file?\n\nMatching item codes will be overwritten. New item codes will be added. Other products in this catalogue stay unchanged.`;
+      if (!window.confirm(confirmMessage)) return;
     }
 
     requestInFlightRef.current = true;
     setLoading(preview ? "preview" : "import");
     setError("");
-    setProgress(preview ? "Validating spreadsheet…" : "Uploading and replacing catalogue…");
+    setProgress(
+      preview
+        ? "Validating spreadsheet…"
+        : replaceMissing
+          ? "Uploading and replacing catalogue…"
+          : "Uploading and updating matched products…"
+    );
     const formData = new FormData();
     formData.append("file", file);
     formData.append("preview", String(preview));
+    formData.append("mode", mode);
 
     try {
       if (!preview) setProgress("Importing products into database…");
@@ -113,7 +121,7 @@ export function CatalogueImportForm({
         body: formData,
         cache: "no-store",
       });
-      if (!preview) setProgress("Refreshing admin + storefront…");
+      if (!preview) setProgress("Refreshing admin + storefront + PDF cache…");
       const data = (await response.json()) as ImportResult & { error?: string };
       if (data.error) throw new Error(data.error);
 
@@ -122,7 +130,11 @@ export function CatalogueImportForm({
         if (data.canImport) {
           setPreviewedSignature(fileSignature(file));
           setValidatedSignature(fileSignature(file));
-          setProgress("Validation passed — ready to replace");
+          setProgress(
+            replaceMissing
+              ? "Validation passed — ready to replace"
+              : "Validation passed — ready to update by item code"
+          );
         } else {
           setPreviewedSignature("");
           setValidatedSignature("");
@@ -134,7 +146,9 @@ export function CatalogueImportForm({
           setProgress("");
         }
       } else if (response.ok && data.applied) {
-        setProgress("Done — catalogue replaced");
+        setProgress(
+          replaceMissing ? "Done — catalogue replaced" : "Done — products updated"
+        );
         announceSiteDataUpdate();
         onImported?.(data);
         setValidatedSignature("");
@@ -165,7 +179,7 @@ export function CatalogueImportForm({
     }
   }
 
-  const canReplace =
+  const canApply =
     Boolean(file) && !loading && validatedSignature === (file ? fileSignature(file) : "");
   const canPreview =
     Boolean(file) && !loading && previewedSignature !== (file ? fileSignature(file) : "");
@@ -177,7 +191,11 @@ export function CatalogueImportForm({
           <div className="mx-4 max-w-sm rounded-xl border border-border bg-surface px-5 py-4 text-center shadow-sm">
             <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             <p className="text-sm font-semibold text-primary">
-              {loading === "preview" ? "Validating file" : "Replacing catalogue"}
+              {loading === "preview"
+                ? "Validating file"
+                : replaceMissing
+                  ? "Replacing catalogue"
+                  : "Updating catalogue"}
             </p>
             <p className="mt-1 text-xs text-text-muted">{progress || "Please wait…"}</p>
             <p className="mt-2 text-xs text-text-muted">Do not close this page.</p>
@@ -186,11 +204,12 @@ export function CatalogueImportForm({
       )}
 
       <div>
-        <h3 className="font-semibold text-primary">Replace {catalogueName} from Excel</h3>
+        <h3 className="font-semibold text-primary">Update {catalogueName} from Excel</h3>
         <p className="mt-1 text-sm leading-6 text-text-muted">
-          Download the Excel template (.xlsx), edit it in Excel or Google Sheets, save the same
-          file, then upload it here. PawMart example rows are already filled so you can replace
-          them with your products.
+          Upload any Excel rows for this catalogue. Matching{" "}
+          <strong>item codes</strong> (<code className="text-xs">id</code> column) overwrite
+          existing products everywhere (shop + PDF). New item codes are added. Other products in
+          this catalogue stay unless you enable full replace below.
         </p>
         <a
           href="/api/admin/catalogues/import-template"
@@ -204,8 +223,8 @@ export function CatalogueImportForm({
       <label className="block">
         <span className="mb-1 block text-sm font-medium">Meta catalogue Excel file</span>
         <span className="mb-2 block text-xs text-text-muted">
-          Upload the same edited .xlsx template. Required columns: id, title, price, image_link.
-          Empty rows are ignored. Accepted files: .xlsx or .xls, up to 25 MB.
+          Required columns: id (item code), title, price, image_link. Optional: item_no,
+          google_product_category. Empty rows ignored. .xlsx / .xls up to 25 MB.
         </span>
         <input
           ref={inputRef}
@@ -223,6 +242,24 @@ export function CatalogueImportForm({
         </p>
       )}
 
+      <label className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-3 text-sm text-amber-950">
+        <input
+          type="checkbox"
+          checked={replaceMissing}
+          onChange={(event) => {
+            setReplaceMissing(event.target.checked);
+            setValidatedSignature("");
+            setPreviewedSignature("");
+          }}
+          disabled={Boolean(loading)}
+          className="mt-1"
+        />
+        <span>
+          <strong>Full replace</strong> — also remove products in this catalogue that are{" "}
+          <em>not</em> in the Excel file. Leave unchecked to only update/add by item code.
+        </span>
+      </label>
+
       <div className="grid gap-3 sm:grid-cols-2">
         <button
           type="button"
@@ -239,16 +276,22 @@ export function CatalogueImportForm({
         <button
           type="button"
           onClick={() => submit(false)}
-          disabled={!canReplace}
+          disabled={!canApply}
           className="btn-primary min-h-11 text-sm disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading === "import" ? "Replacing… please wait" : "2. Replace catalogue"}
+          {loading === "import"
+            ? replaceMissing
+              ? "Replacing… please wait"
+              : "Updating… please wait"
+            : replaceMissing
+              ? "2. Replace catalogue"
+              : "2. Update by item code"}
         </button>
       </div>
 
-      {!canReplace && file && !loading && validatedSignature !== fileSignature(file) && (
+      {!canApply && file && !loading && validatedSignature !== fileSignature(file) && (
         <p className="text-xs text-amber-700">
-          Preview & validate must succeed before Replace catalogue unlocks.
+          Preview & validate must succeed before update unlocks.
         </p>
       )}
 
@@ -266,17 +309,21 @@ export function CatalogueImportForm({
         >
           <p className="font-semibold">
             {result.applied
-              ? `Replaced successfully — ${result.validRows} live products now`
+              ? result.mode === "replace"
+                ? `Replaced successfully — created ${result.created}, updated ${result.updated}, archived ${result.archived}`
+                : `Updated successfully — created ${result.created}, updated ${result.updated} (other products kept)`
               : result.canImport
-                ? "File validated — click Replace catalogue"
+                ? replaceMissing
+                  ? "File validated — click Replace catalogue"
+                  : "File validated — click Update by item code"
                 : "Validation report"}
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <span>Total: {result.totalRows}</span>
+            <span>Total rows: {result.totalRows}</span>
             <span>Valid: {result.validRows}</span>
             <span>Invalid: {result.invalidRows}</span>
-            <span>Created: {result.created}</span>
-            <span>Updated: {result.updated}</span>
+            <span>Will create / created: {result.created}</span>
+            <span>Will update / updated: {result.updated}</span>
             <span>Archived: {result.archived}</span>
           </div>
 
@@ -285,7 +332,7 @@ export function CatalogueImportForm({
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="py-2 pr-3">Product ID</th>
+                    <th className="py-2 pr-3">Item code</th>
                     <th className="py-2 pr-3">Title</th>
                     <th className="py-2">Price</th>
                   </tr>
