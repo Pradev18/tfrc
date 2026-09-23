@@ -1,4 +1,4 @@
-import prisma from "@/lib/db";
+import prisma, { waitForDbReady } from "@/lib/db";
 import { parseExcelBufferAsync } from "@/lib/import/catalog-parser";
 import {
   createCategorySlug,
@@ -143,6 +143,9 @@ function summarizeValidationErrors(
 }
 
 export async function importCatalogueExcel(options: ImportCatalogueOptions) {
+  // Live DB may lag schema after deploy — ensure itemNo exists before any Product query.
+  await waitForDbReady();
+
   const { buffer, fileName, department, environmentId, environmentSlug, userId, preview } = options;
   const parsed = await parseExcelBufferAsync(buffer, department);
   await yieldEventLoop();

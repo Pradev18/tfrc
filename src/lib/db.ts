@@ -77,10 +77,38 @@ async function ensureSqlitePragmas() {
   }
 }
 
+/** Live DBs can lag schema after deploy — add missing Product columns safely. */
+async function ensureProductSchema() {
+  try {
+    const cols = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `PRAGMA table_info("Product")`
+    );
+    const names = new Set(cols.map((col) => col.name));
+    if (!names.has("itemNo")) {
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE "Product" ADD COLUMN "itemNo" INTEGER`
+      );
+      console.log("[db] Added missing Product.itemNo column at runtime");
+    }
+    await prisma.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "Product_environmentId_itemNo_idx" ON "Product"("environmentId", "itemNo")`
+    );
+  } catch (error) {
+    console.warn("[db] Could not ensure Product.itemNo:", error);
+  }
+}
+
 if (!globalForPrisma.prismaReady) {
-  globalForPrisma.prismaReady = ensureSqlitePragmas();
+  globalForPrisma.prismaReady = (async () => {
+    await ensureSqlitePragmas();
+    await ensureProductSchema();
+  })();
 }
 
 globalForPrisma.prisma = prisma;
 
 export default prisma;
+
+export async function waitForDbReady() {
+  await globalForPrisma.prismaReady;
+}

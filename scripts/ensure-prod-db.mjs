@@ -109,6 +109,7 @@ try {
 }
 
 run("node scripts/migrate-admin-password.mjs");
+run("node scripts/migrate-product-item-no.mjs");
 
 console.log("[db] Ready. DATABASE_URL=", process.env.DATABASE_URL);
 console.log("[db] Persistent data dir=", path.dirname(livePath));
