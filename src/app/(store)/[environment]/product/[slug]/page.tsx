@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { ProductGallery } from "@/components/public/ProductGallery";
 import { ProductCard } from "@/components/public/ProductCard";
 import { ProductPurchasePanel } from "@/components/public/ProductPurchasePanel";
+import { ProductWidgetBoundary } from "@/components/public/ProductWidgetBoundary";
 import { ProductMobileOrderBar } from "@/components/store/ProductMobileOrderBar";
 import { Breadcrumbs, breadcrumbSchema } from "@/components/public/Breadcrumbs";
 import {
@@ -232,12 +233,14 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
 
   return (
     <>
-      <ProductViewTracker
-        productId={product.productId}
-        name={product.name}
-        price={pricing.displayPrice}
-        currency={pricing.currency}
-      />
+      <ProductWidgetBoundary name="view-tracker">
+        <ProductViewTracker
+          productId={product.productId}
+          name={product.name}
+          price={pricing.displayPrice}
+          currency={pricing.currency}
+        />
+      </ProductWidgetBoundary>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }}
@@ -255,11 +258,20 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
 
           <div className="mt-4 grid gap-8 lg:grid-cols-[1fr_380px] lg:gap-10 xl:grid-cols-[1fr_420px]">
             <div>
-              <ProductGallery
-                images={product.images ?? []}
-                videos={product.videos}
-                productName={title}
-              />
+              <ProductWidgetBoundary
+                name="gallery"
+                fallback={
+                  <div className="flex aspect-square items-center justify-center rounded-xl border border-[#ebe8e3] bg-white text-sm text-[#6b6560]">
+                    Product image unavailable
+                  </div>
+                }
+              >
+                <ProductGallery
+                  images={product.images ?? []}
+                  videos={product.videos ?? []}
+                  productName={title}
+                />
+              </ProductWidgetBoundary>
 
               {product.description &&
               product.description.trim() &&
@@ -291,6 +303,17 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
               ) : null}
 
               <div className="mt-5">
+                <ProductWidgetBoundary
+                  name="purchase-panel"
+                  fallback={
+                    <a
+                      href={whatsappHref}
+                      className="flex min-h-[48px] items-center justify-center rounded-full bg-[#128c47] px-6 text-sm font-semibold text-white"
+                    >
+                      Order on WhatsApp
+                    </a>
+                  }
+                >
                 <ProductPurchasePanel
                   dbId={product.id}
                   productId={product.productId}
@@ -327,6 +350,7 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
                   }))}
                   initialSizeSelected={query.sizeSelected === "1"}
                 />
+                </ProductWidgetBoundary>
               </div>
             </div>
           </div>
@@ -339,25 +363,29 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
               <h2 className="mt-1 font-sans text-xl font-semibold text-[#141414] md:text-2xl">
                 <TranslatedText k="product.customersAlsoBought" as="span" />
               </h2>
-              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 md:gap-4">
-                {suggested.map((p) => (
-                  <ProductCard
-                    key={p.id}
-                    product={p}
-                    whatsappSettings={waSettings}
-                    environmentSlug={envSlug}
-                    environmentName={environment.config.displayName}
-                    siteUrl={siteUrl}
-                    variant="compact"
-                  />
-                ))}
-              </div>
+              <ProductWidgetBoundary name="suggested-products">
+                <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 md:gap-4">
+                  {suggested.map((p) => (
+                    <ProductCard
+                      key={p.id}
+                      product={p}
+                      whatsappSettings={waSettings}
+                      environmentSlug={envSlug}
+                      environmentName={environment.config.displayName}
+                      siteUrl={siteUrl}
+                      variant="compact"
+                    />
+                  ))}
+                </div>
+              </ProductWidgetBoundary>
             </section>
           ) : null}
         </div>
       </div>
 
-      {(variants.length === 0 || query.sizeSelected === "1") && <ProductMobileOrderBar
+      {(variants.length === 0 || query.sizeSelected === "1") && (
+        <ProductWidgetBoundary name="mobile-order-bar">
+        <ProductMobileOrderBar
         whatsappSettings={waSettings}
         siteUrl={siteUrl}
         singleProductWaHref={whatsappHref}
@@ -397,7 +425,9 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
           variantLabel: product.variantLabel,
         }}
         accentColor={v.cta}
-      />}
+        />
+        </ProductWidgetBoundary>
+      )}
     </>
   );
 }
