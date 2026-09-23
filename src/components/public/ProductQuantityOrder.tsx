@@ -1,6 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { AddToCartButton } from "@/components/public/AddToCartButton";
+
+export type ProductCartInfo = {
+  dbId: string;
+  productId: string;
+  slug: string;
+  name: string;
+  imageUrl?: string;
+  environmentSlug: string;
+  environmentName: string;
+  variantLabel?: string | null;
+};
 
 const MAX_QUANTITY = 999;
 
@@ -15,12 +27,14 @@ export function ProductQuantityOrder({
   messageOutro,
   unitPrice,
   currency,
+  cart,
 }: {
   whatsappPhone: string;
   messageIntro: string;
   messageOutro: string;
   unitPrice: number;
   currency: string;
+  cart?: ProductCartInfo;
 }) {
   const [quantity, setQuantity] = useState(1);
   const price = Number.isFinite(unitPrice) ? unitPrice : 0;
@@ -80,11 +94,33 @@ export function ProductQuantityOrder({
         ) : null}
       </div>
 
+      {cart ? (
+        <div className="mt-6">
+          <AddToCartButton
+            dbId={cart.dbId}
+            productId={cart.productId}
+            slug={cart.slug}
+            name={cart.name}
+            price={price}
+            currency={currency}
+            imageUrl={cart.imageUrl}
+            environmentSlug={cart.environmentSlug}
+            environmentName={cart.environmentName}
+            quantity={quantity}
+            variantLabel={cart.variantLabel}
+            fullWidth
+            size="md"
+            accentColor="#141414"
+            variant="outline"
+          />
+        </div>
+      ) : null}
+
       <a
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-6 flex min-h-[48px] items-center justify-center rounded-full bg-[#128c47] px-6 text-sm font-semibold text-white"
+        className={`${cart ? "mt-3" : "mt-6"} flex min-h-[48px] items-center justify-center rounded-full bg-[#128c47] px-6 text-sm font-semibold text-white`}
       >
         Order on WhatsApp
       </a>

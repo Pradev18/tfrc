@@ -15,6 +15,10 @@ import { getSiteUrl } from "@/lib/site-config";
 import { productPath } from "@/lib/product-url";
 import { getEnvVisual, envStyle } from "@/lib/env-visuals";
 import { ProductQuantityOrder } from "@/components/public/ProductQuantityOrder";
+import {
+  ProductMediaGallery,
+  type ProductMediaItem,
+} from "@/components/public/ProductMediaGallery";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -322,6 +326,13 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
   const galleryVideos = (product.videos ?? [])
     .map((video) => ({ url: asText((video as { url?: string }).url) }))
     .filter((video) => Boolean(video.url));
+  const primaryFirstImages = [...galleryImages]
+    .filter((image) => Boolean(image.url))
+    .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+  const galleryMedia: ProductMediaItem[] = [
+    ...primaryFirstImages.map((image) => ({ type: "image" as const, url: image.url })),
+    ...galleryVideos.map((video) => ({ type: "video" as const, url: video.url })),
+  ].filter((item, index, all) => all.findIndex((other) => other.url === item.url) === index);
 
   const baseVariantLabels = variants.map(
     (variant) =>
@@ -435,39 +446,7 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
 
           <div className="grid gap-8 lg:grid-cols-[1fr_380px] lg:gap-10 xl:grid-cols-[1fr_420px]">
             <div>
-              <div className="overflow-hidden rounded-xl border border-[#ebe8e3] bg-white">
-                {primaryImage?.url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={asText(primaryImage.url)}
-                    alt={title}
-                    className="aspect-square h-auto w-full object-contain p-6 md:p-8"
-                  />
-                ) : (
-                  <div className="flex aspect-square items-center justify-center text-sm text-[#6b6560]">
-                    Product image unavailable
-                  </div>
-                )}
-              </div>
-
-              {galleryImages.length > 1 ? (
-                <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6">
-                  {galleryImages.slice(0, 6).map((image, index) => (
-                    <div
-                      key={`${image.url}-${index}`}
-                      className="overflow-hidden rounded-lg border border-[#ebe8e3] bg-white"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={image.url}
-                        alt={`${title} ${index + 1}`}
-                        className="aspect-square h-auto w-full object-contain p-1"
-                        loading="lazy"
-                      />
-                    </div>
-                  ))}
-                </div>
-              ) : null}
+              <ProductMediaGallery items={galleryMedia} productName={title} />
 
               {fullDescription ? (
                 <div className="mt-8 rounded-xl border border-[#ebe8e3] bg-white p-5 md:p-6">
@@ -539,6 +518,16 @@ export default async function EnvironmentProductPage({ params, searchParams }: P
                   messageOutro={productUrl}
                   unitPrice={asNumber(pricing.displayPrice)}
                   currency={asText(pricing.currency, "QAR")}
+                  cart={{
+                    dbId: asText(product.id),
+                    productId: asText(product.productId),
+                    slug: asText(product.slug),
+                    name: title,
+                    imageUrl: primaryFirstImages[0]?.url || undefined,
+                    environmentSlug: envSlug,
+                    environmentName: asText(environment.config.displayName),
+                    variantLabel: asText(product.variantLabel) || null,
+                  }}
                 />
               </div>
 
