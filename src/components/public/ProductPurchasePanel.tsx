@@ -127,8 +127,19 @@ export function ProductPurchasePanel({
     ]
   );
 
-  const whatsappHref = generateWhatsAppLinkSync(whatsappSettings, productPayload, siteUrl);
-  const whatsappMessage = buildWhatsAppMessage(whatsappSettings, productPayload, siteUrl);
+  let whatsappHref = "#";
+  let whatsappMessage = "";
+  try {
+    whatsappHref = generateWhatsAppLinkSync(whatsappSettings, productPayload, siteUrl);
+    whatsappMessage = buildWhatsAppMessage(whatsappSettings, productPayload, siteUrl);
+  } catch (error) {
+    console.error("[purchase-panel] whatsapp compose failed", error);
+    const phone =
+      String(whatsappSettings?.phoneNumber ?? "").replace(/\D/g, "") ||
+      "97455049229";
+    whatsappMessage = `Hello, I want to order ${name} (${productId}).`;
+    whatsappHref = `https://wa.me/${phone}?text=${encodeURIComponent(whatsappMessage)}`;
+  }
 
   function addMultipleSizes() {
     const selected = sizeVariants.filter(

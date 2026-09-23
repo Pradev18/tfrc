@@ -18,6 +18,8 @@ export default function StoreProductError({
     console.error("[product-page]", error);
   }, [error]);
 
+  const detail = [error?.message, error?.digest].filter(Boolean).join(" · ");
+
   return (
     <div className="container-pawmart flex min-h-[50vh] flex-col items-center justify-center py-16 text-center">
       <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-[#9c9690]">
@@ -29,6 +31,11 @@ export default function StoreProductError({
       <p className="mt-4 max-w-md text-sm leading-relaxed text-[#6b6560]">
         Try again, or go back to the catalogue and open another item.
       </p>
+      {detail ? (
+        <p className="mt-3 max-w-xl break-words text-[11px] text-[#9c9690]">
+          {detail}
+        </p>
+      ) : null}
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
         <button
           type="button"

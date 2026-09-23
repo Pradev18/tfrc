@@ -97,7 +97,13 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 export function useLanguage() {
   const ctx = useContext(LanguageContext);
   if (!ctx) {
-    throw new Error("useLanguage must be used within LanguageProvider");
+    return {
+      locale: DEFAULT_LOCALE,
+      setLocale: () => undefined,
+      t: (key: string, vars?: Record<string, string | number>) =>
+        translate(DEFAULT_LOCALE, key, vars),
+      isArabic: false,
+    } satisfies LanguageContextValue;
   }
   return ctx;
 }
