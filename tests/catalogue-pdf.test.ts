@@ -110,6 +110,14 @@ describe("catalogue PDF pagination", () => {
     expect(physicalPageCount(result.bytes)).toBe(2);
   });
 
+  it("packs the next category after two product rows when geometry allows", () => {
+    // Compact cards leave room for header + first row after 2 rows (8 cards).
+    const result = buildCataloguePdfDocument(payload([8, 3]));
+    expect(result.stats.productPages).toBe(1);
+    expect(result.stats.pageCardCounts).toEqual([11]);
+    expect(physicalPageCount(result.bytes)).toBe(2);
+  });
+
   it("does not orphan a category header when first row cannot fit", () => {
     // 3 full rows leave no room for another category header + row.
     const result = buildCataloguePdfDocument(payload([12, 1]));
@@ -160,6 +168,37 @@ describe("catalogue PDF pagination", () => {
     expect(result.stats.pageCount).toBe(17);
     expect(physicalPageCount(result.bytes)).toBe(17);
     expect(result.stats.pageCardCounts.reduce((a, b) => a + b, 0)).toBe(31);
+  });
+
+  it("applies the same packing to any future catalogue without catalogue-specific rules", () => {
+    const future = payload([5, 2, 9, 1], {
+      catalogue: {
+        id: "future-id",
+        name: "Brand New Tomorrow",
+        slug: "brand-new-tomorrow",
+        logoUrl: TINY_PNG,
+        tagline: "Created after this release",
+        description: "Must inherit smart pagination automatically.",
+      },
+    });
+    const result = buildCataloguePdfDocument(future);
+    expect(result.stats.productCards).toBe(17);
+    expect(result.stats.pageCardCounts.reduce((a, b) => a + b, 0)).toBe(17);
+    expect(result.stats.productPages).toBeGreaterThanOrEqual(2);
+    expect(result.stats.linkAnnotations).toBe(17 + 2);
+    expect(physicalPageCount(result.bytes)).toBe(result.stats.pageCount);
+
+    const order = packCataloguePhysicalPages(future).flatMap((page) =>
+      page.sections.flatMap((section) =>
+        section.products.map((product) => product.productId)
+      )
+    );
+    expect(order).toEqual([
+      ...Array.from({ length: 5 }, (_, i) => `SKU-${i + 1}`),
+      ...Array.from({ length: 2 }, (_, i) => `SKU-${10_000 + i + 1}`),
+      ...Array.from({ length: 9 }, (_, i) => `SKU-${20_000 + i + 1}`),
+      "SKU-30001",
+    ]);
   });
 });
 

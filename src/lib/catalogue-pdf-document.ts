@@ -7,6 +7,7 @@ import type {
 
 export const PDF_PRODUCTS_PER_PAGE = 12;
 export const PDF_COLS = 4;
+/** Design baseline rows on a fresh page (capacity target, not a hard page rule). */
 export const PDF_ROWS = 3;
 
 const PAGE_WIDTH = 210;
@@ -18,10 +19,16 @@ const CATEGORY_TOP = 25;
 const CATEGORY_HEIGHT = 15;
 const GRID_TOP = 43;
 const GRID_BOTTOM = 278;
-const GRID_HEIGHT = GRID_BOTTOM - GRID_TOP;
 const GRID_GAP = 2;
 const CARD_WIDTH = (CONTENT_WIDTH - GRID_GAP * (PDF_COLS - 1)) / PDF_COLS;
-const CARD_HEIGHT = (GRID_HEIGHT - GRID_GAP * (PDF_ROWS - 1)) / PDF_ROWS;
+/**
+ * Compact card height (~14% shorter than the old 77mm fill-to-3-rows height).
+ * Sized so a fresh page still fits 3 rows, and leftover space after 1–2 rows
+ * can often hold the next category's header + first row.
+ */
+const CARD_HEIGHT = 66;
+/** Product image well — reduced from 34mm; keep aspect contain, never stretch. */
+const CARD_IMAGE_HEIGHT = 29;
 const FOOTER_TOP = 281;
 
 type Rgb = [number, number, number];
@@ -61,7 +68,7 @@ interface PhysicalPageLayout {
 /** Small buffer against print/subpixel rounding — keep centralized. */
 const SAFETY_BUFFER_MM = 1.5;
 /** Gap between the bottom of one category's cards and the next category band. */
-const SECTION_GAP_MM = 3;
+const SECTION_GAP_MM = 2.5;
 /** Existing gap between category band bottom and first card row. */
 const BAND_TO_GRID_GAP_MM = GRID_TOP - (CATEGORY_TOP + CATEGORY_HEIGHT);
 
@@ -706,20 +713,20 @@ function drawProductCard(
   doc.setLineWidth(0.28);
   doc.roundedRect(x, y, CARD_WIDTH, CARD_HEIGHT, 2, 2, "FD");
 
-  const imageX = x + 1.5;
-  const imageY = y + 1.5;
-  const imageWidth = CARD_WIDTH - 3;
-  const imageHeight = 34;
+  const imageX = x + 1.4;
+  const imageY = y + 1.4;
+  const imageWidth = CARD_WIDTH - 2.8;
+  const imageHeight = CARD_IMAGE_HEIGHT;
   doc.setFillColor(...mix(colors.accent, 0.95));
-  doc.roundedRect(imageX, imageY, imageWidth, imageHeight, 1.4, 1.4, "F");
+  doc.roundedRect(imageX, imageY, imageWidth, imageHeight, 1.3, 1.3, "F");
   if (
     drawImageContained(
       doc,
       product.imageUrl,
-      imageX + 1,
-      imageY + 1,
-      imageWidth - 2,
-      imageHeight - 2,
+      imageX + 0.9,
+      imageY + 0.9,
+      imageWidth - 1.8,
+      imageHeight - 1.8,
       `product-${product.id}`
     )
   ) {
@@ -730,10 +737,10 @@ function drawProductCard(
     drawImageFallback(
       doc,
       product.displayName,
-      imageX + 1,
-      imageY + 1,
-      imageWidth - 2,
-      imageHeight - 2,
+      imageX + 0.9,
+      imageY + 0.9,
+      imageWidth - 1.8,
+      imageHeight - 1.8,
       colors.accent
     );
     counters.fallbacks += 1;
@@ -742,10 +749,10 @@ function drawProductCard(
 
   const bodyX = x + 2;
   const bodyWidth = CARD_WIDTH - 4;
-  let cursorY = imageY + imageHeight + 4;
+  let cursorY = imageY + imageHeight + 2.8;
   doc.setTextColor(...colors.cta);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
+  doc.setFontSize(7.8);
   cursorY = drawTextLines(
     doc,
     product.displayName,
@@ -753,18 +760,18 @@ function drawProductCard(
     cursorY,
     bodyWidth,
     2,
-    3.4
+    3.2
   );
 
   doc.setTextColor(...colors.muted);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(6.1);
+  doc.setFontSize(6);
   doc.text(
     ellipsiseLine(`Item code: ${normalisePdfText(product.productId)}`, 38),
     bodyX,
-    cursorY + 0.8
+    cursorY + 0.6
   );
-  cursorY += 4;
+  cursorY += 3.4;
 
   if (product.availableSizes.length > 0) {
     const sizes = ellipsiseLine(
@@ -772,26 +779,26 @@ function drawProductCard(
       44
     );
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(5.8);
+    doc.setFontSize(5.7);
     doc.setTextColor(...colors.cta);
     doc.text(sizes, bodyX, cursorY);
   }
 
-  const buttonHeight = 6.5;
-  const buttonY = y + CARD_HEIGHT - buttonHeight - 1.7;
-  const stockY = buttonY - 3.2;
-  const priceY = stockY - 4.2;
+  const buttonHeight = 6.4;
+  const buttonY = y + CARD_HEIGHT - buttonHeight - 1.4;
+  const stockY = buttonY - 2.9;
+  const priceY = stockY - 3.8;
 
   doc.setTextColor(...colors.heading);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.5);
+  doc.setFontSize(9.2);
   const price = `${product.priceFrom ? "From " : ""}${normalisePdfText(
     product.currency
   )} ${product.price.toFixed(2)}`;
   doc.text(ellipsiseLine(price, 30), bodyX, priceY);
 
   doc.setTextColor(...(product.inStock ? ([22, 101, 52] as Rgb) : ([159, 18, 57] as Rgb)));
-  doc.setFontSize(6.3);
+  doc.setFontSize(6.1);
   doc.text(product.inStock ? "In stock" : "Check availability", bodyX, stockY);
 
   const whatsappUrl = safeExternalUrl(product.whatsappUrl);
@@ -799,8 +806,8 @@ function drawProductCard(
   doc.roundedRect(bodyX, buttonY, bodyWidth, buttonHeight, 1.2, 1.2, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(6.8);
-  doc.text("WhatsApp Order", x + CARD_WIDTH / 2, buttonY + 4.35, { align: "center" });
+  doc.setFontSize(6.6);
+  doc.text("WhatsApp Order", x + CARD_WIDTH / 2, buttonY + 4.2, { align: "center" });
   if (whatsappUrl) {
     doc.link(bodyX, buttonY, bodyWidth, buttonHeight, { url: whatsappUrl });
     counters.links += 1;
@@ -818,11 +825,12 @@ function chunkIntoRows<T>(items: T[], cols = PDF_COLS): T[][] {
 
 /**
  * How many complete product rows fit when the first row starts at gridY.
- * Uses exact A4 card geometry so a fresh page still holds the normal 3×4 = 12 cards.
+ * Driven by real A4 geometry (CARD_HEIGHT + gaps), not a hardcoded card count.
  */
 function maxRowsFromGridY(gridY: number): number {
   let rows = 0;
-  while (rows < PDF_ROWS * 4) {
+  // Allow more than the design baseline when compact cards leave room.
+  while (rows < 8) {
     const nextEnd = endYAfterRows(gridY, rows + 1);
     if (nextEnd > GRID_BOTTOM + 0.01) break;
     rows += 1;
@@ -857,6 +865,7 @@ function tryPlaceCategoryStart(cursorY: number): {
 
 /**
  * Pack categories onto physical A4 pages.
+ * Data-driven for every current and future catalogue — no slug/id special cases.
  * - Preserves category order and product order
  * - Never orphans a category header without its first row
  * - Never splits a 4-card row across pages
