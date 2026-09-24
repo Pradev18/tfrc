@@ -1,14 +1,21 @@
 /**
- * Export a Prisma-free catalog cache for Hostinger fallback.
- * Always reads the LIVE database from DATABASE_URL when set,
- * otherwise the richest prod.db candidate (never a stale default-only file).
+ * Export catalog-cache from the LIVE owner database only.
+ *
+ * Never bake the shipped seed catalogues into a deploy artifact — that is what
+ * made every code push look like it "replaced" the client's uploaded data.
  */
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { config as loadEnv } from "dotenv";
 import { PrismaClient } from "@prisma/client";
-import { resolveLiveDbPath, seedDbPath } from "./lib/db-location.mjs";
+import {
+  canWriteDir,
+  persistentCachePath,
+  persistentDataDir,
+  resolveLiveDbPath,
+  seedDbPath,
+} from "./lib/db-location.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 loadEnv({ path: path.join(root, ".env") });
@@ -16,77 +23,113 @@ loadEnv({ path: path.join(root, ".env.local"), override: true });
 loadEnv({ path: path.join(root, "prisma", ".env") });
 
 const live = resolveLiveDbPath(root);
-const dbFile = live?.path || seedDbPath(root);
-const outFile = path.join(root, "data", "catalog-cache.json");
+const seed = seedDbPath(root);
+const allowSeedFallback = process.env.TFRC_ALLOW_SEED_CACHE === "1";
+
+let dbFile = live?.path ?? null;
+let source = live?.source ?? null;
+
+if (!dbFile && allowSeedFallback && seed) {
+  dbFile = seed;
+  source = "seed-explicit";
+}
+
+const outFiles = [path.join(root, "data", "catalog-cache.json")];
+if (canWriteDir(persistentDataDir(root))) {
+  outFiles.unshift(persistentCachePath(root));
+}
+
+function writeCache(cache) {
+  const payload = JSON.stringify(cache);
+  for (const outFile of outFiles) {
+    try {
+      fs.mkdirSync(path.dirname(outFile), { recursive: true });
+      const temporary = `${outFile}.${process.pid}.tmp`;
+      fs.writeFileSync(temporary, payload);
+      fs.renameSync(temporary, outFile);
+      console.log(
+        `[catalog-cache] wrote ${outFile} (${(fs.statSync(outFile).size / 1024 / 1024).toFixed(2)} MB)`
+      );
+    } catch (err) {
+      console.warn(`[catalog-cache] could not write ${outFile}:`, err?.message ?? err);
+    }
+  }
+}
 
 if (!dbFile || !fs.existsSync(dbFile)) {
-  console.error("[catalog-cache] No database found to export");
-  process.exit(1);
+  console.warn(
+    "[catalog-cache] No LIVE owner database found — writing empty cache (will not ship seed catalogues)."
+  );
+  writeCache({ generatedAt: new Date().toISOString(), environments: {} });
+  process.exit(0);
 }
 
 console.log(
-  `[catalog-cache] reading ${dbFile} (${fs.statSync(dbFile).size} bytes) via ${live?.source || "seed"}`
+  `[catalog-cache] reading ${dbFile} (${fs.statSync(dbFile).size} bytes) via ${source || "unknown"}`
 );
 
 const prisma = new PrismaClient({
-  datasources: { db: { url: `file:${dbFile}` } },
+  datasources: { db: { url: `file:${path.resolve(dbFile).replace(/\\/g, "/")}` } },
 });
 
-const envs = await prisma.environment.findMany({
-  where: { status: "ACTIVE" },
-  orderBy: { sortOrder: "asc" },
-});
-
-const cache = {
-  generatedAt: new Date().toISOString(),
-  environments: {},
-};
-
-for (const env of envs) {
-  const products = await prisma.product.findMany({
-    where: { environmentId: env.id, status: "ACTIVE", deletedAt: null },
-    include: {
-      images: { orderBy: { sortOrder: "asc" }, take: 8 },
-      videos: { orderBy: { sortOrder: "asc" }, take: 2 },
-      prices: true,
-      brand: { select: { id: true, name: true, slug: true } },
-      inventory: { select: { isInStock: true } },
-      category: { select: { id: true, name: true, slug: true } },
-      subcategory: { select: { id: true, name: true, slug: true } },
-    },
-    orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
+try {
+  const envs = await prisma.environment.findMany({
+    where: { status: "ACTIVE" },
+    orderBy: { sortOrder: "asc" },
   });
 
-  const brands = await prisma.brand.findMany({
-    where: {
-      isActive: true,
-      products: { some: { environmentId: env.id, status: "ACTIVE" } },
-    },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, slug: true },
-  });
-
-  cache.environments[env.slug] = {
-    id: env.id,
-    name: env.name,
-    slug: env.slug,
-    tagline: env.tagline,
-    description: env.description,
-    logoUrl: env.logoUrl,
-    icon: env.icon,
-    theme: env.theme,
-    seo: env.seo,
-    settings: env.settings,
-    departmentSource: env.departmentSource,
-    brands,
-    products,
+  const cache = {
+    generatedAt: new Date().toISOString(),
+    environments: {},
   };
+
+  for (const env of envs) {
+    if (String(env.slug).startsWith("replace-persist-")) continue;
+
+    const products = await prisma.product.findMany({
+      where: { environmentId: env.id, status: "ACTIVE", deletedAt: null },
+      include: {
+        images: { orderBy: { sortOrder: "asc" }, take: 8 },
+        videos: { orderBy: { sortOrder: "asc" }, take: 2 },
+        prices: true,
+        brand: { select: { id: true, name: true, slug: true } },
+        inventory: { select: { isInStock: true } },
+        category: { select: { id: true, name: true, slug: true } },
+        subcategory: { select: { id: true, name: true, slug: true } },
+      },
+      orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
+    });
+
+    const brands = await prisma.brand.findMany({
+      where: {
+        isActive: true,
+        products: { some: { environmentId: env.id, status: "ACTIVE" } },
+      },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, slug: true },
+    });
+
+    cache.environments[env.slug] = {
+      id: env.id,
+      name: env.name,
+      slug: env.slug,
+      tagline: env.tagline,
+      description: env.description,
+      logoUrl: env.logoUrl,
+      icon: env.icon,
+      theme: env.theme,
+      seo: env.seo,
+      settings: env.settings,
+      departmentSource: env.departmentSource,
+      brands,
+      products,
+    };
+  }
+
+  writeCache(cache);
+  console.log(
+    `[catalog-cache] exported ${Object.keys(cache.environments).length} live catalogue(s)`
+  );
+} finally {
+  await prisma.$disconnect();
 }
-
-fs.mkdirSync(path.dirname(outFile), { recursive: true });
-fs.writeFileSync(outFile, JSON.stringify(cache));
-console.log(
-  `[catalog-cache] wrote ${outFile} (${(fs.statSync(outFile).size / 1024 / 1024).toFixed(2)} MB) from ${envs.length} catalogue(s)`
-);
-
-await prisma.$disconnect();

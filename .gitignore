@@ -65,6 +65,8 @@ next-env.d.ts
 /prisma/dev.db-journal
 /prisma/prod.db
 /prisma/prod.db-journal
+/prisma/seed-prod.db
+/prisma/seed-prod.db-journal
 /dev.db
 /dev.db-journal
 /prod.db

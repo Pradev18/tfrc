@@ -90,21 +90,28 @@ export function environmentFromCacheOrConfig(slug: string): ParsedEnvironment | 
 }
 
 export const getActiveEnvironments = cache(async function getActiveEnvironments() {
-  const cacheHit = loadCatalogCache();
-  if (cacheHit && Object.keys(cacheHit.environments).length > 0) {
-    return Object.keys(cacheHit.environments)
-      .map((slug) => environmentFromCacheOrConfig(slug))
-      .filter(Boolean) as ParsedEnvironment[];
-  }
-
+  // Prefer a small Prisma list for nav/landing. Loading catalog-cache.json parses
+  // every product for every catalogue and gets slower as new catalogues are added.
   try {
     const envs = await prisma.environment.findMany({
       where: { status: "ACTIVE" },
       orderBy: { sortOrder: "asc" },
     });
-    return envs.map(enrichEnvironment);
+    if (envs.length > 0) {
+      return envs
+        .filter((env) => !env.slug.startsWith("replace-persist-"))
+        .map(enrichEnvironment);
+    }
   } catch (error) {
     console.error("[env] getActiveEnvironments prisma failed:", error);
+  }
+
+  const cacheHit = loadCatalogCache();
+  if (cacheHit && Object.keys(cacheHit.environments).length > 0) {
+    return Object.keys(cacheHit.environments)
+      .filter((slug) => !slug.startsWith("replace-persist-"))
+      .map((slug) => environmentFromCacheOrConfig(slug))
+      .filter(Boolean) as ParsedEnvironment[];
   }
 
   return ENVIRONMENT_CONFIGS.map((cfg) => environmentFromCacheOrConfig(cfg.slug)!).filter(

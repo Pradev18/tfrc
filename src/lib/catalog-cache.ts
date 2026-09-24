@@ -82,7 +82,16 @@ let cachedMtime = 0;
 
 function candidateCachePaths(): string[] {
   const cwd = process.cwd();
+  const persistentDir =
+    process.env.TFRC_DATA_DIR?.trim() ||
+    path.join(cwd, "..", "tfrc-persistent");
+  const persistentCache = path.isAbsolute(persistentDir)
+    ? path.join(persistentDir, "catalog-cache.json")
+    : path.join(cwd, persistentDir, "catalog-cache.json");
+
   return [
+    // Owner cache outside the deploy folder — survives code pushes.
+    persistentCache,
     path.join(cwd, "data", "catalog-cache.json"),
     path.join(cwd, "catalog-cache.json"),
     path.join(cwd, ".next", "catalog-cache.json"),
@@ -95,7 +104,15 @@ function candidateCachePaths(): string[] {
 
 function primaryCacheWritePaths(): string[] {
   const cwd = process.cwd();
+  const persistentDir =
+    process.env.TFRC_DATA_DIR?.trim() ||
+    path.join(cwd, "..", "tfrc-persistent");
+  const persistentCache = path.isAbsolute(persistentDir)
+    ? path.join(persistentDir, "catalog-cache.json")
+    : path.join(cwd, persistentDir, "catalog-cache.json");
+
   return [
+    persistentCache,
     path.join(cwd, "data", "catalog-cache.json"),
     path.join(cwd, "catalog-cache.json"),
     path.join(cwd, ".next", "catalog-cache.json"),

@@ -19,12 +19,35 @@ export function persistentDbPath(root) {
   return path.join(persistentDataDir(root), "prod.db");
 }
 
+export function persistentCachePath(root) {
+  return path.join(persistentDataDir(root), "catalog-cache.json");
+}
+
 export function seedDbPath(root) {
   const seed = path.join(root, "prisma", "seed-prod.db");
   if (fs.existsSync(seed) && fs.statSync(seed).size > 1000) return seed;
   const legacy = path.join(root, "prisma", "prod.db");
   if (fs.existsSync(legacy) && fs.statSync(legacy).size > 1000) return legacy;
   return null;
+}
+
+export function isSeedDatabasePath(root, filePath) {
+  if (!filePath) return false;
+  try {
+    const resolved = path.resolve(filePath);
+    const seed = path.resolve(root, "prisma", "seed-prod.db");
+    if (resolved === seed) return true;
+    // App-local prisma/prod.db is often a deploy-time seed copy — never treat it
+    // as richer than the persistent owner database.
+    const appProd = path.resolve(root, "prisma", "prod.db");
+    const persistent = path.resolve(persistentDbPath(root));
+    if (resolved === appProd && fs.existsSync(persistent)) {
+      return fs.statSync(appProd).size <= fs.statSync(persistent).size;
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -43,12 +66,29 @@ export function resolveDatabaseUrlPath(root, url = process.env.DATABASE_URL) {
 }
 
 /**
- * Prefer the DATABASE_URL target when it exists (true live connection).
- * Falls back to the richest known prod.db candidate.
+ * Prefer the persistent owner DB, then DATABASE_URL, then richest non-seed candidate.
+ * Never returns the shipped seed when a live owner DB exists.
  */
 export function resolveLiveDbPath(root, preferred) {
+  const persistent = persistentDbPath(root);
+  if (fs.existsSync(persistent)) {
+    try {
+      const stat = fs.statSync(persistent);
+      if (stat.size >= 1000) {
+        return {
+          path: persistent,
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          source: "persistent",
+        };
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
   const fromEnv = resolveDatabaseUrlPath(root);
-  if (fromEnv && fs.existsSync(fromEnv)) {
+  if (fromEnv && fs.existsSync(fromEnv) && !isSeedDatabasePath(root, fromEnv)) {
     try {
       const stat = fs.statSync(fromEnv);
       if (stat.size >= 1000) {
@@ -63,8 +103,12 @@ export function resolveLiveDbPath(root, preferred) {
       /* fall through */
     }
   }
+
   const best = pickBestDbPath(root, preferred);
-  return best ? { ...best, source: "richest-candidate" } : null;
+  if (best && !isSeedDatabasePath(root, best.path)) {
+    return { ...best, source: "richest-candidate" };
+  }
+  return null;
 }
 
 export function candidateDbPaths(root, preferred) {
@@ -85,14 +129,17 @@ export function candidateDbPaths(root, preferred) {
 /**
  * Prefer the richest existing DB (size), not the freshest mtime.
  * A just-deployed seed file has a new mtime but wipes owner catalogues.
+ * Seed-prod.db is never selected here.
  */
 export function pickBestDbPath(root, preferred) {
   let best = null;
   const seen = new Set();
+  const seed = path.resolve(root, "prisma", "seed-prod.db");
   for (const candidate of candidateDbPaths(root, preferred)) {
     const resolved = path.resolve(candidate);
     if (seen.has(resolved)) continue;
     seen.add(resolved);
+    if (resolved === seed) continue;
     try {
       if (!fs.existsSync(resolved)) continue;
       const stat = fs.statSync(resolved);

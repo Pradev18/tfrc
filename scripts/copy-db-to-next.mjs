@@ -2,6 +2,7 @@
  * After `next build`, copy the LIVE SQLite DB + catalog cache into `.next`
  * so Hostinger still has product data at runtime.
  *
+ * Never copies the shipped seed database into the deploy artifact.
  * Never overwrites a richer destination with a smaller/default source.
  */
 import fs from "fs";
@@ -9,8 +10,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 import {
   copyDbAtomic,
-  pickBestDbPath,
-  seedDbPath,
+  isSeedDatabasePath,
+  persistentCachePath,
+  resolveLiveDbPath,
 } from "./lib/db-location.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -40,30 +42,30 @@ function copyDbIfRicher(src, dest) {
   }
 }
 
-const best = pickBestDbPath(root);
-const seed = seedDbPath(root);
-const dbSrc = best?.path || seed;
-
-if (!dbSrc || !fs.existsSync(dbSrc) || fs.statSync(dbSrc).size < 1000) {
-  console.error("[copy-db] No usable prod database found (live or seed)");
-  process.exit(1);
+const live = resolveLiveDbPath(root);
+if (!live?.path || isSeedDatabasePath(root, live.path)) {
+  console.warn(
+    "[copy-db] No LIVE owner database available — skipping DB copy so seed catalogues are not deployed."
+  );
+} else {
+  console.log(`[copy-db] Using LIVE ${live.path} (${live.size} bytes) via ${live.source}`);
+  const dbTargets = [
+    path.join(root, ".next", "prod.db"),
+    path.join(root, ".next", "standalone", "prod.db"),
+    path.join(root, ".next", "standalone", "prisma", "prod.db"),
+    path.join(root, "prisma", "prod.db"),
+  ];
+  for (const dest of dbTargets) {
+    copyDbIfRicher(live.path, dest);
+  }
 }
 
-console.log(`[copy-db] Using ${dbSrc} (${fs.statSync(dbSrc).size} bytes)`);
-
-const dbTargets = [
-  path.join(root, ".next", "prod.db"),
-  path.join(root, ".next", "standalone", "prod.db"),
-  path.join(root, ".next", "standalone", "prisma", "prod.db"),
-  path.join(root, "prisma", "prod.db"),
+const cacheCandidates = [
+  persistentCachePath(root),
+  path.join(root, "data", "catalog-cache.json"),
 ];
-
-for (const dest of dbTargets) {
-  copyDbIfRicher(dbSrc, dest);
-}
-
-const cacheSrc = path.join(root, "data", "catalog-cache.json");
-if (fs.existsSync(cacheSrc)) {
+const cacheSrc = cacheCandidates.find((file) => fs.existsSync(file));
+if (cacheSrc) {
   const cacheTargets = [
     path.join(root, ".next", "catalog-cache.json"),
     path.join(root, ".next", "standalone", "data", "catalog-cache.json"),
@@ -76,4 +78,6 @@ if (fs.existsSync(cacheSrc)) {
       console.warn(`[copy-db] skip ${dest}:`, err.message);
     }
   }
+} else {
+  console.warn("[copy-db] No catalog-cache.json to copy (runtime start will rebuild from live DB).");
 }

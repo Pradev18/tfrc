@@ -11,6 +11,7 @@ import { fileURLToPath } from "url";
 import {
   canWriteDir,
   copyDbAtomic,
+  isSeedDatabasePath,
   persistentDataDir,
   persistentDbPath,
   pickBestDbPath,
@@ -52,18 +53,27 @@ if (!canWriteDir(persistDir)) {
 const configured = resolveSqlitePath(url);
 const best = pickBestDbPath(root, configured || livePath);
 const seed = seedDbPath(root);
+const liveExists =
+  fs.existsSync(livePath) && fs.statSync(livePath).size >= 1000;
 
-// If a richer DB already exists anywhere (e.g. previous runtime), adopt it into
-// the persistent path so the next deploy still finds owner data.
+// If a richer OWNER database already exists anywhere, adopt it into the
+// persistent path — but NEVER promote the shipped seed over live owner data.
 if (best && path.resolve(best.path) !== path.resolve(livePath)) {
-  if (!fs.existsSync(livePath) || fs.statSync(livePath).size < best.size) {
+  if (liveExists && isSeedDatabasePath(root, best.path)) {
+    console.log(
+      `[db] Refusing to replace live owner database with seed (${best.path})`
+    );
+  } else if (!liveExists || fs.statSync(livePath).size < best.size) {
     console.log(
       `[db] Promoting richest database (${best.size} bytes) → persistent ${livePath}`
     );
     try {
       copyDbAtomic(best.path, livePath);
     } catch (err) {
-      console.warn("[db] Could not promote to persistent path:", err?.message ?? err);
+      console.warn(
+        "[db] Could not promote to persistent path:",
+        err?.message ?? err
+      );
       livePath = best.path;
     }
   }

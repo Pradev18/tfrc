@@ -3,7 +3,7 @@ import { slugify } from "@/lib/slugify";
 import { buildConfigFromEnvironment, getEnvironmentCardImage } from "@/lib/environment-config";
 import { type ShopCategoryDef } from "@/lib/shop-categories";
 import { removeCachedEnvironment } from "@/lib/catalog-cache";
-import type { EnvironmentStatus } from "@prisma/client";
+import type { Environment, EnvironmentStatus } from "@prisma/client";
 import { isCatalogueLockedFromSettings } from "@/lib/catalogue-lock";
 
 export interface CreateCatalogueInput {
@@ -311,14 +311,30 @@ export async function generateShopCategories(environmentId: string, slug: string
 
 export async function getLandingPortalsFromDb() {
   try {
-    const { getActiveEnvironments } = await import("@/services/environment.service");
     const { isCatalogueLockedFromSettings } = await import("@/lib/catalogue-lock");
-    const envs = await getActiveEnvironments();
+    // Lightweight Prisma query only — never load the full product catalog-cache
+    // just to render homepage logos (that path gets slow as catalogues grow).
+    const envs = await prisma.environment.findMany({
+      where: { status: "ACTIVE" },
+      orderBy: { sortOrder: "asc" },
+      select: {
+        name: true,
+        slug: true,
+        tagline: true,
+        logoUrl: true,
+        settings: true,
+      },
+    });
+
     return envs
       .filter((env) => !env.slug.startsWith("replace-persist-"))
       .map((env) => {
+        const asEnv = {
+          logoUrl: env.logoUrl,
+          slug: env.slug,
+        } as Environment;
         const image =
-          getEnvironmentCardImage(env) ||
+          getEnvironmentCardImage(asEnv) ||
           `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
             `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f8f5f0"/><stop offset="1" stop-color="#e9e1d7"/></linearGradient></defs><circle cx="128" cy="128" r="116" fill="url(#g)" stroke="#8b3a8f" stroke-width="6"/><text x="128" y="145" text-anchor="middle" font-family="Arial,sans-serif" font-size="64" font-weight="700" fill="#5f2763">${env.name
               .split(/\s+/)
