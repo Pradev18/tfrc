@@ -1,16 +1,22 @@
 /**
  * Export a Prisma-free catalog cache for Hostinger fallback.
- * Always reads the richest LIVE database (never a stale default-only file).
+ * Always reads the LIVE database from DATABASE_URL when set,
+ * otherwise the richest prod.db candidate (never a stale default-only file).
  */
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { config as loadEnv } from "dotenv";
 import { PrismaClient } from "@prisma/client";
-import { pickBestDbPath, seedDbPath } from "./lib/db-location.mjs";
+import { resolveLiveDbPath, seedDbPath } from "./lib/db-location.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const best = pickBestDbPath(root);
-const dbFile = best?.path || seedDbPath(root);
+loadEnv({ path: path.join(root, ".env") });
+loadEnv({ path: path.join(root, ".env.local"), override: true });
+loadEnv({ path: path.join(root, "prisma", ".env") });
+
+const live = resolveLiveDbPath(root);
+const dbFile = live?.path || seedDbPath(root);
 const outFile = path.join(root, "data", "catalog-cache.json");
 
 if (!dbFile || !fs.existsSync(dbFile)) {
@@ -18,7 +24,9 @@ if (!dbFile || !fs.existsSync(dbFile)) {
   process.exit(1);
 }
 
-console.log(`[catalog-cache] reading ${dbFile} (${fs.statSync(dbFile).size} bytes)`);
+console.log(
+  `[catalog-cache] reading ${dbFile} (${fs.statSync(dbFile).size} bytes) via ${live?.source || "seed"}`
+);
 
 const prisma = new PrismaClient({
   datasources: { db: { url: `file:${dbFile}` } },

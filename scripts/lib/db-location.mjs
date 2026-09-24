@@ -27,6 +27,46 @@ export function seedDbPath(root) {
   return null;
 }
 
+/**
+ * Resolve DATABASE_URL file: paths relative to prisma/ (Prisma convention).
+ * Returns absolute path or null.
+ */
+export function resolveDatabaseUrlPath(root, url = process.env.DATABASE_URL) {
+  const raw = url?.trim();
+  if (!raw || !raw.startsWith("file:")) return null;
+  let file = raw.slice("file:".length);
+  // Strip optional leading slashes used by some file: URLs on Windows.
+  if (/^\/+[A-Za-z]:/.test(file)) file = file.replace(/^\/+/, "");
+  if (path.isAbsolute(file)) return path.resolve(file);
+  // Prisma resolves ./dev.db relative to the prisma directory.
+  return path.resolve(root, "prisma", file.replace(/^\.\//, ""));
+}
+
+/**
+ * Prefer the DATABASE_URL target when it exists (true live connection).
+ * Falls back to the richest known prod.db candidate.
+ */
+export function resolveLiveDbPath(root, preferred) {
+  const fromEnv = resolveDatabaseUrlPath(root);
+  if (fromEnv && fs.existsSync(fromEnv)) {
+    try {
+      const stat = fs.statSync(fromEnv);
+      if (stat.size >= 1000) {
+        return {
+          path: fromEnv,
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          source: "DATABASE_URL",
+        };
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  const best = pickBestDbPath(root, preferred);
+  return best ? { ...best, source: "richest-candidate" } : null;
+}
+
 export function candidateDbPaths(root, preferred) {
   const basename = "prod.db";
   return [

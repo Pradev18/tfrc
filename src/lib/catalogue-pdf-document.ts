@@ -48,7 +48,22 @@ interface LogicalProductPage {
   products: CataloguePdfProduct[];
   categoryPageIndex: number;
   categoryPageCount: number;
+  /** Y position (mm) of the category band on this physical page. */
+  bandY: number;
+  /** Y position (mm) of the first product-card row. */
+  gridY: number;
 }
+
+interface PhysicalPageLayout {
+  sections: LogicalProductPage[];
+}
+
+/** Small buffer against print/subpixel rounding — keep centralized. */
+const SAFETY_BUFFER_MM = 1.5;
+/** Gap between the bottom of one category's cards and the next category band. */
+const SECTION_GAP_MM = 3;
+/** Existing gap between category band bottom and first card row. */
+const BAND_TO_GRID_GAP_MM = GRID_TOP - (CATEGORY_TOP + CATEGORY_HEIGHT);
 
 export function chunkCatalogueProducts<T>(
   items: T[],
@@ -638,17 +653,18 @@ function drawHeader(
 function drawCategoryBand(
   doc: jsPDF,
   page: LogicalProductPage,
-  colors: { accent: Rgb; cta: Rgb; muted: Rgb }
+  colors: { accent: Rgb; cta: Rgb; muted: Rgb },
+  bandY = CATEGORY_TOP
 ) {
   doc.setFillColor(...mix(colors.accent, 0.93));
-  doc.roundedRect(PAGE_MARGIN, CATEGORY_TOP, CONTENT_WIDTH, CATEGORY_HEIGHT, 2, 2, "F");
+  doc.roundedRect(PAGE_MARGIN, bandY, CONTENT_WIDTH, CATEGORY_HEIGHT, 2, 2, "F");
   doc.setTextColor(...colors.cta);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
   doc.text(
     ellipsiseLine(normalisePdfText(page.category.name), 52),
     PAGE_MARGIN + 3,
-    CATEGORY_TOP + 6
+    bandY + 6
   );
   doc.setTextColor(...colors.muted);
   doc.setFont("helvetica", "normal");
@@ -656,17 +672,17 @@ function drawCategoryBand(
   doc.text(
     `${page.category.productCount} items | ${page.category.products.length} cards | ${page.products.length} on this page`,
     PAGE_MARGIN + 3,
-    CATEGORY_TOP + 11
+    bandY + 11
   );
   doc.setFillColor(...colors.cta);
-  doc.roundedRect(PAGE_WIDTH - PAGE_MARGIN - 28, CATEGORY_TOP + 3.3, 25, 8, 4, 4, "F");
+  doc.roundedRect(PAGE_WIDTH - PAGE_MARGIN - 28, bandY + 3.3, 25, 8, 4, 4, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
   doc.text(
     `${page.categoryPageIndex + 1} / ${page.categoryPageCount}`,
     PAGE_WIDTH - PAGE_MARGIN - 15.5,
-    CATEGORY_TOP + 8.6,
+    bandY + 8.6,
     { align: "center" }
   );
 }
@@ -791,28 +807,147 @@ function drawProductCard(
   }
 }
 
-function buildLogicalPages(payload: CataloguePdfPayload): LogicalProductPage[] {
-  const logicalPages: LogicalProductPage[] = [];
+function chunkIntoRows<T>(items: T[], cols = PDF_COLS): T[][] {
+  if (items.length === 0) return [];
+  const rows: T[][] = [];
+  for (let index = 0; index < items.length; index += cols) {
+    rows.push(items.slice(index, index + cols));
+  }
+  return rows;
+}
+
+/**
+ * How many complete product rows fit when the first row starts at gridY.
+ * Uses exact A4 card geometry so a fresh page still holds the normal 3×4 = 12 cards.
+ */
+function maxRowsFromGridY(gridY: number): number {
+  let rows = 0;
+  while (rows < PDF_ROWS * 4) {
+    const nextEnd = endYAfterRows(gridY, rows + 1);
+    if (nextEnd > GRID_BOTTOM + 0.01) break;
+    rows += 1;
+  }
+  return rows;
+}
+
+function endYAfterRows(gridY: number, rowCount: number): number {
+  if (rowCount <= 0) return gridY;
+  return gridY + rowCount * CARD_HEIGHT + (rowCount - 1) * GRID_GAP;
+}
+
+/**
+ * Can the next category's header + first complete product row start after cursorY?
+ * Uses real A4 geometry (mm), not arbitrary card-count heuristics.
+ */
+function tryPlaceCategoryStart(cursorY: number): {
+  bandY: number;
+  gridY: number;
+  maxRows: number;
+} | null {
+  const bandY = cursorY + SECTION_GAP_MM;
+  // Category band must stay above the footer zone.
+  if (bandY + CATEGORY_HEIGHT > GRID_BOTTOM - SAFETY_BUFFER_MM) return null;
+  const gridY = bandY + CATEGORY_HEIGHT + BAND_TO_GRID_GAP_MM;
+  const maxRows = maxRowsFromGridY(gridY);
+  // Atomic rule: header + first row must both fit (with a small safety buffer).
+  if (maxRows < 1) return null;
+  if (endYAfterRows(gridY, 1) > GRID_BOTTOM - SAFETY_BUFFER_MM) return null;
+  return { bandY, gridY, maxRows };
+}
+
+/**
+ * Pack categories onto physical A4 pages.
+ * - Preserves category order and product order
+ * - Never orphans a category header without its first row
+ * - Never splits a 4-card row across pages
+ * - Reuses leftover vertical space for the next category when safe
+ * - Continues a long category onto the next page without moving earlier rows
+ */
+export function packCataloguePhysicalPages(
+  payload: CataloguePdfPayload
+): PhysicalPageLayout[] {
+  const pages: PhysicalPageLayout[] = [];
+  let current: PhysicalPageLayout | null = null;
+  /** Bottom Y of the last placed card row on the current page (mm). */
+  let cursorY: number | null = null;
+
   for (const category of payload.categories) {
     if (category.products.length === 0) continue;
-    const pages = chunkCatalogueProducts(category.products);
-    pages.forEach((products, categoryPageIndex) => {
-      logicalPages.push({
+    const remainingRows = chunkIntoRows(category.products);
+
+    while (remainingRows.length > 0) {
+      let bandY: number;
+      let gridY: number;
+      let maxRows: number;
+
+      if (!current || cursorY == null) {
+        current = { sections: [] };
+        pages.push(current);
+        bandY = CATEGORY_TOP;
+        gridY = GRID_TOP;
+        maxRows = maxRowsFromGridY(gridY);
+      } else {
+        const fit = tryPlaceCategoryStart(cursorY);
+        if (!fit) {
+          current = null;
+          cursorY = null;
+          continue;
+        }
+        bandY = fit.bandY;
+        gridY = fit.gridY;
+        maxRows = fit.maxRows;
+      }
+
+      if (maxRows < 1) {
+        current = null;
+        cursorY = null;
+        continue;
+      }
+
+      const takenRows = remainingRows.splice(0, maxRows);
+      const products = takenRows.flat();
+      current.sections.push({
         category,
         products,
-        categoryPageIndex,
-        categoryPageCount: pages.length,
+        categoryPageIndex: 0,
+        categoryPageCount: 1,
+        bandY,
+        gridY,
       });
+      cursorY = endYAfterRows(gridY, takenRows.length);
+
+      // More rows remain → finish this physical page and continue on the next.
+      if (remainingRows.length > 0) {
+        current = null;
+        cursorY = null;
+      }
+    }
+  }
+
+  // Assign per-category page indices (1/N style) without changing order.
+  const bySlug = new Map<string, LogicalProductPage[]>();
+  for (const page of pages) {
+    for (const section of page.sections) {
+      const list = bySlug.get(section.category.slug) ?? [];
+      list.push(section);
+      bySlug.set(section.category.slug, list);
+    }
+  }
+  for (const sections of bySlug.values()) {
+    sections.forEach((section, index) => {
+      section.categoryPageIndex = index;
+      section.categoryPageCount = sections.length;
     });
   }
-  return logicalPages;
+
+  return pages;
 }
 
 export function buildCataloguePdfDocument(
   payload: CataloguePdfPayload
 ): CataloguePdfDocument {
-  const logicalPages = buildLogicalPages(payload);
-  const totalPages = 1 + logicalPages.length;
+  const physicalPages = packCataloguePhysicalPages(payload);
+  const totalPages = 1 + physicalPages.length;
   const colors = {
     accent: rgb(payload.accent, [64, 145, 108]),
     cta: rgb(payload.cta, [27, 67, 50]),
@@ -846,40 +981,46 @@ export function buildCataloguePdfDocument(
 
   drawCover(doc, payload, totalPages, colors, counters);
 
-  logicalPages.forEach((page, pageIndex) => {
+  physicalPages.forEach((page, pageIndex) => {
     doc.addPage("a4", "portrait");
     drawHeader(doc, payload, colors, counters);
-    drawCategoryBand(doc, page, colors);
 
-    page.products.forEach((product, cardIndex) => {
-      const column = cardIndex % PDF_COLS;
-      const row = Math.floor(cardIndex / PDF_COLS);
-      drawProductCard(
-        doc,
-        product,
-        PAGE_MARGIN + column * (CARD_WIDTH + GRID_GAP),
-        GRID_TOP + row * (CARD_HEIGHT + GRID_GAP),
-        colors,
-        counters
-      );
-    });
+    for (const section of page.sections) {
+      drawCategoryBand(doc, section, colors, section.bandY);
+
+      section.products.forEach((product, cardIndex) => {
+        const column = cardIndex % PDF_COLS;
+        const row = Math.floor(cardIndex / PDF_COLS);
+        drawProductCard(
+          doc,
+          product,
+          PAGE_MARGIN + column * (CARD_WIDTH + GRID_GAP),
+          section.gridY + row * (CARD_HEIGHT + GRID_GAP),
+          colors,
+          counters
+        );
+      });
+    }
 
     drawPageFooter(doc, payload, pageIndex + 2, totalPages, colors);
   });
 
+  const allSections = physicalPages.flatMap((page) => page.sections);
   const bytes = new Uint8Array(doc.output("arraybuffer"));
   return {
     bytes,
     stats: {
       pageCount: totalPages,
-      productPages: logicalPages.length,
-      productCards: logicalPages.reduce((sum, page) => sum + page.products.length, 0),
+      productPages: physicalPages.length,
+      productCards: allSections.reduce((sum, section) => sum + section.products.length, 0),
       linkAnnotations: counters.links,
       renderedImages: counters.images,
       fallbackImages: counters.fallbacks,
       renderedProductImages: counters.productImages,
       fallbackProductImages: counters.productFallbacks,
-      pageCardCounts: logicalPages.map((page) => page.products.length),
+      pageCardCounts: physicalPages.map((page) =>
+        page.sections.reduce((sum, section) => sum + section.products.length, 0)
+      ),
     },
   };
 }

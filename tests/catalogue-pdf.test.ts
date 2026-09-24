@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCataloguePdfDocument,
   chunkCatalogueProducts,
+  packCataloguePhysicalPages,
   PDF_PRODUCTS_PER_PAGE,
 } from "../src/lib/catalogue-pdf-document";
 import {
@@ -100,6 +101,33 @@ describe("catalogue PDF pagination", () => {
     expect(physicalPageCount(result.bytes)).toBe(6);
   });
 
+  it("packs a small next category onto leftover space on the same page", () => {
+    const result = buildCataloguePdfDocument(payload([4, 3]));
+    // One row of 4 + header/first-row of 3 must share one product page.
+    expect(result.stats.productPages).toBe(1);
+    expect(result.stats.pageCardCounts).toEqual([7]);
+    expect(result.stats.pageCount).toBe(2);
+    expect(physicalPageCount(result.bytes)).toBe(2);
+  });
+
+  it("does not orphan a category header when first row cannot fit", () => {
+    // 3 full rows leave no room for another category header + row.
+    const result = buildCataloguePdfDocument(payload([12, 1]));
+    expect(result.stats.pageCardCounts).toEqual([12, 1]);
+    expect(result.stats.productPages).toBe(2);
+  });
+
+  it("continues a long category onto the next page without reordering cards", () => {
+    const result = buildCataloguePdfDocument(payload([13]));
+    expect(result.stats.pageCardCounts).toEqual([12, 1]);
+    expect(result.stats.pageCount).toBe(3);
+    const packed = packCataloguePhysicalPages(payload([13]));
+    expect(packed[0]!.sections[0]!.products.map((p) => p.productId)).toEqual(
+      Array.from({ length: 12 }, (_, i) => `SKU-${i + 1}`)
+    );
+    expect(packed[1]!.sections[0]!.products.map((p) => p.productId)).toEqual(["SKU-13"]);
+  });
+
   it("handles 13 cards as 12 + 1 and stops", () => {
     const result = buildCataloguePdfDocument(payload([13]));
     expect(result.stats.pageCardCounts).toEqual([12, 1]);
@@ -123,13 +151,15 @@ describe("catalogue PDF pagination", () => {
     expect(physicalPageCount(result.bytes)).toBe(85);
   }, 30_000);
 
-  it("keeps a data-driven category index while skipping no populated category", () => {
+  it("keeps a data-driven category index while packing small categories onto shared pages", () => {
     const categorySizes = Array.from({ length: 31 }, () => 1);
     const result = buildCataloguePdfDocument(payload(categorySizes));
-    expect(result.stats.productPages).toBe(31);
+    // Geometry allows two 1-card categories per product page (header+row atomic).
     expect(result.stats.productCards).toBe(31);
-    expect(result.stats.pageCount).toBe(32);
-    expect(physicalPageCount(result.bytes)).toBe(32);
+    expect(result.stats.productPages).toBe(16);
+    expect(result.stats.pageCount).toBe(17);
+    expect(physicalPageCount(result.bytes)).toBe(17);
+    expect(result.stats.pageCardCounts.reduce((a, b) => a + b, 0)).toBe(31);
   });
 });
 
