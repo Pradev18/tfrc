@@ -195,9 +195,11 @@ function mapSheetRowsToCatalog(
 
     rows.push({
       rowNumber: rowNum,
-      item_no: parseItemNo(
-        row.item_no ?? row.item_number ?? row.itemno ?? row["item no"]
-      ),
+      // Prefer Excel item_no; otherwise sheet row order so Item no ↑/↓ always works.
+      item_no:
+        parseItemNo(
+          row.item_no ?? row.item_number ?? row.itemno ?? row["item no"]
+        ) ?? (rowNum > 0 ? rowNum : null),
       id,
       title,
       description: cellStr(row.description),

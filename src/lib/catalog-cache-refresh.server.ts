@@ -13,7 +13,7 @@ export async function refreshCatalogCacheFromDatabase(): Promise<void> {
   };
 
   for (const environment of environments) {
-    const [products, brands] = await Promise.all([
+    const [products, brands, shopCategories] = await Promise.all([
       prisma.product.findMany({
         where: {
           environmentId: environment.id,
@@ -87,6 +87,11 @@ export async function refreshCatalogCacheFromDatabase(): Promise<void> {
         orderBy: { name: "asc" },
         select: { id: true, name: true, slug: true },
       }),
+      prisma.shopCategory.findMany({
+        where: { environmentId: environment.id, isActive: true },
+        orderBy: { sortOrder: "asc" },
+        select: { slug: true, name: true, sortOrder: true, imageUrl: true },
+      }),
     ]);
 
     cache.environments[environment.slug] = {
@@ -102,6 +107,7 @@ export async function refreshCatalogCacheFromDatabase(): Promise<void> {
       settings: environment.settings,
       departmentSource: environment.departmentSource,
       brands,
+      shopCategories,
       products: products.map((product) => ({
         ...product,
         createdAt: product.createdAt.toISOString(),

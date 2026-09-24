@@ -69,6 +69,13 @@ export interface CachedEnvironment {
   departmentSource: string | null;
   brands: CachedBrand[];
   products: CachedProduct[];
+  /** Ordered shop-category defs — chips and feeds use the same slugs. */
+  shopCategories?: Array<{
+    slug: string;
+    name: string;
+    sortOrder: number;
+    imageUrl?: string | null;
+  }>;
 }
 
 export interface CatalogCache {

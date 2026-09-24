@@ -509,8 +509,8 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
 
   await updateCatalogue(environmentId, { status: "ACTIVE" }, userId);
   await generateShopCategories(environmentId, environmentSlug);
-  // Cache rebuild is heavy; run without blocking the HTTP success path callers.
-  void persistRuntimeCatalogueDataSafely();
+  // Must finish before the storefront can serve filters — never leave stale cache.
+  await persistRuntimeCatalogueDataSafely();
 
   await prisma.importJob.update({
     where: { id: job.id },

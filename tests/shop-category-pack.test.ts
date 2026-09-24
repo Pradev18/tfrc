@@ -34,7 +34,7 @@ describe("resolveCatalogueShopCategoryPack", () => {
     expect(pack.some((c) => c.slug === "leashes-collars")).toBe(true);
   });
 
-  it("uses pawmart clothing when google taxonomy says Dog Apparel", () => {
+  it("uses Excel taxonomy leaves for new catalogues with Google paths", () => {
     const products = Array.from({ length: 8 }, (_, i) => ({
       name: `Unique Item ${i}`,
       googleCategory: "Animals & Pet Supplies > Pet Supplies > Dog Supplies > Dog Apparel",
@@ -44,8 +44,9 @@ describe("resolveCatalogueShopCategoryPack", () => {
       name: "Brand New Catalogue",
       products,
     });
-    expect(pack.some((c) => c.slug === "clothing-accessories")).toBe(true);
-    expect(resolvePrimaryShopCategory(products[0]!, pack)?.slug).toBe("clothing-accessories");
+    // Upcoming catalogues follow Excel/Google leaf categories — never remap to PawMart packs.
+    expect(pack.some((c) => c.slug === "dog-apparel")).toBe(true);
+    expect(resolvePrimaryShopCategory(products[0]!, pack)?.slug).toBe("dog-apparel");
   });
 
   it("falls back to Excel taxonomy leaves when no pack fits", () => {

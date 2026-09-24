@@ -277,6 +277,10 @@ function defsToDbRows(environmentId: string, defs: ShopCategoryDef[]) {
 export async function generateShopCategories(environmentId: string, slug: string) {
   const { syncEnvironmentShopCategories } = await import("@/lib/shop-category-sync");
   const { resolveCatalogueShopCategoryPack } = await import("@/lib/shop-categories");
+  const { ensureEnvironmentItemNumbers } = await import("@/lib/product-item-no.server");
+
+  // Item no ↑/↓ must work even when Excel omitted item_no (legacy uploads).
+  await ensureEnvironmentItemNumbers(environmentId);
 
   const env = await prisma.environment.findUnique({
     where: { id: environmentId },

@@ -67,32 +67,39 @@ export function UnifiedStoreCatalog({
   const searchParams = useSearchParams();
   const basePath = `/${environmentSlug}`;
 
-  const [filters, setFilters] = useState<StoreFilters>(() => ({
-    ...parseStoreFilters(Object.fromEntries(searchParams.entries())),
-    shop: null,
-  }));
+  const [filters, setFilters] = useState<StoreFilters>(() =>
+    parseStoreFilters(Object.fromEntries(searchParams.entries()))
+  );
   const filtersRef = useRef(filters);
   const [searchInput, setSearchInput] = useState(filters.q);
-  const [focusedCategorySlug, setFocusedCategorySlug] = useState<string | null>(null);
+  const [focusedCategorySlug, setFocusedCategorySlug] = useState<string | null>(
+    () => parseStoreFilters(Object.fromEntries(searchParams.entries())).shop
+  );
   const [showAllProducts, setShowAllProducts] = useState(() => {
-    const sort = parseStoreFilters(Object.fromEntries(searchParams.entries())).sort;
-    return sort === "item_no_asc" || sort === "item_no_desc";
+    const parsed = parseStoreFilters(Object.fromEntries(searchParams.entries()));
+    if (parsed.shop) return false;
+    return parsed.sort === "item_no_asc" || parsed.sort === "item_no_desc";
   });
 
   const debouncedQ = useDebouncedValue(searchInput, STORE_SEARCH_DEBOUNCE_MS);
 
   const apiFilters = useMemo(
-    () => ({ ...filters, q: debouncedQ }),
-    [filters, debouncedQ]
+    () => ({
+      ...filters,
+      q: debouncedQ,
+      shop: focusedCategorySlug ?? filters.shop,
+    }),
+    [filters, debouncedQ, focusedCategorySlug]
   );
 
   useEffect(() => {
-    const next = {
-      ...parseStoreFilters(Object.fromEntries(searchParams.entries())),
-      shop: null,
-    };
+    const next = parseStoreFilters(Object.fromEntries(searchParams.entries()));
     filtersRef.current = next;
     setFilters(next);
+    if (next.shop) {
+      setFocusedCategorySlug(next.shop);
+      setShowAllProducts(false);
+    }
   }, [searchParams]);
 
   useEffect(() => {
@@ -102,8 +109,6 @@ export function UnifiedStoreCatalog({
   useEffect(() => {
     if (debouncedQ === filtersRef.current.q) return;
     const next = { ...filtersRef.current, q: debouncedQ };
-    setFocusedCategorySlug(null);
-    setShowAllProducts(false);
     filtersRef.current = next;
     setFilters(next);
     const qs = filtersToSearchParams(next).toString();
@@ -120,6 +125,10 @@ export function UnifiedStoreCatalog({
       : null;
     if (categorySlug && shopCategories.some((category) => category.slug === categorySlug)) {
       setFocusedCategorySlug(categorySlug);
+      setShowAllProducts(false);
+      const next = { ...filtersRef.current, shop: categorySlug };
+      filtersRef.current = next;
+      setFilters(next);
     }
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -135,6 +144,13 @@ export function UnifiedStoreCatalog({
       if (!slug) return;
       setShowAllProducts(false);
       setFocusedCategorySlug(slug);
+      const next = { ...filtersRef.current, shop: slug };
+      filtersRef.current = next;
+      setFilters(next);
+      const qs = filtersToSearchParams(next).toString();
+      router.replace(qs ? `${basePath}?${qs}#category-${slug}` : `${basePath}#category-${slug}`, {
+        scroll: false,
+      });
       requestAnimationFrame(() => {
         requestAnimationFrame(() => scrollToStoreCategory(slug));
       });
@@ -142,6 +158,13 @@ export function UnifiedStoreCatalog({
     function onShowAll() {
       setFocusedCategorySlug(null);
       setShowAllProducts(false);
+      const next = { ...filtersRef.current, shop: null };
+      filtersRef.current = next;
+      setFilters(next);
+      const qs = filtersToSearchParams(next).toString();
+      router.replace(qs ? `${basePath}?${qs}#catalog` : `${basePath}#catalog`, {
+        scroll: false,
+      });
       requestAnimationFrame(() => {
         document.getElementById("catalog")?.scrollIntoView({
           behavior: "smooth",
@@ -152,6 +175,13 @@ export function UnifiedStoreCatalog({
     function onAllProducts() {
       setFocusedCategorySlug(null);
       setShowAllProducts(true);
+      const next = { ...filtersRef.current, shop: null };
+      filtersRef.current = next;
+      setFilters(next);
+      const qs = filtersToSearchParams(next).toString();
+      router.replace(qs ? `${basePath}?${qs}#catalog` : `${basePath}#catalog`, {
+        scroll: false,
+      });
       requestAnimationFrame(() => {
         document.getElementById("catalog")?.scrollIntoView({
           behavior: "smooth",
@@ -167,21 +197,27 @@ export function UnifiedStoreCatalog({
       window.removeEventListener(STORE_SHOW_ALL_EVENT, onShowAll);
       window.removeEventListener(STORE_ALL_PRODUCTS_EVENT, onAllProducts);
     };
-  }, []);
+  }, [basePath, router]);
 
   const syncFilters = useCallback(
     (patch: Partial<StoreFilters>) => {
       const next = { ...filtersRef.current, ...patch };
       const itemNoSort =
         next.sort === "item_no_asc" || next.sort === "item_no_desc";
-      // Item no sort = full Excel catalogue order (1…N), not a single category slice.
-      setFocusedCategorySlug(null);
-      setShowAllProducts(itemNoSort);
+      // Item no sort without a category = full Excel catalogue order.
+      if ("shop" in patch) {
+        setFocusedCategorySlug(patch.shop);
+        setShowAllProducts(!patch.shop && itemNoSort);
+      } else if (itemNoSort && !next.shop) {
+        setFocusedCategorySlug(null);
+        setShowAllProducts(true);
+      }
       filtersRef.current = next;
       setFilters(next);
       if ("q" in patch && patch.q !== undefined) setSearchInput(patch.q);
       const qs = filtersToSearchParams(next).toString();
-      router.replace(qs ? `${basePath}?${qs}#catalog` : `${basePath}#catalog`, {
+      const hash = next.shop ? `#category-${next.shop}` : "#catalog";
+      router.replace(qs ? `${basePath}?${qs}${hash}` : `${basePath}${hash}`, {
         scroll: false,
       });
     },
@@ -198,11 +234,7 @@ export function UnifiedStoreCatalog({
   }, [basePath, router]);
 
   const isFilteredView = Boolean(
-    apiFilters.q ||
-      apiFilters.brand ||
-      apiFilters.inStock ||
-      apiFilters.sale ||
-      apiFilters.sort !== DEFAULT_STORE_FILTERS.sort
+    apiFilters.q || apiFilters.brand || apiFilters.inStock || apiFilters.sale
   );
 
   useEffect(() => {
@@ -331,6 +363,7 @@ export function UnifiedStoreCatalog({
               environmentSlug={environmentSlug}
               environmentName={environmentName}
               filters={apiFilters}
+              shopSlug={apiFilters.shop ?? undefined}
               whatsappSettings={whatsappSettings}
               siteUrl={siteUrl}
               emptyMessage={t("store.noMatch")}

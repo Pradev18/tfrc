@@ -74,6 +74,54 @@ function getShopCategoriesFromCache(environmentSlug: string): ShopCategoryItem[]
   const products = cached.products.filter((item) => item.isVariantPrimary !== false);
   if (products.length === 0) return [];
 
+  const countBySlug = new Map<string, number>();
+  const thumbBySlug = new Map<string, string | null>();
+  for (const product of products) {
+    const slug =
+      product.shopCategorySlug?.trim() || OTHER_SHOP_CATEGORY.slug;
+    countBySlug.set(slug, (countBySlug.get(slug) ?? 0) + 1);
+    if (!thumbBySlug.has(slug)) {
+      thumbBySlug.set(slug, product.images?.[0]?.url ?? null);
+    }
+  }
+
+  // Prefer admin/import ShopCategory defs so chip names/order match product feeds.
+  const defs = cached.shopCategories ?? [];
+  if (defs.length > 0) {
+    const items: ShopCategoryItem[] = [];
+    for (const def of defs) {
+      const productCount = countBySlug.get(def.slug) ?? 0;
+      if (productCount <= 0) continue;
+      items.push({
+        slug: def.slug,
+        name: def.name,
+        productCount,
+        imageUrl: def.imageUrl ?? thumbBySlug.get(def.slug) ?? null,
+      });
+    }
+    for (const [slug, productCount] of countBySlug) {
+      if (slug === OTHER_SHOP_CATEGORY.slug) continue;
+      if (defs.some((def) => def.slug === slug)) continue;
+      if (productCount <= 0) continue;
+      items.push({
+        slug,
+        name: slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        productCount,
+        imageUrl: thumbBySlug.get(slug) ?? null,
+      });
+    }
+    const otherCount = countBySlug.get(OTHER_SHOP_CATEGORY.slug) ?? 0;
+    if (otherCount > 0) {
+      items.push({
+        slug: OTHER_SHOP_CATEGORY.slug,
+        name: OTHER_SHOP_CATEGORY.name,
+        productCount: otherCount,
+        imageUrl: thumbBySlug.get(OTHER_SHOP_CATEGORY.slug) ?? null,
+      });
+    }
+    return items;
+  }
+
   // 1) Excel-assigned shopCategorySlug (same buckets as admin).
   const hasAssignedSlugs = products.some(
     (product) =>
@@ -114,13 +162,13 @@ function getShopCategoriesFromCache(environmentSlug: string): ShopCategoryItem[]
   }
 
   // 3) Legacy fallback only when products have no Excel taxonomy at all.
-  const defs = getEffectiveShopCategoryDefs(
+  const effectiveDefs = getEffectiveShopCategoryDefs(
     environmentSlug,
     products.map((p) => p.name)
   );
 
   const buckets = new Map<string, typeof products>();
-  for (const def of defs) buckets.set(def.slug, []);
+  for (const def of effectiveDefs) buckets.set(def.slug, []);
   buckets.set(OTHER_SHOP_CATEGORY.slug, []);
 
   for (const product of products) {
@@ -130,13 +178,13 @@ function getShopCategoriesFromCache(environmentSlug: string): ShopCategoryItem[]
         googleCategory: product.googleCategory,
         fbCategory: product.fbCategory,
       },
-      defs
+      effectiveDefs
     );
     const slug = primary?.slug ?? OTHER_SHOP_CATEGORY.slug;
     buckets.get(slug)!.push(product);
   }
 
-  const items: ShopCategoryItem[] = defs
+  const items: ShopCategoryItem[] = effectiveDefs
     .map((def) => {
       const matched = buckets.get(def.slug) ?? [];
       if (matched.length === 0) return null;

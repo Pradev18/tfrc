@@ -109,6 +109,12 @@ try {
       select: { id: true, name: true, slug: true },
     });
 
+    const shopCategories = await prisma.shopCategory.findMany({
+      where: { environmentId: env.id, isActive: true },
+      orderBy: { sortOrder: "asc" },
+      select: { slug: true, name: true, sortOrder: true, imageUrl: true },
+    });
+
     cache.environments[env.slug] = {
       id: env.id,
       name: env.name,
@@ -122,6 +128,7 @@ try {
       settings: env.settings,
       departmentSource: env.departmentSource,
       brands,
+      shopCategories,
       products,
     };
   }
