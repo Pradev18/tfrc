@@ -206,8 +206,9 @@ export function UnifiedStoreCatalog({
         next.sort === "item_no_asc" || next.sort === "item_no_desc";
       // Item no sort without a category = full Excel catalogue order.
       if ("shop" in patch) {
-        setFocusedCategorySlug(patch.shop);
-        setShowAllProducts(!patch.shop && itemNoSort);
+        const shopSlug = patch.shop ?? null;
+        setFocusedCategorySlug(shopSlug);
+        setShowAllProducts(!shopSlug && itemNoSort);
       } else if (itemNoSort && !next.shop) {
         setFocusedCategorySlug(null);
         setShowAllProducts(true);
