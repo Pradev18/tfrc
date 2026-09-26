@@ -292,7 +292,7 @@ export async function generateShopCategories(environmentId: string, slug: string
   const { resolveCatalogueShopCategoryPack } = await import("@/lib/shop-categories");
   const { ensureEnvironmentItemNumbers } = await import("@/lib/product-item-no.server");
 
-  // Item no ↑/↓ must work even when Excel omitted item_no (legacy uploads).
+  // Serial no ↑/↓ must work even when Excel omitted serial_no (legacy uploads).
   await ensureEnvironmentItemNumbers(environmentId);
 
   const env = await prisma.environment.findUnique({

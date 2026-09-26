@@ -203,6 +203,8 @@ type CatalogCacheSort =
   | "price_desc"
   | "discount"
   | "name"
+  | "serial_no_asc"
+  | "serial_no_desc"
   | "item_no_asc"
   | "item_no_desc"
   | "item_code_asc"
@@ -360,8 +362,10 @@ function sortCachedProducts(
       return list.sort((a, b) => priceOf(b) - priceOf(a));
     case "discount":
       return list.sort((a, b) => discountOf(b) - discountOf(a));
+    case "serial_no_asc":
     case "item_no_asc":
       return list.sort((a, b) => itemNoCmp(a, b, "asc"));
+    case "serial_no_desc":
     case "item_no_desc":
       return list.sort((a, b) => itemNoCmp(a, b, "desc"));
     case "item_code_asc":

@@ -60,9 +60,9 @@ export async function GET(req: NextRequest, context: RouteContext) {
     prisma.product.findMany({
       where,
       orderBy:
-        sort === "item_no_asc"
+        sort === "serial_no_asc" || sort === "item_no_asc"
           ? [{ itemNo: "asc" }, { productId: "asc" }]
-          : sort === "item_no_desc"
+          : sort === "serial_no_desc" || sort === "item_no_desc"
             ? [{ itemNo: "desc" }, { productId: "desc" }]
             : sort === "item_code_asc"
               ? { productId: "asc" }

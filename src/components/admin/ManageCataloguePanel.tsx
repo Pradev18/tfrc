@@ -51,7 +51,7 @@ export function ManageCataloguePanel({
   const [q, setQ] = useState("");
   const [appliedQ, setAppliedQ] = useState("");
   const [selectedCategorySlug, setSelectedCategorySlug] = useState("");
-  const [sort, setSort] = useState("item_no_asc");
+  const [sort, setSort] = useState("serial_no_asc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(15);
   const [loading, setLoading] = useState(false);
@@ -186,7 +186,7 @@ export function ManageCataloguePanel({
     return {
       q: appliedQ || "",
       shop: selectedCategorySlug || "",
-      sort: sort || "item_no_asc",
+      sort: sort || "serial_no_asc",
     };
   }
 
@@ -299,15 +299,15 @@ export function ManageCataloguePanel({
       const blobUrl = URL.createObjectURL(typedBlob);
 
       const sortLabel =
-        usedSort === "item_no_desc"
-          ? "Item no ↓"
+        usedSort === "serial_no_desc" || usedSort === "item_no_desc"
+          ? "Serial no ↓"
           : usedSort === "item_code_asc"
             ? "Item code ↑"
             : usedSort === "item_code_desc"
               ? "Item code ↓"
               : usedSort === "updated"
                 ? "Recently updated"
-                : "Item no ↑";
+                : "Serial no ↑";
 
       if (autoPrint) {
         // Chrome's PDF viewer often fails downloading blob: tabs with
@@ -446,8 +446,8 @@ export function ManageCataloguePanel({
               }}
               ariaLabel="Sort products"
               options={[
-                { value: "item_no_asc", label: "Item no ↑" },
-                { value: "item_no_desc", label: "Item no ↓" },
+                { value: "serial_no_asc", label: "Serial no ↑" },
+                { value: "serial_no_desc", label: "Serial no ↓" },
                 { value: "item_code_asc", label: "Item code ↑" },
                 { value: "item_code_desc", label: "Item code ↓" },
                 { value: "updated", label: "Recently updated" },
@@ -478,7 +478,7 @@ export function ManageCataloguePanel({
             </div>
           </div>
           <p className="mb-4 text-xs text-text-muted">
-            Download PDF uses the sort selected above (Item no / Item code), plus search and
+            Download PDF uses the sort selected above (Serial no / Item code), plus search and
             category. Products keep that order; category headers stay with their items.
           </p>
 
@@ -518,7 +518,7 @@ export function ManageCataloguePanel({
                           }}
                         />
                         <p className="text-xs text-text-muted">
-                          {p.itemNo != null ? `#${p.itemNo} · ` : ""}
+                          {p.itemNo != null ? `S/N ${p.itemNo} · ` : ""}
                           {p.productId} · {p.brand?.name ?? "No brand"} · {p.status}
                         </p>
                       </div>

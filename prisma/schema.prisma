@@ -221,7 +221,7 @@ model Product {
   id               String                 @id @default(cuid())
   productId        String                 @unique
   sku              String                 @unique
-  /** Optional Excel row number (item_no column) for catalogue sort order. */
+  /** Excel serial_no — catalogue sequence for Serial no ↑/↓ and PDF order. */
   itemNo           Int?
   name             String
   slug             String                 @unique

@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 
 export const META_CATALOGUE_HEADERS = [
-  "item_no",
+  "serial_no",
   "id",
   "title",
   "description",

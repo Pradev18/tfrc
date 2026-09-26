@@ -465,7 +465,7 @@ async function bulkUpsertCatalogueRows(
         id: dbId,
         productId: row.id,
         sku: row.id,
-        itemNo: row.item_no,
+        itemNo: row.serial_no,
         name: row.title,
         slug: rowToProductSlug(row),
         description: row.description,
@@ -516,7 +516,7 @@ async function bulkUpsertCatalogueRows(
         return {
           id: idByCode.get(row.id)!,
           sku: row.id,
-          itemNo: row.item_no,
+          itemNo: row.serial_no,
           name: row.title,
           slug: rowToProductSlug(row),
           description: row.description,

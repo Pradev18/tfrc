@@ -16,6 +16,8 @@ const SORT_VALUES: StoreSort[] = [
   "price_desc",
   "discount",
   "name",
+  "serial_no_asc",
+  "serial_no_desc",
   "item_no_asc",
   "item_no_desc",
   "item_code_asc",
@@ -66,7 +68,7 @@ export async function GET(
       Math.max(1, parseInt(sp.get("limit") ?? String(STORE_PAGE_SIZE), 10) || STORE_PAGE_SIZE)
     );
     const sortParam = sp.get("sort") as StoreSort | null;
-    const sort = sortParam && SORT_VALUES.includes(sortParam) ? sortParam : "item_no_asc";
+    const sort = sortParam && SORT_VALUES.includes(sortParam) ? sortParam : "serial_no_asc";
 
     const result = await getProducts({
       environmentSlug: environment,

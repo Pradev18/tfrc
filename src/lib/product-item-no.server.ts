@@ -1,8 +1,8 @@
 import prisma from "@/lib/db";
 
 /**
- * Ensure every active product has an itemNo for storefront Item no ↑/↓ sorting.
- * - If Excel already set itemNo, leave those values alone.
+ * Ensure every active product has an itemNo (Excel serial_no) for Serial no ↑/↓ sorting.
+ * - If Excel already set serial_no → itemNo, leave those values alone.
  * - If none are set (legacy imports), assign 1…N in stable productId order.
  * - If some are set, fill gaps with max+1… without reordering existing numbers.
  *

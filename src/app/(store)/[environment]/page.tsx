@@ -49,7 +49,7 @@ export default async function EnvironmentHomePage({ params }: PageProps) {
         page: 1,
         limit: STORE_PAGE_SIZE,
         listMode: true,
-        sort: "item_no_asc",
+        sort: "serial_no_asc",
       });
       initialFeed = {
         shopSlug: firstCategory.slug,

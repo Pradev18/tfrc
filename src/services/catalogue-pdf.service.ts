@@ -19,6 +19,8 @@ import {
 } from "@/lib/product-variants";
 
 export type CataloguePdfSort =
+  | "serial_no_asc"
+  | "serial_no_desc"
   | "item_no_asc"
   | "item_no_desc"
   | "item_code_asc"
@@ -90,6 +92,8 @@ export interface CataloguePdfPayload {
 }
 
 const PDF_SORTS = new Set<CataloguePdfSort>([
+  "serial_no_asc",
+  "serial_no_desc",
   "item_no_asc",
   "item_no_desc",
   "item_code_asc",
@@ -101,7 +105,9 @@ const PDF_SORTS = new Set<CataloguePdfSort>([
 export function normalizeCataloguePdfFilters(
   input?: CataloguePdfFilters | null
 ): Required<CataloguePdfFilters> {
-  const sort = input?.sort && PDF_SORTS.has(input.sort) ? input.sort : "item_no_asc";
+  let sort = input?.sort && PDF_SORTS.has(input.sort) ? input.sort : "serial_no_asc";
+  if (sort === "item_no_asc") sort = "serial_no_asc";
+  if (sort === "item_no_desc") sort = "serial_no_desc";
   return {
     q: input?.q?.trim() ?? "",
     shop: input?.shop?.trim() ?? "",
@@ -170,6 +176,7 @@ function sortPdfCards(
 ): CataloguePdfProduct[] {
   const list = [...cards];
   switch (sort) {
+    case "serial_no_desc":
     case "item_no_desc":
       return list.sort((a, b) => compareItemNo(a, b, "desc"));
     case "item_code_asc":
@@ -187,6 +194,7 @@ function sortPdfCards(
     case "updated":
       // DB already ordered by updatedAt; keep relative order within the group.
       return list;
+    case "serial_no_asc":
     case "item_no_asc":
     default:
       return list.sort((a, b) => compareItemNo(a, b, "asc"));
@@ -195,6 +203,8 @@ function sortPdfCards(
 
 function isItemFilterSort(sort: CataloguePdfSort): boolean {
   return (
+    sort === "serial_no_asc" ||
+    sort === "serial_no_desc" ||
     sort === "item_no_asc" ||
     sort === "item_no_desc" ||
     sort === "item_code_asc" ||
@@ -209,6 +219,7 @@ function pickSortPrimary(
 ): ProductRow {
   const ranked = [...siblings];
   switch (sort) {
+    case "serial_no_desc":
     case "item_no_desc":
       ranked.sort((a, b) => compareItemNo(a, b, "desc"));
       return ranked[0]!;
@@ -222,6 +233,7 @@ function pickSortPrimary(
         String(b.productId).localeCompare(String(a.productId), undefined, { numeric: true })
       );
       return ranked[0]!;
+    case "serial_no_asc":
     case "item_no_asc":
       ranked.sort((a, b) => compareItemNo(a, b, "asc"));
       return ranked[0]!;
@@ -232,6 +244,7 @@ function pickSortPrimary(
 
 function prismaOrderBy(sort: CataloguePdfSort) {
   switch (sort) {
+    case "serial_no_desc":
     case "item_no_desc":
       return [{ itemNo: "desc" as const }, { productId: "desc" as const }];
     case "item_code_asc":
@@ -242,6 +255,7 @@ function prismaOrderBy(sort: CataloguePdfSort) {
       return [{ name: "asc" as const }];
     case "updated":
       return [{ updatedAt: "desc" as const }];
+    case "serial_no_asc":
     case "item_no_asc":
     default:
       return [{ itemNo: "asc" as const }, { productId: "asc" as const }];
@@ -390,10 +404,13 @@ function collapseVariantGroups(
       ]
     );
     // Keep the sort key honest across the whole size group.
-    if (sort === "item_no_asc" || sort === "item_no_desc") {
+    if (sort === "serial_no_asc" || sort === "serial_no_desc" || sort === "item_no_asc" || sort === "item_no_desc") {
       const nos = siblings.map((s) => s.itemNo).filter((n): n is number => n != null);
       if (nos.length) {
-        card.itemNo = sort === "item_no_desc" ? Math.max(...nos) : Math.min(...nos);
+        card.itemNo =
+          sort === "serial_no_desc" || sort === "item_no_desc"
+            ? Math.max(...nos)
+            : Math.min(...nos);
       }
     }
     cards.push(card);
@@ -531,7 +548,9 @@ export async function getCataloguePdfPayload(
       return compareItemNo(
         a.product,
         b.product,
-        filters.sort === "item_no_desc" ? "desc" : "asc"
+        filters.sort === "serial_no_desc" || filters.sort === "item_no_desc"
+          ? "desc"
+          : "asc"
       );
     });
 

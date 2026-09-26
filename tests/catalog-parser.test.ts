@@ -46,8 +46,34 @@ describe("Meta catalogue Excel validation", () => {
     expect(parsed.errors[0].message).toContain("id, title, price, image_link");
   });
 
-  it("maps Excel No column to item_no in sequence (not sheet row index)", () => {
-    const parsed = parseExcelBuffer(
+  it("maps Excel serial_no (and legacy No) to serial_no in sequence (not sheet row index)", () => {
+    const bySerial = parseExcelBuffer(
+      workbookBuffer([
+        {
+          serial_no: 1,
+          id: "110008835",
+          title: "Bbq Stove",
+          price: "QAR 100.00",
+          image_link: "https://example.com/bbq.jpg",
+          brand: "TFRC",
+        },
+        {
+          serial_no: 2,
+          id: "110008836",
+          title: "Second item",
+          price: "QAR 50.00",
+          image_link: "https://example.com/2.jpg",
+          brand: "TFRC",
+        },
+      ]),
+      "Almeera"
+    );
+    expect(bySerial.errors).toEqual([]);
+    expect(bySerial.rows).toHaveLength(2);
+    expect(bySerial.rows[0].serial_no).toBe(1);
+    expect(bySerial.rows[1].serial_no).toBe(2);
+
+    const byLegacyNo = parseExcelBuffer(
       workbookBuffer([
         {
           No: 1,
@@ -69,10 +95,9 @@ describe("Meta catalogue Excel validation", () => {
       "Almeera"
     );
 
-    expect(parsed.errors).toEqual([]);
-    expect(parsed.rows).toHaveLength(2);
-    expect(parsed.rows[0].item_no).toBe(1);
-    expect(parsed.rows[1].item_no).toBe(2);
+    expect(byLegacyNo.errors).toEqual([]);
+    expect(byLegacyNo.rows[0].serial_no).toBe(1);
+    expect(byLegacyNo.rows[1].serial_no).toBe(2);
   });
 
   it("parses the downloadable PawMart Excel template and ignores empty edit rows", () => {

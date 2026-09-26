@@ -13,6 +13,8 @@ export type StoreSort =
   | "price_desc"
   | "discount"
   | "name"
+  | "serial_no_asc"
+  | "serial_no_desc"
   | "item_no_asc"
   | "item_no_desc"
   | "item_code_asc"
@@ -24,11 +26,26 @@ const STORE_SORTS = new Set<StoreSort>([
   "price_desc",
   "discount",
   "name",
+  "serial_no_asc",
+  "serial_no_desc",
   "item_no_asc",
   "item_no_desc",
   "item_code_asc",
   "item_code_desc",
 ]);
+
+/** Prefer serial_no_* ; keep legacy item_no_* working. */
+export function normalizeStoreSort(sort: string | undefined | null): StoreSort {
+  if (sort === "item_no_asc" || sort === "serial_no_asc") return "serial_no_asc";
+  if (sort === "item_no_desc" || sort === "serial_no_desc") return "serial_no_desc";
+  if (sort && STORE_SORTS.has(sort as StoreSort)) return sort as StoreSort;
+  return "serial_no_asc";
+}
+
+export function isSerialNoSort(sort: string | undefined | null): boolean {
+  const normalized = normalizeStoreSort(sort);
+  return normalized === "serial_no_asc" || normalized === "serial_no_desc";
+}
 
 export interface StoreFilters {
   q: string;
@@ -51,18 +68,17 @@ export const DEFAULT_STORE_FILTERS: StoreFilters = {
   brand: null,
   sale: false,
   inStock: false,
-  sort: "item_no_asc",
+  sort: "serial_no_asc",
 };
 
 export function parseStoreFilters(params: Record<string, string | undefined>): StoreFilters {
-  const requestedSort = params.sort as StoreSort | undefined;
   return {
     q: params.q?.trim() ?? "",
     shop: params.shop ?? null,
     brand: params.brand ?? null,
     sale: params.sale === "true",
     inStock: params.inStock === "true",
-    sort: requestedSort && STORE_SORTS.has(requestedSort) ? requestedSort : "item_no_asc",
+    sort: normalizeStoreSort(params.sort),
   };
 }
 
@@ -91,8 +107,10 @@ export function sortProducts(
           (mapProductPrices(b).pricing.discountPercent ?? 0) -
           (mapProductPrices(a).pricing.discountPercent ?? 0)
       );
+    case "serial_no_asc":
     case "item_no_asc":
       return list.sort((a, b) => compareItemNo(a, b, "asc"));
+    case "serial_no_desc":
     case "item_no_desc":
       return list.sort((a, b) => compareItemNo(a, b, "desc"));
     case "item_code_asc":
@@ -273,6 +291,8 @@ export function filtersToSearchParams(filters: StoreFilters): URLSearchParams {
   if (filters.brand) params.set("brand", filters.brand);
   if (filters.sale) params.set("sale", "true");
   if (filters.inStock) params.set("inStock", "true");
-  if (filters.sort !== "item_no_asc") params.set("sort", filters.sort);
+  if (filters.sort !== "serial_no_asc" && filters.sort !== "item_no_asc") {
+    params.set("sort", filters.sort === "item_no_desc" ? "serial_no_desc" : filters.sort);
+  }
   return params;
 }

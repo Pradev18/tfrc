@@ -11,6 +11,7 @@ import { STORE_SEARCH_DEBOUNCE_MS } from "@/lib/store-constants";
 import {
   DEFAULT_STORE_FILTERS,
   filtersToSearchParams,
+  isSerialNoSort,
   parseStoreFilters,
   type StoreFilters,
 } from "@/lib/store-catalog-filter";
@@ -78,7 +79,7 @@ export function UnifiedStoreCatalog({
   const [showAllProducts, setShowAllProducts] = useState(() => {
     const parsed = parseStoreFilters(Object.fromEntries(searchParams.entries()));
     if (parsed.shop) return false;
-    return parsed.sort === "item_no_asc" || parsed.sort === "item_no_desc";
+    return isSerialNoSort(parsed.sort);
   });
 
   const debouncedQ = useDebouncedValue(searchInput, STORE_SEARCH_DEBOUNCE_MS);
@@ -202,14 +203,13 @@ export function UnifiedStoreCatalog({
   const syncFilters = useCallback(
     (patch: Partial<StoreFilters>) => {
       const next = { ...filtersRef.current, ...patch };
-      const itemNoSort =
-        next.sort === "item_no_asc" || next.sort === "item_no_desc";
-      // Item no sort without a category = full Excel catalogue order.
+      const serialSort = isSerialNoSort(next.sort);
+      // Serial no sort without a category = full Excel catalogue order.
       if ("shop" in patch) {
         const shopSlug = patch.shop ?? null;
         setFocusedCategorySlug(shopSlug);
-        setShowAllProducts(!shopSlug && itemNoSort);
-      } else if (itemNoSort && !next.shop) {
+        setShowAllProducts(!shopSlug && serialSort);
+      } else if (serialSort && !next.shop) {
         setFocusedCategorySlug(null);
         setShowAllProducts(true);
       }

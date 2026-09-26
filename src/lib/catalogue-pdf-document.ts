@@ -768,7 +768,7 @@ function drawProductCard(
   doc.setFontSize(5.7);
   const itemMeta =
     product.itemNo != null
-      ? `No ${product.itemNo} · ${normalisePdfText(product.productId)}`
+      ? `Serial ${product.itemNo} · ${normalisePdfText(product.productId)}`
       : `Item code: ${normalisePdfText(product.productId)}`;
   doc.text(ellipsiseLine(itemMeta, 40), bodyX, cursorY + 0.4);
   cursorY += 2.9;

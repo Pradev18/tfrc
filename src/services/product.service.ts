@@ -30,6 +30,8 @@ export interface ProductFilters {
     | "price_desc"
     | "discount"
     | "name"
+    | "serial_no_asc"
+    | "serial_no_desc"
     | "item_no_asc"
     | "item_no_desc"
     | "item_code_asc"
@@ -339,9 +341,11 @@ async function getProductsFromPrisma(filters: ProductFilters = {}) {
     case "name":
       orderBy = { name: "asc" };
       break;
+    case "serial_no_asc":
     case "item_no_asc":
       orderBy = [{ itemNo: "asc" }, { productId: "asc" }];
       break;
+    case "serial_no_desc":
     case "item_no_desc":
       orderBy = [{ itemNo: "desc" }, { productId: "desc" }];
       break;

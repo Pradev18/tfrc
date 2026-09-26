@@ -9,7 +9,8 @@ import { extractPhoneFromWaLink } from "@/lib/whatsapp";
 
 export interface CatalogRow {
   rowNumber: number;
-  item_no: number | null;
+  /** Excel serial_no — catalogue sequence for PDF / Serial no ↑↓ (1, 2, 3…). */
+  serial_no: number | null;
   id: string;
   title: string;
   description: string;
@@ -195,11 +196,15 @@ function mapSheetRowsToCatalog(
 
     rows.push({
       rowNumber: rowNum,
-      // Excel "No" / item_no = catalogue sequence. Never use sheet row index
-      // (that made first data row Item no 2 because header is row 1).
-      item_no:
+      // Excel serial_no (preferred) / legacy item_no / No = catalogue sequence.
+      // Never use sheet row index (header is row 1; that wrongly made first item 2).
+      serial_no:
         parseItemNo(
-          row.item_no ??
+          row.serial_no ??
+            row.serialno ??
+            row["serial no"] ??
+            row.serial_number ??
+            row.item_no ??
             row.item_number ??
             row.itemno ??
             row["item no"] ??
