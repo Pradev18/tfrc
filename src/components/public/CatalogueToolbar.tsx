@@ -20,7 +20,7 @@ const SORT_LABELS: Record<string, string> = {
   item_code_desc: "Item code ↓",
   price_asc: "Price: Low to High",
   price_desc: "Price: High to Low",
-  discount: "Biggest Discount",
+  discount: "Discount",
   name: "Name A–Z",
 };
 
