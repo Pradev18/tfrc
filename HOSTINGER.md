@@ -46,19 +46,19 @@ PORT=3000
 
 ### External Postgres (required — stops Hostinger data loss)
 
-Hostinger Node redeploys wipe files inside the app folder. **SQLite `prod.db` must not be used in production.**
+Hostinger Node redeploys wipe files inside the app folder. **SQLite must not be used in production.**
 
-1. Create a free DB at [Neon](https://console.neon.tech) (or Supabase / Hostinger Postgres).
-2. Copy the connection string into Hostinger `DATABASE_URL` (must start with `postgresql://`).
-3. Keep `TFRC_DATA_DIR=../tfrc-persistent` for **uploaded images/PDFs** only (not catalogue rows).
-4. Save and redeploy once — `prisma db push` creates empty tables.
-5. Log into `/admin` and **re-import each catalogue Excel** (Replace). Data now lives in Neon and **survives every redeploy**.
+**Architecture (proper ecommerce):** one Neon project with three schemas — `auth` (login), `catalog` (products), `activity` (customer inquiries / reports). See `docs/DATA_ARCHITECTURE.md`. Do **not** create three separate Neon databases.
 
-**Do not** set `DATABASE_URL` to `file:../tfrc-persistent/prod.db` any more.
+1. Neon Free project (Frankfurt) → copy `postgresql://…` into `DATABASE_URL`.
+2. Optional but recommended: Cloudflare **R2** for images (`MEDIA_STORAGE=r2` + `R2_*` vars) so media loads via CDN and never dies on redeploy.
+3. Keep `TFRC_DATA_DIR=../tfrc-persistent` only as a local fallback for non-R2 files.
+4. Save and redeploy — `prisma db push` creates the three schemas + tables (empty).
+5. `/admin` → **re-import each catalogue Excel (Replace)**. Data now lives in Neon and survives every code push.
 
-**Critical — zero data loss with Postgres:** catalogue rows (products, prices, categories) live in Neon. Redeploys only update code. Uploaded media files still use `../tfrc-persistent/uploads/`.
+**Do not** set `DATABASE_URL` to any `file:…` SQLite path.
 
-**Manual recovery:** Neon dashboard → Branches / backups, or re-import Excel from your files.
+**Zero data loss:** catalogues/products/logins/inquiries = Neon. Images = Cloudflare R2. Hostinger only gets **code updates**.
 
 ### After first successful build
 

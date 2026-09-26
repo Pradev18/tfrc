@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import { persistentUploadsDir } from "@/lib/sqlite-paths";
+import { isR2Configured, uploadBufferToR2 } from "@/lib/r2";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
@@ -156,6 +157,20 @@ export async function saveUploadedImage(file: File): Promise<string> {
   }
 
   const filename = `${randomUUID()}.${extension}`;
+
+  // Production path: Cloudflare R2 (CDN) — survives Hostinger redeploys and loads fast.
+  if (isR2Configured()) {
+    try {
+      return await uploadBufferToR2({
+        key: `uploads/${filename}`,
+        body: buffer,
+        contentType: mime,
+      });
+    } catch (error) {
+      console.error("[upload] R2 upload failed, falling back to disk:", error);
+    }
+  }
+
   let written = false;
   const errors: string[] = [];
 

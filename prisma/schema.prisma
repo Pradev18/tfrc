@@ -4,10 +4,11 @@ generator client {
 }
 
 datasource db {
-  // External Postgres (Neon / Supabase / Hostinger) — survives Hostinger redeploys.
-  // Local: use a Neon free DB or Docker Postgres. SQLite file DBs are no longer used in production.
+  // Single Neon Postgres — three schemas (proper ecommerce domains).
+  // Hostinger redeploys never touch this data (only app code updates).
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  schemas  = ["auth", "catalog", "activity"]
 }
 
 model User {
@@ -23,6 +24,7 @@ model User {
   auditLogs    AuditLog[]
   importJobs   ImportJob[]
   loginApprovals LoginApproval[]
+  @@schema("auth")
 }
 
 model LoginApproval {
@@ -42,6 +44,7 @@ model LoginApproval {
 
   @@index([userId, status, createdAt])
   @@index([expiresAt])
+  @@schema("auth")
 }
 
 model LoginThrottle {
@@ -52,6 +55,7 @@ model LoginThrottle {
   updatedAt       DateTime @updatedAt
 
   @@index([lockedUntil])
+  @@schema("auth")
 }
 
 model Role {
@@ -61,6 +65,7 @@ model Role {
   users       UserRole[]
   permissions RolePermission[]
   createdAt   DateTime         @default(now())
+  @@schema("auth")
 }
 
 model Permission {
@@ -71,6 +76,7 @@ model Permission {
   roles       RolePermission[]
 
   @@unique([action, resource])
+  @@schema("auth")
 }
 
 model UserRole {
@@ -80,6 +86,7 @@ model UserRole {
   role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([userId, roleId])
+  @@schema("auth")
 }
 
 model RolePermission {
@@ -89,6 +96,7 @@ model RolePermission {
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
+  @@schema("auth")
 }
 
 model AuditLog {
@@ -105,12 +113,14 @@ model AuditLog {
 
   @@index([resource, resourceId])
   @@index([createdAt])
+  @@schema("auth")
 }
 
 enum EnvironmentStatus {
   ACTIVE
   INACTIVE
   COMING_SOON
+  @@schema("catalog")
 }
 
 model Environment {
@@ -139,6 +149,7 @@ model Environment {
   importJobs       ImportJob[]
 
   @@index([status, sortOrder])
+  @@schema("catalog")
 }
 
 model ShopCategory {
@@ -156,6 +167,7 @@ model ShopCategory {
 
   @@unique([environmentId, slug])
   @@index([environmentId, sortOrder])
+  @@schema("catalog")
 }
 
 model Category {
@@ -180,6 +192,7 @@ model Category {
   @@index([parentId])
   @@index([environmentId])
   @@index([isActive, sortOrder])
+  @@schema("catalog")
 }
 
 model Brand {
@@ -192,6 +205,7 @@ model Brand {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   products    Product[]
+  @@schema("catalog")
 }
 
 model Tag {
@@ -200,6 +214,7 @@ model Tag {
   slug      String       @unique
   createdAt DateTime     @default(now())
   products  ProductTag[]
+  @@schema("catalog")
 }
 
 model Product {
@@ -266,6 +281,7 @@ model Product {
   @@index([environmentId, variantGroupKey, isVariantPrimary])
   @@index([environmentId, status, isVariantPrimary, deletedAt])
   @@index([environmentId, itemNo])
+  @@schema("catalog")
 }
 
 enum ProductStatus {
@@ -273,6 +289,7 @@ enum ProductStatus {
   ACTIVE
   INACTIVE
   ARCHIVED
+  @@schema("catalog")
 }
 
 model ProductImage {
@@ -286,6 +303,7 @@ model ProductImage {
   isPrimary Boolean @default(false)
 
   @@index([productId, sortOrder])
+  @@schema("catalog")
 }
 
 model ProductVideo {
@@ -297,6 +315,7 @@ model ProductVideo {
   sortOrder Int     @default(0)
 
   @@index([productId])
+  @@schema("catalog")
 }
 
 model ProductTag {
@@ -306,6 +325,7 @@ model ProductTag {
   tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([productId, tagId])
+  @@schema("catalog")
 }
 
 model ProductVariant {
@@ -321,6 +341,7 @@ model ProductVariant {
   updatedAt DateTime @updatedAt
 
   @@index([productId])
+  @@schema("catalog")
 }
 
 model Price {
@@ -337,11 +358,13 @@ model Price {
   history   PriceHistory[]
 
   @@index([productId, type])
+  @@schema("catalog")
 }
 
 enum PriceType {
   REGULAR
   SALE
+  @@schema("catalog")
 }
 
 model PriceHistory {
@@ -353,6 +376,7 @@ model PriceHistory {
   changedBy String?
   reason    String?
   createdAt DateTime @default(now())
+  @@schema("catalog")
 }
 
 model Inventory {
@@ -364,6 +388,7 @@ model Inventory {
   isInStock         Boolean  @default(true)
   locationId        String?
   updatedAt         DateTime @updatedAt
+  @@schema("catalog")
 }
 
 model InventoryTransaction {
@@ -379,6 +404,7 @@ model InventoryTransaction {
   createdAt   DateTime        @default(now())
 
   @@index([productId, createdAt])
+  @@schema("catalog")
 }
 
 enum InventoryTxType {
@@ -386,6 +412,7 @@ enum InventoryTxType {
   INCREASE
   DECREASE
   ADJUST
+  @@schema("catalog")
 }
 
 model Promotion {
@@ -400,6 +427,7 @@ model Promotion {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
   products    PromotionProduct[]
+  @@schema("catalog")
 }
 
 model PromotionProduct {
@@ -409,6 +437,7 @@ model PromotionProduct {
   product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@id([promotionId, productId])
+  @@schema("catalog")
 }
 
 model Banner {
@@ -428,6 +457,7 @@ model Banner {
   updatedAt     DateTime     @updatedAt
 
   @@index([environmentId])
+  @@schema("catalog")
 }
 
 model HomepageSection {
@@ -444,6 +474,7 @@ model HomepageSection {
   updatedAt     DateTime     @updatedAt
 
   @@index([environmentId])
+  @@schema("catalog")
 }
 
 model Media {
@@ -457,6 +488,7 @@ model Media {
   width     Int?
   height    Int?
   createdAt DateTime @default(now())
+  @@schema("catalog")
 }
 
 model Redirect {
@@ -466,6 +498,7 @@ model Redirect {
   statusCode Int      @default(301)
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
+  @@schema("catalog")
 }
 
 model Page {
@@ -477,6 +510,7 @@ model Page {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@schema("catalog")
 }
 
 model Faq {
@@ -487,6 +521,7 @@ model Faq {
   sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+  @@schema("catalog")
 }
 
 model SiteSetting {
@@ -495,6 +530,7 @@ model SiteSetting {
   value     String
   group     String   @default("general")
   updatedAt DateTime @updatedAt
+  @@schema("catalog")
 }
 
 model WhatsAppSetting {
@@ -506,6 +542,7 @@ model WhatsAppSetting {
   closingMessage  String   @default("Please confirm availability and delivery details. Thank you.")
   isActive        Boolean  @default(true)
   updatedAt       DateTime @updatedAt
+  @@schema("catalog")
 }
 
 model SocialLink {
@@ -514,6 +551,7 @@ model SocialLink {
   url       String
   sortOrder Int     @default(0)
   isActive  Boolean @default(true)
+  @@schema("catalog")
 }
 
 model DeliverySetting {
@@ -525,6 +563,7 @@ model DeliverySetting {
   deliveryTime          String?
   coverage              String?
   updatedAt             DateTime @updatedAt
+  @@schema("catalog")
 }
 
 model ImportJob {
@@ -548,6 +587,7 @@ model ImportJob {
   completedAt   DateTime?
 
   @@index([environmentId])
+  @@schema("catalog")
 }
 
 enum ImportStatus {
@@ -557,6 +597,7 @@ enum ImportStatus {
   IMPORTING
   COMPLETED
   FAILED
+  @@schema("catalog")
 }
 
 model ImportError {
@@ -567,6 +608,7 @@ model ImportError {
   field       String?
   message     String
   severity    String    @default("error")
+  @@schema("catalog")
 }
 
 model CustomerInquiry {
@@ -599,6 +641,7 @@ model CustomerInquiry {
   @@index([sessionId])
   @@index([customerPhone])
   @@index([environmentSlug])
+  @@schema("activity")
 }
 
 model CustomerInquiryItem {
@@ -617,6 +660,7 @@ model CustomerInquiryItem {
 
   @@index([inquiryId])
   @@index([productId])
+  @@schema("activity")
 }
 
 /** Admin Report module — Office Forms I.Q.S workflow (isolated from catalogues). */
@@ -624,6 +668,7 @@ enum OfficeReportImportStatus {
   PENDING
   READY
   FAILED
+  @@schema("activity")
 }
 
 model OfficeReportImport {
@@ -655,6 +700,7 @@ model OfficeReportImport {
 
   @@index([createdAt])
   @@index([status])
+  @@schema("activity")
 }
 
 model OfficeReportInventoryItem {
@@ -668,6 +714,7 @@ model OfficeReportInventoryItem {
 
   @@index([importId, itemCode, sortOrder])
   @@index([itemCode])
+  @@schema("activity")
 }
 
 model OfficeReportImageLink {
@@ -681,6 +728,7 @@ model OfficeReportImageLink {
   sortOrder Int                @default(0)
 
   @@index([importId, itemCode, sortOrder])
+  @@schema("activity")
 }
 
 model OfficeReport {
@@ -701,6 +749,7 @@ model OfficeReport {
 
   @@index([importId])
   @@index([createdAt])
+  @@schema("activity")
 }
 
 model OfficeReportLine {
@@ -721,4 +770,5 @@ model OfficeReportLine {
 
   @@index([reportId, sortOrder])
   @@index([itemCode])
+  @@schema("activity")
 }
