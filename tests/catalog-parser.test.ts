@@ -74,4 +74,17 @@ describe("Meta catalogue Excel validation", () => {
     expect(parsed.rows[0].item_no).toBe(1);
     expect(parsed.rows[1].item_no).toBe(2);
   });
+
+  it("parses the downloadable PawMart Excel template and ignores empty edit rows", () => {
+    const parsed = parseExcelBuffer(buildMetaCatalogueTemplateBuffer(), "PawMart");
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.rows).toHaveLength(3);
+    expect(parsed.rows.map((row) => row.id)).toEqual([
+      "TFRC-PM-EXAMPLE-001",
+      "TFRC-PM-EXAMPLE-002",
+      "TFRC-PM-EXAMPLE-003",
+    ]);
+    expect(parsed.rows[0].title).toContain("Black Pet Hat");
+    expect(parsed.rows[0].size).toBe("L");
+  });
 });
