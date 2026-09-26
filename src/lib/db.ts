@@ -12,9 +12,28 @@ const globalForPrisma = globalThis as unknown as {
   prismaReady?: Promise<void>;
 };
 
-/** Resolve relative SQLite paths; persistent owner DB always wins when present. */
+function normalizeUrl(raw: string | undefined): string {
+  let value = (raw ?? "").trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+  return value;
+}
+
+function isExternalSqlUrl(url: string): boolean {
+  return /^(postgresql|postgres|mysql|sqlserver):\/\//i.test(url);
+}
+
+/** External Postgres wins. SQLite file resolution is legacy-only. */
 function getDatasourceUrl(): string | undefined {
-  const url = process.env.DATABASE_URL ?? "file:./prod.db";
+  const url = normalizeUrl(process.env.DATABASE_URL) || "file:./prod.db";
+  if (isExternalSqlUrl(url)) {
+    process.env.DATABASE_URL = url;
+    return url;
+  }
   if (!url.startsWith("file:")) return url;
 
   const persistent = persistentDbPath();
@@ -57,12 +76,10 @@ function getDatasourceUrl(): string | undefined {
     process.env.DATABASE_URL = `file:${fallback}`;
     return `file:${fallback}`;
   } catch {
-    // Avoid /tmp in production — that DB disappears on restart.
     if (process.env.NODE_ENV === "production") {
-      console.error(
-        "[db] FATAL: cannot write persistent or app DB path in production"
+      throw new Error(
+        "DATABASE_URL must be a Postgres connection string in production (not SQLite)."
       );
-      throw new Error("Persistent SQLite path is not writable");
     }
     const tmpDb = path.join("/tmp", "vitanova-prod.db");
     process.env.DATABASE_URL = `file:${tmpDb}`;
@@ -87,9 +104,8 @@ async function ensureSqlitePragmas() {
     await prisma.$queryRawUnsafe("PRAGMA synchronous=NORMAL;");
     await prisma.$queryRawUnsafe("PRAGMA busy_timeout=20000;");
     await prisma.$queryRawUnsafe("PRAGMA temp_store=MEMORY;");
-    // Faster reads on Hostinger without waiting for a full DB rewrite.
-    await prisma.$queryRawUnsafe("PRAGMA cache_size=-65536;"); // ~64MB
-    await prisma.$queryRawUnsafe("PRAGMA mmap_size=134217728;"); // 128MB
+    await prisma.$queryRawUnsafe("PRAGMA cache_size=-65536;");
+    await prisma.$queryRawUnsafe("PRAGMA mmap_size=134217728;");
     await prisma.$queryRawUnsafe("PRAGMA wal_autocheckpoint=2000;");
   } catch (error) {
     console.warn("[db] Could not apply SQLite pragmas:", error);
@@ -98,7 +114,12 @@ async function ensureSqlitePragmas() {
 
 /** Live DBs can lag schema after deploy — add missing Product columns safely. */
 async function ensureProductSchema() {
+  const url = process.env.DATABASE_URL ?? "";
   try {
+    if (isExternalSqlUrl(url)) {
+      // Postgres: schema comes from `prisma db push` on start. Skip SQLite PRAGMA.
+      return;
+    }
     const cols = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
       `PRAGMA table_info("Product")`
     );

@@ -1,11 +1,10 @@
 /**
- * Ensures SQLite prod DB + uploaded media survive Hostinger deploys.
+ * Ensures production database is ready before build/start (Hostinger).
  *
- * ZERO DATA LOSS RULE:
- * Live owner catalogues AND all uploaded contents (products, images, videos,
- * Excel/report files) live under ../tfrc-persistent/ (or TFRC_DATA_DIR).
- * If that DB already has owner data, it is LOCKED forever against seed / demo /
- * smaller / "newer" deploy copies — even at 1000 catalogues with full Excel data.
+ * Production MUST use external Postgres (Neon / Supabase / Hostinger Postgres).
+ * SQLite file DBs on Hostinger get wiped/replaced on redeploy — that caused
+ * catalogue data loss. When DATABASE_URL is postgres/mysql, this script only
+ * runs schema push + safe migrations (never copies seed files).
  */
 import fs from "fs";
 import path from "path";
@@ -36,32 +35,74 @@ function run(cmd) {
   execSync(cmd, { cwd: root, stdio: "inherit", env: process.env });
 }
 
-async function main() {
-  // Hostinger sometimes wraps values in quotes or leaves a non-file URL.
-  // When TFRC_DATA_DIR is set, force the durable SQLite path.
+function isExternalSqlUrl(url) {
+  return /^(postgresql|postgres|mysql|sqlserver):\/\//i.test(url);
+}
+
+async function setupExternalDatabase(url) {
+  process.env.DATABASE_URL = url;
+  console.log(
+    `[db] External database detected (${url.replace(/:[^:@/]+@/, ":***@").slice(0, 64)}…)`
+  );
+  console.log(
+    "[db-safety] LIVE DATA is in the external DB — Hostinger redeploys cannot overwrite it."
+  );
+
+  try {
+    run("npx prisma db push --skip-generate");
+  } catch (err) {
+    console.warn("[db] prisma db push warning:", err?.message ?? err);
+  }
+
+  try {
+    run("node scripts/migrate-admin-password.mjs");
+  } catch (err) {
+    console.warn("[db] admin bootstrap warning:", err?.message ?? err);
+  }
+
+  try {
+    run("node scripts/migrate-product-item-no.mjs");
+  } catch (err) {
+    console.warn("[db] itemNo migration warning:", err?.message ?? err);
+  }
+
+  // Uploads still need a durable folder on the app host (images/PDFs).
+  if (process.env.NODE_ENV === "production" || process.env.TFRC_DATA_DIR?.trim()) {
+    ensurePersistentUploads(root);
+  }
+
+  console.log("[db] Ready (external). DATABASE_URL is not a local SQLite file.");
+}
+
+async function setupSqliteLegacy() {
+  // Hostinger sometimes wraps values in quotes.
   let url = normalizeDatabaseUrl(process.env.DATABASE_URL);
   const persistDir = persistentDataDir(root);
   const durableSqlite = `file:${persistentDbPath(root).replace(/\\/g, "/")}`;
 
-  if (process.env.TFRC_DATA_DIR?.trim()) {
-    if (!url.startsWith("file:")) {
-      console.warn(
-        `[db-safety] DATABASE_URL was not SQLite (${url || "empty"}) — forcing ${durableSqlite}`
-      );
-    }
+  // Only force SQLite durable path when the URL is already file: or empty.
+  // Never override an external Postgres URL (handled earlier).
+  if (!url) {
     url = durableSqlite;
-  } else if (!url) {
-    url = "file:./prod.db";
+  } else if (
+    url.startsWith("file:") &&
+    process.env.TFRC_DATA_DIR?.trim()
+  ) {
+    url = durableSqlite;
   }
 
   process.env.DATABASE_URL = url;
 
   if (!url.startsWith("file:")) {
     console.log(
-      `[db] Non-SQLite DATABASE_URL (${url.slice(0, 32)}…) — skipping auto setup.`
+      `[db] Unrecognized DATABASE_URL (${url.slice(0, 32)}…) — skipping auto setup.`
     );
     return;
   }
+
+  console.warn(
+    "[db-safety] WARNING: SQLite file mode is legacy. Use external Postgres to prevent Hostinger data loss."
+  );
 
   const isProduction =
     process.env.NODE_ENV === "production" ||
@@ -69,28 +110,14 @@ async function main() {
 
   let livePath = persistentDbPath(root);
 
-  // Local/dev: honour DATABASE_URL (e.g. prisma/dev.db) and do not create a
-  // blank persistent DB that would steal the connection from the owner's file.
   const envDb = resolveDatabaseUrlPath(root, url);
   if (!isProduction && envDb && fs.existsSync(envDb) && /dev\.db$/i.test(envDb)) {
     livePath = envDb;
     console.log(`[db] Dev mode — using DATABASE_URL database ${livePath}`);
   } else if (!canWriteDir(persistDir)) {
-    // Never silently move live owner data to /tmp — that disappears on restart.
-    const existingPersistent = persistentDbPath(root);
-    if (
-      isProduction &&
-      fs.existsSync(existingPersistent) &&
-      fs.statSync(existingPersistent).size >= 1000
-    ) {
-      console.error(
-        `[db-safety] FATAL: persistent dir ${persistDir} is not writable but live owner DB exists. Fix permissions — refusing /tmp fallback.`
-      );
-      process.exit(1);
-    }
     if (isProduction) {
       console.error(
-        `[db-safety] FATAL: persistent dir ${persistDir} is not writable in production. Refusing /tmp fallback (would lose catalogues + uploads on restart).`
+        `[db-safety] FATAL: persistent dir ${persistDir} is not writable. Use external Postgres instead of SQLite.`
       );
       process.exit(1);
     }
@@ -107,7 +134,6 @@ async function main() {
 
   let lockedSnapshot = null;
 
-  // Snapshot + lock on every production build/start when owner data exists.
   if (isProduction && liveExists) {
     const snap = await measureLiveContentAsync(livePath);
     if (snap?.locked) {
@@ -117,12 +143,10 @@ async function main() {
     }
   }
 
-  // Keep uploaded images/Excel/PDFs outside the wiped app tree.
   if (isProduction) {
     ensurePersistentUploads(root);
   }
 
-  // Promote another DB into persistent ONLY when safety allows.
   if (
     isProduction &&
     best &&
@@ -183,7 +207,6 @@ async function main() {
 
   process.env.DATABASE_URL = `file:${livePath}`;
 
-  // One-way mirror: live → app tree only. Never the reverse when locked.
   if (isProduction) {
     try {
       const appCopy = path.join(root, "prisma", "prod.db");
@@ -194,10 +217,6 @@ async function main() {
       ) {
         copyDbAtomic(livePath, appCopy);
         console.log(`[db] Synced app copy ← live → ${appCopy}`);
-      } else {
-        console.log(
-          `[db] App copy already current (${fs.statSync(appCopy).size} bytes)`
-        );
       }
     } catch (err) {
       console.warn(
@@ -232,6 +251,26 @@ async function main() {
       finalSnap?.label ?? "unknown"
     } (catalogues + products + images must not drop after deploys)`
   );
+}
+
+async function main() {
+  const url = normalizeDatabaseUrl(process.env.DATABASE_URL);
+
+  if (isExternalSqlUrl(url)) {
+    await setupExternalDatabase(url);
+    return;
+  }
+
+  // Guard: if someone set TFRC_DATA_DIR but forgot file: and also didn't set Postgres,
+  // do NOT invent SQLite when they intended external — require an explicit URL.
+  if (!url && process.env.NODE_ENV === "production") {
+    console.error(
+      "[db-safety] FATAL: DATABASE_URL is missing in production. Set a Postgres URL (Neon/Supabase), e.g. postgresql://USER:PASS@HOST/DB?sslmode=require"
+    );
+    process.exit(1);
+  }
+
+  await setupSqliteLegacy();
 }
 
 main().catch((err) => {

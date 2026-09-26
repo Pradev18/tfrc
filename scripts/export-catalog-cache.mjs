@@ -11,6 +11,7 @@ import { config as loadEnv } from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import {
   canWriteDir,
+  normalizeDatabaseUrl,
   persistentCachePath,
   persistentDataDir,
   resolveLiveDbPath,
@@ -22,16 +23,27 @@ loadEnv({ path: path.join(root, ".env") });
 loadEnv({ path: path.join(root, ".env.local"), override: true });
 loadEnv({ path: path.join(root, "prisma", ".env") });
 
-const live = resolveLiveDbPath(root);
+const dbUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
+const isExternal = /^(postgresql|postgres|mysql|sqlserver):\/\//i.test(dbUrl);
+
+const live = isExternal ? null : resolveLiveDbPath(root);
 const seed = seedDbPath(root);
 const allowSeedFallback = process.env.TFRC_ALLOW_SEED_CACHE === "1";
 
 let dbFile = live?.path ?? null;
 let source = live?.source ?? null;
+let prismaUrl = null;
 
-if (!dbFile && allowSeedFallback && seed) {
+if (isExternal) {
+  prismaUrl = dbUrl;
+  source = "external-DATABASE_URL";
+} else if (!dbFile && allowSeedFallback && seed) {
   dbFile = seed;
   source = "seed-explicit";
+}
+
+if (dbFile) {
+  prismaUrl = `file:${path.resolve(dbFile).replace(/\\/g, "/")}`;
 }
 
 const outFiles = [path.join(root, "data", "catalog-cache.json")];
@@ -86,7 +98,7 @@ function writeCache(cache) {
   }
 }
 
-if (!dbFile || !fs.existsSync(dbFile)) {
+if (!prismaUrl) {
   const existingPersistent = persistentCachePath(root);
   if (
     fs.existsSync(existingPersistent) &&
@@ -105,11 +117,12 @@ if (!dbFile || !fs.existsSync(dbFile)) {
 }
 
 console.log(
-  `[catalog-cache] reading ${dbFile} (${fs.statSync(dbFile).size} bytes) via ${source || "unknown"}`
+  `[catalog-cache] reading via ${source || "unknown"}` +
+    (dbFile ? ` (${fs.statSync(dbFile).size} bytes)` : " (external DB)")
 );
 
 const prisma = new PrismaClient({
-  datasources: { db: { url: `file:${path.resolve(dbFile).replace(/\\/g, "/")}` } },
+  datasources: { db: { url: prismaUrl } },
 });
 
 try {

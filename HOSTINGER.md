@@ -29,10 +29,10 @@ Use these **exact settings** in **Websites → tfrcwholesale.com → Deployments
 
 **Remove** all `SMTP_*` variables — they are from the old visa site and are **not used** by this catalogue app.
 
-**Use these only** (copy from `env.tfrcwholesale.com.example`):
+**Use these** (copy from `env.tfrcwholesale.com.example`):
 
 ```env
-DATABASE_URL=file:../tfrc-persistent/prod.db
+DATABASE_URL=postgresql://USER:PASSWORD@HOST/DB?sslmode=require
 TFRC_DATA_DIR=../tfrc-persistent
 AUTH_SECRET=<your-secret>
 AUTH_URL=https://tfrcwholesale.com
@@ -44,28 +44,21 @@ NODE_ENV=production
 PORT=3000
 ```
 
-**Critical — zero data loss (catalogues + uploaded contents, 1…1000+):**  
-Live data lives under `../tfrc-persistent/` (outside the git app folder):
+### External Postgres (required — stops Hostinger data loss)
 
-| Path | What it protects |
-|------|------------------|
-| `../tfrc-persistent/prod.db` | Catalogues, products, prices, shop categories, image/video **records** |
-| `../tfrc-persistent/uploads/` | Uploaded product images, Excel report imports, owner PDFs |
-| `../tfrc-persistent/backups/` | Automatic pre-deploy DB snapshots (last 14) |
+Hostinger Node redeploys wipe files inside the app folder. **SQLite `prod.db` must not be used in production.**
 
-On every production build/start, `ensure-prod-db` will:
+1. Create a free DB at [Neon](https://console.neon.tech) (or Supabase / Hostinger Postgres).
+2. Copy the connection string into Hostinger `DATABASE_URL` (must start with `postgresql://`).
+3. Keep `TFRC_DATA_DIR=../tfrc-persistent` for **uploaded images/PDFs** only (not catalogue rows).
+4. Save and redeploy once — `prisma db push` creates empty tables.
+5. Log into `/admin` and **re-import each catalogue Excel** (Replace). Data now lives in Neon and **survives every redeploy**.
 
-1. **LIVE LOCK** — if the DB already has owner data (≥1 catalogue **or** ≥1 product **or** ≥1 image/video), seed / demo / app-tree copies are **never** copied over it.
-2. **Content drop abort** — deploy fails if catalogue, product, or image counts would shrink.
-3. **Upload migrate** — copies any app-tree `public/uploads` / `uploads` files into `tfrc-persistent/uploads` (never deletes richer persistent files).
-4. **One-way sync only** — live → app/`prisma` copy, never the reverse when locked.
-5. **Empty first boot only** — seed catalogues are never auto-imported over a live folder.
+**Do not** set `DATABASE_URL` to `file:../tfrc-persistent/prod.db` any more.
 
-After setting these env vars, **Save and redeploy once**. Re-upload catalogues only if this is a brand-new empty `tfrc-persistent` folder.
+**Critical — zero data loss with Postgres:** catalogue rows (products, prices, categories) live in Neon. Redeploys only update code. Uploaded media files still use `../tfrc-persistent/uploads/`.
 
-**Manual recovery (rare):** copy the newest file from `../tfrc-persistent/backups/` back to `../tfrc-persistent/prod.db`, then restart.
-
-**Hostinger SQLite URL:** must be `file:../tfrc-persistent/prod.db` plus `TFRC_DATA_DIR=../tfrc-persistent` (see `env.tfrcwholesale.com.example`).
+**Manual recovery:** Neon dashboard → Branches / backups, or re-import Excel from your files.
 
 ### After first successful build
 

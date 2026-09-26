@@ -11,6 +11,7 @@ import { fileURLToPath } from "url";
 import {
   copyDbAtomic,
   isSeedDatabasePath,
+  normalizeDatabaseUrl,
   persistentCachePath,
   resolveLiveDbPath,
 } from "./lib/db-location.mjs";
@@ -42,21 +43,28 @@ function copyDbIfRicher(src, dest) {
   }
 }
 
-const live = resolveLiveDbPath(root);
-if (!live?.path || isSeedDatabasePath(root, live.path)) {
-  console.warn(
-    "[copy-db] No LIVE owner database available — skipping DB copy so seed catalogues are not deployed."
+const dbUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
+if (/^(postgresql|postgres|mysql|sqlserver):\/\//i.test(dbUrl)) {
+  console.log(
+    "[copy-db] External DATABASE_URL — skipping SQLite file copy (data lives in Postgres)."
   );
 } else {
-  console.log(`[copy-db] Using LIVE ${live.path} (${live.size} bytes) via ${live.source}`);
-  const dbTargets = [
-    path.join(root, ".next", "prod.db"),
-    path.join(root, ".next", "standalone", "prod.db"),
-    path.join(root, ".next", "standalone", "prisma", "prod.db"),
-    path.join(root, "prisma", "prod.db"),
-  ];
-  for (const dest of dbTargets) {
-    copyDbIfRicher(live.path, dest);
+  const live = resolveLiveDbPath(root);
+  if (!live?.path || isSeedDatabasePath(root, live.path)) {
+    console.warn(
+      "[copy-db] No LIVE owner database available — skipping DB copy so seed catalogues are not deployed."
+    );
+  } else {
+    console.log(`[copy-db] Using LIVE ${live.path} (${live.size} bytes) via ${live.source}`);
+    const dbTargets = [
+      path.join(root, ".next", "prod.db"),
+      path.join(root, ".next", "standalone", "prod.db"),
+      path.join(root, ".next", "standalone", "prisma", "prod.db"),
+      path.join(root, "prisma", "prod.db"),
+    ];
+    for (const dest of dbTargets) {
+      copyDbIfRicher(live.path, dest);
+    }
   }
 }
 

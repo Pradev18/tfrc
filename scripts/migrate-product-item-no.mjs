@@ -1,14 +1,10 @@
 /**
- * Idempotent SQLite column adds + itemNo backfill for live Hostinger DBs.
+ * Idempotent itemNo backfill (Postgres or legacy SQLite).
+ * Schema columns come from `prisma db push` — this only fills null itemNo values.
  */
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
-
-async function columnExists(table, column) {
-  const rows = await prisma.$queryRawUnsafe(`PRAGMA table_info(${table})`);
-  return rows.some((row) => row.name === column);
-}
 
 async function backfillItemNumbers() {
   const envs = await prisma.environment.findMany({
@@ -63,20 +59,8 @@ async function backfillItemNumbers() {
 }
 
 try {
-  if (!(await columnExists("Product", "itemNo"))) {
-    await prisma.$executeRawUnsafe(
-      `ALTER TABLE "Product" ADD COLUMN "itemNo" INTEGER`
-    );
-    console.log("[db] Added Product.itemNo column");
-  } else {
-    console.log("[db] Product.itemNo already present");
-  }
-
-  await prisma.$executeRawUnsafe(
-    `CREATE INDEX IF NOT EXISTS "Product_environmentId_itemNo_idx" ON "Product"("environmentId", "itemNo")`
-  );
-
   await backfillItemNumbers();
+  console.log("[db] Product.itemNo backfill complete");
 } catch (error) {
   console.warn("[db] itemNo migration warning:", error?.message ?? error);
 } finally {

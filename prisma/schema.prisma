@@ -4,7 +4,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  // External Postgres (Neon / Supabase / Hostinger) — survives Hostinger redeploys.
+  // Local: use a Neon free DB or Docker Postgres. SQLite file DBs are no longer used in production.
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
