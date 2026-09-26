@@ -223,8 +223,9 @@ export function CatalogueImportForm({
       <label className="block">
         <span className="mb-1 block text-sm font-medium">Meta catalogue Excel file</span>
         <span className="mb-2 block text-xs text-text-muted">
-          Required columns: id (item code), title, price, image_link. Optional: item_no,
-          google_product_category. Empty rows ignored. .xlsx / .xls up to 25 MB.
+          Required columns: id (item code), title, price, image_link. Optional: item_no /
+          No (catalogue sequence), description, brand, google_product_category, sale_price,
+          availability, quantity_to_sell_on_facebook. Empty rows ignored. .xlsx / .xls up to 25 MB.
         </span>
         <input
           ref={inputRef}

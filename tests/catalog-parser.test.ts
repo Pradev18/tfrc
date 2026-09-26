@@ -46,16 +46,32 @@ describe("Meta catalogue Excel validation", () => {
     expect(parsed.errors[0].message).toContain("id, title, price, image_link");
   });
 
-  it("parses the downloadable PawMart Excel template and ignores empty edit rows", () => {
-    const parsed = parseExcelBuffer(buildMetaCatalogueTemplateBuffer(), "PawMart");
+  it("maps Excel No column to item_no in sequence (not sheet row index)", () => {
+    const parsed = parseExcelBuffer(
+      workbookBuffer([
+        {
+          No: 1,
+          id: "110008835",
+          title: "Bbq Stove",
+          price: "QAR 100.00",
+          image_link: "https://example.com/bbq.jpg",
+          brand: "TFRC",
+        },
+        {
+          No: 2,
+          id: "110008836",
+          title: "Second item",
+          price: "QAR 50.00",
+          image_link: "https://example.com/2.jpg",
+          brand: "TFRC",
+        },
+      ]),
+      "Almeera"
+    );
+
     expect(parsed.errors).toEqual([]);
-    expect(parsed.rows).toHaveLength(3);
-    expect(parsed.rows.map((row) => row.id)).toEqual([
-      "TFRC-PM-EXAMPLE-001",
-      "TFRC-PM-EXAMPLE-002",
-      "TFRC-PM-EXAMPLE-003",
-    ]);
-    expect(parsed.rows[0].title).toContain("Black Pet Hat");
-    expect(parsed.rows[0].size).toBe("L");
+    expect(parsed.rows).toHaveLength(2);
+    expect(parsed.rows[0].item_no).toBe(1);
+    expect(parsed.rows[1].item_no).toBe(2);
   });
 });

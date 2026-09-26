@@ -195,11 +195,18 @@ function mapSheetRowsToCatalog(
 
     rows.push({
       rowNumber: rowNum,
-      // Prefer Excel item_no; otherwise sheet row order so Item no ↑/↓ always works.
+      // Excel "No" / item_no = catalogue sequence. Never use sheet row index
+      // (that made first data row Item no 2 because header is row 1).
       item_no:
         parseItemNo(
-          row.item_no ?? row.item_number ?? row.itemno ?? row["item no"]
-        ) ?? (rowNum > 0 ? rowNum : null),
+          row.item_no ??
+            row.item_number ??
+            row.itemno ??
+            row["item no"] ??
+            row.no ??
+            row.number ??
+            row["#"]
+        ) ?? rows.length + 1,
       id,
       title,
       description: cellStr(row.description),
