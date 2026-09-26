@@ -105,9 +105,7 @@ export function CatalogueImportForm({
     setProgress(
       preview
         ? "Validating spreadsheet…"
-        : replaceMissing
-          ? "Uploading and replacing catalogue…"
-          : "Uploading and updating matched products…"
+        : "Import locked — uploading exclusively (usually under 15s for ~1000 products)…"
     );
 
     try {
@@ -156,7 +154,7 @@ export function CatalogueImportForm({
         return;
       }
 
-      // Apply in short chunks so Hostinger never returns HTML 504.
+      // Apply in short resumable requests (larger batches; multiple batches per call).
       let jobId = "";
       let finished: ImportResult | null = null;
       let first = true;
@@ -167,13 +165,17 @@ export function CatalogueImportForm({
         formData.append("mode", mode);
         if (first) {
           formData.append("file", file);
-          setProgress("Starting import (saved in batches of 30)…");
+          setProgress(
+            "Import locked — bulk writing to database (please wait, do not navigate away)…"
+          );
         } else {
           formData.append("jobId", jobId);
           setProgress(
             finished
               ? "Finishing categories and storefront…"
-              : "Importing products into database…"
+              : `Continuing exclusive import… ${
+                  (finished as { progress?: number } | null)?.progress ?? ""
+                }`
           );
         }
 

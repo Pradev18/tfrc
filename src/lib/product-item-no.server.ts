@@ -6,7 +6,7 @@ import prisma from "@/lib/db";
  * - If none are set (legacy imports), assign 1…N in stable productId order.
  * - If some are set, fill gaps with max+1… without reordering existing numbers.
  *
- * Generic for every catalogue — no slug-specific logic.
+ * Uses one bulk UPDATE (Neon) — never one query per product.
  */
 export async function ensureEnvironmentItemNumbers(
   environmentId: string
@@ -22,6 +22,8 @@ export async function ensureEnvironmentItemNumbers(
   const missing = products.filter((product) => product.itemNo == null);
   if (missing.length === 0) return { assigned: 0, total: products.length };
 
+  const assignments: Array<{ id: string; itemNo: number }> = [];
+
   if (missing.length === products.length) {
     const ordered = [...products].sort((a, b) =>
       String(a.productId).localeCompare(String(b.productId), undefined, {
@@ -29,31 +31,36 @@ export async function ensureEnvironmentItemNumbers(
         sensitivity: "base",
       })
     );
-    let assigned = 0;
     for (let index = 0; index < ordered.length; index++) {
-      await prisma.product.update({
-        where: { id: ordered[index]!.id },
-        data: { itemNo: index + 1 },
-      });
-      assigned += 1;
+      assignments.push({ id: ordered[index]!.id, itemNo: index + 1 });
     }
-    return { assigned, total: products.length };
+  } else {
+    const maxExisting = products.reduce(
+      (max, product) =>
+        product.itemNo != null && product.itemNo > max ? product.itemNo : max,
+      0
+    );
+    let next = maxExisting + 1;
+    for (const product of missing) {
+      assignments.push({ id: product.id, itemNo: next });
+      next += 1;
+    }
   }
 
-  const maxExisting = products.reduce(
-    (max, product) =>
-      product.itemNo != null && product.itemNo > max ? product.itemNo : max,
-    0
-  );
-  let next = maxExisting + 1;
-  let assigned = 0;
-  for (const product of missing) {
-    await prisma.product.update({
-      where: { id: product.id },
-      data: { itemNo: next },
-    });
-    next += 1;
-    assigned += 1;
+  const size = 500;
+  for (let i = 0; i < assignments.length; i += size) {
+    const chunk = assignments.slice(i, i + size);
+    await prisma.$executeRawUnsafe(
+      `
+      UPDATE "catalog"."Product" AS p
+      SET "itemNo" = v.item_no, "updatedAt" = NOW()
+      FROM unnest($1::text[], $2::int[]) AS v(id, item_no)
+      WHERE p.id = v.id
+      `,
+      chunk.map((row) => row.id),
+      chunk.map((row) => row.itemNo)
+    );
   }
-  return { assigned, total: products.length };
+
+  return { assigned: assignments.length, total: products.length };
 }

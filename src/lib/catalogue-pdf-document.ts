@@ -16,19 +16,19 @@ const PAGE_MARGIN = 6;
 const CONTENT_WIDTH = PAGE_WIDTH - PAGE_MARGIN * 2;
 const HEADER_HEIGHT = 17;
 const CATEGORY_TOP = 25;
-const CATEGORY_HEIGHT = 15;
-const GRID_TOP = 43;
+/** Slimmer band so 2–3 small categories can stack on one A4 page. */
+const CATEGORY_HEIGHT = 12;
+const GRID_TOP = 40;
 const GRID_BOTTOM = 278;
-const GRID_GAP = 2;
+const GRID_GAP = 1.8;
 const CARD_WIDTH = (CONTENT_WIDTH - GRID_GAP * (PDF_COLS - 1)) / PDF_COLS;
 /**
- * Compact card height (~14% shorter than the old 77mm fill-to-3-rows height).
- * Sized so a fresh page still fits 3 rows, and leftover space after 1–2 rows
- * can often hold the next category's header + first row.
+ * Compact cards: a fresh page still fits 3 rows, and leftover space after a
+ * short category routinely fits the next category header + row(s).
  */
-const CARD_HEIGHT = 66;
-/** Product image well — reduced from 34mm; keep aspect contain, never stretch. */
-const CARD_IMAGE_HEIGHT = 29;
+const CARD_HEIGHT = 60;
+/** Product image well — keep aspect contain, never stretch. */
+const CARD_IMAGE_HEIGHT = 26;
 const FOOTER_TOP = 281;
 
 type Rgb = [number, number, number];
@@ -68,7 +68,7 @@ interface PhysicalPageLayout {
 /** Small buffer against print/subpixel rounding — keep centralized. */
 const SAFETY_BUFFER_MM = 1.5;
 /** Gap between the bottom of one category's cards and the next category band. */
-const SECTION_GAP_MM = 2.5;
+const SECTION_GAP_MM = 1.5;
 /** Existing gap between category band bottom and first card row. */
 const BAND_TO_GRID_GAP_MM = GRID_TOP - (CATEGORY_TOP + CATEGORY_HEIGHT);
 
@@ -667,29 +667,29 @@ function drawCategoryBand(
   doc.roundedRect(PAGE_MARGIN, bandY, CONTENT_WIDTH, CATEGORY_HEIGHT, 2, 2, "F");
   doc.setTextColor(...colors.cta);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
+  doc.setFontSize(12);
   doc.text(
-    ellipsiseLine(normalisePdfText(page.category.name), 52),
+    ellipsiseLine(normalisePdfText(page.category.name), 56),
     PAGE_MARGIN + 3,
-    bandY + 6
+    bandY + 4.8
   );
   doc.setTextColor(...colors.muted);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(6.5);
+  doc.setFontSize(6);
   doc.text(
-    `${page.category.productCount} items | ${page.category.products.length} cards | ${page.products.length} on this page`,
+    `${page.category.productCount} items · ${page.products.length} on this page`,
     PAGE_MARGIN + 3,
-    bandY + 11
+    bandY + 9.4
   );
   doc.setFillColor(...colors.cta);
-  doc.roundedRect(PAGE_WIDTH - PAGE_MARGIN - 28, bandY + 3.3, 25, 8, 4, 4, "F");
+  doc.roundedRect(PAGE_WIDTH - PAGE_MARGIN - 26, bandY + 2.2, 23, 7.2, 3.5, 3.5, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.text(
     `${page.categoryPageIndex + 1} / ${page.categoryPageCount}`,
-    PAGE_WIDTH - PAGE_MARGIN - 15.5,
-    bandY + 8.6,
+    PAGE_WIDTH - PAGE_MARGIN - 14.5,
+    bandY + 7,
     { align: "center" }
   );
 }
@@ -749,10 +749,10 @@ function drawProductCard(
 
   const bodyX = x + 2;
   const bodyWidth = CARD_WIDTH - 4;
-  let cursorY = imageY + imageHeight + 2.8;
+  let cursorY = imageY + imageHeight + 2.2;
   doc.setTextColor(...colors.cta);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.8);
+  doc.setFontSize(7.2);
   cursorY = drawTextLines(
     doc,
     product.displayName,
@@ -760,18 +760,18 @@ function drawProductCard(
     cursorY,
     bodyWidth,
     2,
-    3.2
+    2.9
   );
 
   doc.setTextColor(...colors.muted);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(6);
-  doc.text(
-    ellipsiseLine(`Item code: ${normalisePdfText(product.productId)}`, 38),
-    bodyX,
-    cursorY + 0.6
-  );
-  cursorY += 3.4;
+  doc.setFontSize(5.7);
+  const itemMeta =
+    product.itemNo != null
+      ? `No ${product.itemNo} · ${normalisePdfText(product.productId)}`
+      : `Item code: ${normalisePdfText(product.productId)}`;
+  doc.text(ellipsiseLine(itemMeta, 40), bodyX, cursorY + 0.4);
+  cursorY += 2.9;
 
   if (product.availableSizes.length > 0) {
     const sizes = ellipsiseLine(
@@ -779,19 +779,19 @@ function drawProductCard(
       44
     );
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(5.7);
+    doc.setFontSize(5.4);
     doc.setTextColor(...colors.cta);
     doc.text(sizes, bodyX, cursorY);
   }
 
-  const buttonHeight = 6.4;
-  const buttonY = y + CARD_HEIGHT - buttonHeight - 1.4;
-  const stockY = buttonY - 2.9;
-  const priceY = stockY - 3.8;
+  const buttonHeight = 5.8;
+  const buttonY = y + CARD_HEIGHT - buttonHeight - 1.2;
+  const stockY = buttonY - 2.6;
+  const priceY = stockY - 3.4;
 
   doc.setTextColor(...colors.heading);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.2);
+  doc.setFontSize(8.6);
   const price = `${product.priceFrom ? "From " : ""}${normalisePdfText(
     product.currency
   )} ${product.price.toFixed(2)}`;
@@ -869,7 +869,8 @@ function tryPlaceCategoryStart(cursorY: number): {
  * - Preserves category order and product order
  * - Never orphans a category header without its first row
  * - Never splits a 4-card row across pages
- * - Reuses leftover vertical space for the next category when safe
+ * - Stacks multiple small categories on one page when space remains
+ *   (avoids Peeler-only / Ladle-only pages with large empty whitespace)
  * - Continues a long category onto the next page without moving earlier rows
  */
 export function packCataloguePhysicalPages(
@@ -913,6 +914,8 @@ export function packCataloguePhysicalPages(
         continue;
       }
 
+      // Prefer filling leftover space with as many complete rows as fit,
+      // so short categories share pages instead of each starting a new one.
       const takenRows = remainingRows.splice(0, maxRows);
       const products = takenRows.flat();
       current.sections.push({
@@ -934,6 +937,8 @@ export function packCataloguePhysicalPages(
   }
 
   // Assign per-category page indices (1/N style) without changing order.
+  // Contiguous repeats of the same slug (item-no walks) get separate 1/1 badges
+  // per physical section group by walking pages in order.
   const bySlug = new Map<string, LogicalProductPage[]>();
   for (const page of pages) {
     for (const section of page.sections) {

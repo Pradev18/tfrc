@@ -162,12 +162,23 @@ describe("catalogue PDF pagination", () => {
   it("keeps a data-driven category index while packing small categories onto shared pages", () => {
     const categorySizes = Array.from({ length: 31 }, () => 1);
     const result = buildCataloguePdfDocument(payload(categorySizes));
-    // Geometry allows two 1-card categories per product page (header+row atomic).
+    // Geometry allows three 1-card categories per product page (header+row atomic).
     expect(result.stats.productCards).toBe(31);
-    expect(result.stats.productPages).toBe(16);
-    expect(result.stats.pageCount).toBe(17);
-    expect(physicalPageCount(result.bytes)).toBe(17);
+    expect(result.stats.productPages).toBe(11);
+    expect(result.stats.pageCount).toBe(12);
+    expect(physicalPageCount(result.bytes)).toBe(12);
     expect(result.stats.pageCardCounts.reduce((a, b) => a + b, 0)).toBe(31);
+  });
+
+  it("packs several short categories (2–3 products) onto one page instead of wasting whitespace", () => {
+    // Peeler / Ladle style: three categories × three cards (one row each).
+    const result = buildCataloguePdfDocument(payload([3, 3, 3]));
+    expect(result.stats.productCards).toBe(9);
+    expect(result.stats.productPages).toBe(1);
+    expect(result.stats.pageCardCounts).toEqual([9]);
+    const packed = packCataloguePhysicalPages(payload([3, 3, 3]));
+    expect(packed).toHaveLength(1);
+    expect(packed[0]!.sections).toHaveLength(3);
   });
 
   it("applies the same packing to any future catalogue without catalogue-specific rules", () => {

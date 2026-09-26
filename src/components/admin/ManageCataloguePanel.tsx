@@ -182,16 +182,40 @@ export function ManageCataloguePanel({
     setLoading(false);
   }
 
+  function cataloguePdfFilters() {
+    return {
+      q: appliedQ || "",
+      shop: selectedCategorySlug || "",
+      sort: sort || "item_no_asc",
+    };
+  }
+
+  function cataloguePdfPollUrl(jobId: string) {
+    const filters = cataloguePdfFilters();
+    const params = new URLSearchParams({
+      poll: "1",
+      jobId,
+      q: filters.q,
+      shop: filters.shop,
+      sort: filters.sort,
+    });
+    return `/api/admin/catalogues/${catalogueId}/pdf?${params.toString()}`;
+  }
+
   async function downloadCataloguePdf(autoPrint = true) {
     setPdfLoading(true);
     setError("");
+    const filters = cataloguePdfFilters();
     try {
-      const url = `/api/admin/catalogues/${catalogueId}/pdf`;
-      const start = await fetch(url, {
+      const start = await fetch(`/api/admin/catalogues/${catalogueId}/pdf`, {
         method: "POST",
         credentials: "include",
         cache: "no-store",
-        headers: { "Cache-Control": "no-store" },
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(filters),
       });
       if (!start.ok) {
         let message = `Could not start catalogue PDF (error ${start.status}).`;
@@ -206,9 +230,21 @@ export function ManageCataloguePanel({
         return;
       }
 
+      const startData = (await start.json().catch(() => ({}))) as {
+        jobId?: string;
+        sort?: string;
+      };
+      const jobId = startData.jobId || "";
+      if (!jobId) {
+        const message = "PDF job did not start correctly. Try Download again.";
+        setError(message);
+        adminNotify(message);
+        return;
+      }
+
       let res: Response | null = null;
       for (let attempt = 0; attempt < 180; attempt += 1) {
-        const polled = await fetch(`${url}?poll=1`, {
+        const polled = await fetch(cataloguePdfPollUrl(jobId), {
           credentials: "include",
           cache: "no-store",
           headers: { "Cache-Control": "no-store" },
@@ -245,6 +281,7 @@ export function ManageCataloguePanel({
         adminNotify(message);
         return;
       }
+      const usedSort = res.headers.get("x-catalogue-pdf-sort") || filters.sort;
       const pdfBlob = await res.blob();
       if (!pdfBlob.size || !pdfBlob.type.includes("application/pdf")) {
         const message = "Catalogue PDF came back empty. Try again in a moment.";
@@ -261,6 +298,17 @@ export function ManageCataloguePanel({
       const typedBlob = new Blob([pdfBlob], { type: "application/pdf" });
       const blobUrl = URL.createObjectURL(typedBlob);
 
+      const sortLabel =
+        usedSort === "item_no_desc"
+          ? "Item no ↓"
+          : usedSort === "item_code_asc"
+            ? "Item code ↑"
+            : usedSort === "item_code_desc"
+              ? "Item code ↓"
+              : usedSort === "updated"
+                ? "Recently updated"
+                : "Item no ↑";
+
       if (autoPrint) {
         // Chrome's PDF viewer often fails downloading blob: tabs with
         // "Check internet connection". Force a real file download instead.
@@ -272,8 +320,8 @@ export function ManageCataloguePanel({
         anchor.click();
         anchor.remove();
         window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-        setMessage(`Catalogue PDF downloaded as ${anchor.download}.`);
-        adminNotify("Catalogue PDF downloaded.");
+        setMessage(`Catalogue PDF downloaded (${sortLabel}).`);
+        adminNotify(`Catalogue PDF downloaded (${sortLabel}).`);
         return;
       }
 
@@ -292,7 +340,7 @@ export function ManageCataloguePanel({
         return;
       }
       window.setTimeout(() => URL.revokeObjectURL(blobUrl), 120_000);
-      setMessage("Catalogue PDF preview opened with working links.");
+      setMessage(`Catalogue PDF preview opened (${sortLabel}).`);
     } catch (cause) {
       const message =
         cause instanceof Error ? cause.message : "Could not generate catalogue PDF";
@@ -430,8 +478,8 @@ export function ManageCataloguePanel({
             </div>
           </div>
           <p className="mb-4 text-xs text-text-muted">
-            Print-ready A4 brochure: uploaded catalogue logo on every page, clearer product
-            cards, and available sizes (S/M/L or mm sizes) listed when variants exist.
+            Download PDF uses the sort selected above (Item no / Item code), plus search and
+            category. Products keep that order; category headers stay with their items.
           </p>
 
           {loading ? (

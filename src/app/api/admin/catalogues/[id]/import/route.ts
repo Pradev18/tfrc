@@ -10,6 +10,7 @@ import {
 } from "@/services/catalogue-import-chunked.service";
 import { touchSiteRevision } from "@/lib/site-revision.server";
 import { requireCatalogueUnlocked } from "@/lib/catalogue-lock";
+import { persistRuntimeCatalogueDataSafely } from "@/lib/persist-runtime-data.server";
 import {
   HeavyJobBusyError,
   heavyJobBusyResponse,
@@ -25,7 +26,23 @@ const ALLOWED_EXTENSIONS = new Set(["xlsx", "xls"]);
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
+
+function scheduleImportSideEffects(slug: string, catalogueId: string) {
+  after(() => {
+    void persistRuntimeCatalogueDataSafely()
+      .then(() => touchSiteRevision())
+      .then(() => {
+        revalidatePath("/", "layout");
+        revalidatePath(`/${slug}`);
+        revalidatePath(`/${slug}`, "layout");
+        revalidatePath(`/admin/catalogues/${catalogueId}`);
+        revalidatePath("/admin/catalogues");
+        revalidatePath("/api/store/" + slug + "/products");
+      })
+      .catch(() => {});
+  });
+}
 
 export async function POST(req: NextRequest, context: RouteContext) {
   const { session, error } = await requireAdminSession();
@@ -55,19 +72,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       );
 
       if (result.applied) {
-        const slug = catalogue.slug;
-        after(() => {
-          void touchSiteRevision()
-            .then(() => {
-              revalidatePath("/", "layout");
-              revalidatePath(`/${slug}`);
-              revalidatePath(`/${slug}`, "layout");
-              revalidatePath(`/admin/catalogues/${id}`);
-              revalidatePath("/admin/catalogues");
-              revalidatePath("/api/store/" + slug + "/products");
-            })
-            .catch(() => {});
-        });
+        scheduleImportSideEffects(catalogue.slug, id);
       }
 
       return NextResponse.json(result, {
@@ -115,7 +120,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       });
     }
 
-    // Apply: chunked resumable import (30 rows per request).
+    // Apply: bulk Neon import (exclusive lock; typically one request for ≤1000 rows).
     const result = await withHeavyJob("catalogue-import", () =>
       startChunkedCatalogueImport({
         buffer,
@@ -129,19 +134,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     );
 
     if (result.applied) {
-      const slug = catalogue.slug;
-      after(() => {
-        void touchSiteRevision()
-          .then(() => {
-            revalidatePath("/", "layout");
-            revalidatePath(`/${slug}`);
-            revalidatePath(`/${slug}`, "layout");
-            revalidatePath(`/admin/catalogues/${id}`);
-            revalidatePath("/admin/catalogues");
-            revalidatePath("/api/store/" + slug + "/products");
-          })
-          .catch(() => {});
-      });
+      scheduleImportSideEffects(catalogue.slug, id);
     }
 
     return NextResponse.json(result, {
