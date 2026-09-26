@@ -1,11 +1,13 @@
 import { mkdir, readFile, writeFile, unlink, readdir, rm } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
+import { persistentUploadsDir } from "@/lib/sqlite-paths";
 
 /** Read/delete still check legacy paths so older uploads remain findable. */
 function storeDirectories(): string[] {
   const cwd = process.cwd();
   return [
+    path.join(persistentUploadsDir(cwd), "report-imports"),
     path.join(cwd, "uploads", "report-imports"),
     path.join("/tmp", "vitanova-report-imports"),
     path.join(cwd, "public", "uploads", "report-imports"),
@@ -13,10 +15,11 @@ function storeDirectories(): string[] {
   ];
 }
 
-/** Prefer one durable dir + /tmp — avoid 4× write amplification on every chunk. */
+/** Prefer persistent dir — app-tree uploads are wiped on Hostinger redeploy. */
 function writeDirectories(): string[] {
   const cwd = process.cwd();
   return [
+    path.join(persistentUploadsDir(cwd), "report-imports"),
     path.join(cwd, "uploads", "report-imports"),
     path.join("/tmp", "vitanova-report-imports"),
   ];

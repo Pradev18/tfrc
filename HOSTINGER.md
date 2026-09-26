@@ -44,10 +44,28 @@ NODE_ENV=production
 PORT=3000
 ```
 
-**Critical — keep owner catalogues/reports across deploys:**  
-Live data is stored in `../tfrc-persistent/prod.db` (outside the git app folder). Redeploys no longer replace it with the default 3 demo catalogues. After changing these env vars, **Save and redeploy once**, then re-upload catalogues only if this is a brand-new persistent folder.
+**Critical — zero data loss (catalogues + uploaded contents, 1…1000+):**  
+Live data lives under `../tfrc-persistent/` (outside the git app folder):
 
-**Hostinger SQLite URL:** prefer `file:../tfrc-persistent/prod.db`. The startup script also auto-promotes any richer existing DB into that persistent location.
+| Path | What it protects |
+|------|------------------|
+| `../tfrc-persistent/prod.db` | Catalogues, products, prices, shop categories, image/video **records** |
+| `../tfrc-persistent/uploads/` | Uploaded product images, Excel report imports, owner PDFs |
+| `../tfrc-persistent/backups/` | Automatic pre-deploy DB snapshots (last 14) |
+
+On every production build/start, `ensure-prod-db` will:
+
+1. **LIVE LOCK** — if the DB already has owner data (≥1 catalogue **or** ≥1 product **or** ≥1 image/video), seed / demo / app-tree copies are **never** copied over it.
+2. **Content drop abort** — deploy fails if catalogue, product, or image counts would shrink.
+3. **Upload migrate** — copies any app-tree `public/uploads` / `uploads` files into `tfrc-persistent/uploads` (never deletes richer persistent files).
+4. **One-way sync only** — live → app/`prisma` copy, never the reverse when locked.
+5. **Empty first boot only** — seed catalogues are never auto-imported over a live folder.
+
+After setting these env vars, **Save and redeploy once**. Re-upload catalogues only if this is a brand-new empty `tfrc-persistent` folder.
+
+**Manual recovery (rare):** copy the newest file from `../tfrc-persistent/backups/` back to `../tfrc-persistent/prod.db`, then restart.
+
+**Hostinger SQLite URL:** must be `file:../tfrc-persistent/prod.db` plus `TFRC_DATA_DIR=../tfrc-persistent` (see `env.tfrcwholesale.com.example`).
 
 ### After first successful build
 

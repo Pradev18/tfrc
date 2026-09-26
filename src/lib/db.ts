@@ -1,17 +1,31 @@
 import path from "path";
 import fs from "fs";
 import { PrismaClient } from "@prisma/client";
-import { pickNewestSqlitePath, sqlitePathFromUrl } from "@/lib/sqlite-paths";
+import {
+  persistentDbPath,
+  pickNewestSqlitePath,
+  sqlitePathFromUrl,
+} from "@/lib/sqlite-paths";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient;
   prismaReady?: Promise<void>;
 };
 
-/** Resolve relative SQLite paths; prefer the richest usable DB copy (not newest mtime). */
+/** Resolve relative SQLite paths; persistent owner DB always wins when present. */
 function getDatasourceUrl(): string | undefined {
   const url = process.env.DATABASE_URL ?? "file:./prod.db";
   if (!url.startsWith("file:")) return url;
+
+  const persistent = persistentDbPath();
+  try {
+    if (fs.existsSync(persistent) && fs.statSync(persistent).size >= 1000) {
+      process.env.DATABASE_URL = `file:${persistent}`;
+      return `file:${persistent}`;
+    }
+  } catch {
+    /* continue */
+  }
 
   const preferred = url.replace(/^file:/, "").replace(/^\.\//, "");
   const newest = pickNewestSqlitePath(preferred);
@@ -20,8 +34,6 @@ function getDatasourceUrl(): string | undefined {
     return `file:${newest}`;
   }
 
-  // Prefer persistent sibling folder before falling back to /tmp.
-  const persistent = path.join(process.cwd(), "..", "tfrc-persistent", "prod.db");
   try {
     fs.mkdirSync(path.dirname(persistent), { recursive: true });
     const probe = path.join(path.dirname(persistent), `.write-test-${process.pid}`);
@@ -45,6 +57,13 @@ function getDatasourceUrl(): string | undefined {
     process.env.DATABASE_URL = `file:${fallback}`;
     return `file:${fallback}`;
   } catch {
+    // Avoid /tmp in production — that DB disappears on restart.
+    if (process.env.NODE_ENV === "production") {
+      console.error(
+        "[db] FATAL: cannot write persistent or app DB path in production"
+      );
+      throw new Error("Persistent SQLite path is not writable");
+    }
     const tmpDb = path.join("/tmp", "vitanova-prod.db");
     process.env.DATABASE_URL = `file:${tmpDb}`;
     return `file:${tmpDb}`;

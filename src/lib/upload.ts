@@ -2,6 +2,7 @@ import { mkdir, writeFile, readFile, access } from "fs/promises";
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
+import { persistentUploadsDir } from "@/lib/sqlite-paths";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
@@ -35,9 +36,11 @@ function normalizeBrowserMime(type: string): string {
   return value;
 }
 
+/** Persistent first — app-tree dirs are wiped on Hostinger redeploy. */
 function uploadDirectories(): string[] {
   const cwd = process.cwd();
   return [
+    persistentUploadsDir(cwd),
     path.join(cwd, "public", "uploads"),
     path.join(cwd, "uploads"),
     path.join(cwd, ".next", "standalone", "public", "uploads"),

@@ -14,6 +14,11 @@ export function persistentDbPath(cwd = process.cwd()): string {
   return path.join(persistentDataDir(cwd), "prod.db");
 }
 
+/** Survives Hostinger redeploys — product images, Excel imports, report PDFs. */
+export function persistentUploadsDir(cwd = process.cwd()): string {
+  return path.join(persistentDataDir(cwd), "uploads");
+}
+
 /** All known SQLite locations used across build, Hostinger, and standalone output. */
 export function candidateSqlitePaths(preferredRelative = "prod.db"): string[] {
   const cwd = process.cwd();
@@ -45,10 +50,22 @@ export function sqlitePathFromUrl(url: string | undefined): string | null {
 }
 
 /**
- * Prefer the richest DB (size), not newest mtime.
- * A freshly deployed seed has a new timestamp but must never beat owner data.
+ * Prefer persistent owner DB when present. Otherwise richest non-seed copy by size.
+ * A freshly deployed larger prisma/prod.db must never beat ../tfrc-persistent/prod.db.
  */
 export function pickNewestSqlitePath(preferredRelative = "prod.db"): string | null {
+  const cwd = process.cwd();
+  const persistent = path.resolve(persistentDbPath(cwd));
+  try {
+    if (fs.existsSync(persistent) && fs.statSync(persistent).size >= 1000) {
+      return persistent;
+    }
+  } catch {
+    /* fall through */
+  }
+
+  const seed = path.resolve(cwd, "prisma", "seed-prod.db");
+  const appProd = path.resolve(cwd, "prisma", "prod.db");
   const seen = new Set<string>();
   let best: { path: string; mtimeMs: number; size: number } | null = null;
 
@@ -56,6 +73,10 @@ export function pickNewestSqlitePath(preferredRelative = "prod.db"): string | nu
     const resolved = path.resolve(candidate);
     if (seen.has(resolved)) continue;
     seen.add(resolved);
+    if (resolved === seed) continue;
+    // App-tree prod.db is a deploy artifact — skip when preferring runtime owner data
+    // unless nothing else exists (handled after loop).
+    if (resolved === appProd) continue;
     try {
       if (!fs.existsSync(resolved)) continue;
       const stat = fs.statSync(resolved);
@@ -72,7 +93,18 @@ export function pickNewestSqlitePath(preferredRelative = "prod.db"): string | nu
     }
   }
 
-  return best?.path ?? null;
+  if (best) return best.path;
+
+  // Last resort: allow app prisma/prod.db only when no persistent/other copy exists.
+  try {
+    if (fs.existsSync(appProd) && fs.statSync(appProd).size >= 1000) {
+      return appProd;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return null;
 }
 
 /** Full fan-out copy (expensive). Prefer syncSqliteFileToEssentialReplicas for hot paths. */
@@ -86,6 +118,8 @@ export function syncSqliteFileToReplicas(sourcePath: string): string[] {
     return synced;
   }
 
+  const cwd = process.cwd();
+  const livePersistent = path.resolve(persistentDbPath(cwd));
   const seen = new Set<string>([source]);
   for (const candidate of candidateSqlitePaths(path.basename(source))) {
     const dest = path.resolve(candidate);
@@ -96,6 +130,20 @@ export function syncSqliteFileToReplicas(sourcePath: string): string[] {
       // Never shrink a richer replica with a smaller source.
       if (fs.existsSync(dest) && fs.statSync(dest).size > fs.statSync(source).size) {
         continue;
+      }
+      if (
+        dest === livePersistent &&
+        fs.existsSync(dest) &&
+        fs.statSync(dest).size >= 1000 &&
+        source !== dest
+      ) {
+        const underApp = source.startsWith(path.resolve(cwd) + path.sep);
+        if (underApp) {
+          console.warn(
+            `[sqlite] Refusing to overwrite persistent live DB with app copy ${source}`
+          );
+          continue;
+        }
       }
       const temporary = `${dest}.${process.pid}.tmp`;
       fs.copyFileSync(source, temporary);
@@ -120,8 +168,9 @@ export function syncSqliteFileToEssentialReplicas(sourcePath: string): string[] 
 
   const cwd = process.cwd();
   const basename = path.basename(source);
+  const livePersistent = path.resolve(persistentDbPath(cwd));
   const essentials = [
-    persistentDbPath(cwd),
+    livePersistent,
     path.join(cwd, "prisma", basename),
     path.join(cwd, ".next", "standalone", "prisma", basename),
     path.join(cwd, ".next", "standalone", basename),
@@ -136,6 +185,23 @@ export function syncSqliteFileToEssentialReplicas(sourcePath: string): string[] 
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       if (fs.existsSync(dest) && fs.statSync(dest).size > fs.statSync(source).size) {
         continue;
+      }
+      // Never overwrite the Hostinger persistent owner DB with an app-tree copy.
+      if (
+        dest === livePersistent &&
+        fs.existsSync(dest) &&
+        fs.statSync(dest).size >= 1000 &&
+        path.resolve(source) !== dest
+      ) {
+        const underApp =
+          path.resolve(source).startsWith(path.resolve(cwd) + path.sep) ||
+          path.resolve(source).startsWith(path.resolve(cwd, ".next") + path.sep);
+        if (underApp) {
+          console.warn(
+            `[sqlite] Refusing to overwrite persistent live DB with app copy ${source}`
+          );
+          continue;
+        }
       }
       const temporary = `${dest}.${process.pid}.tmp`;
       fs.copyFileSync(source, temporary);

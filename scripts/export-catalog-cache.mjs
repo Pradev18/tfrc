@@ -39,10 +39,40 @@ if (canWriteDir(persistentDataDir(root))) {
   outFiles.unshift(persistentCachePath(root));
 }
 
+function countCachedProducts(cache) {
+  if (!cache?.environments || typeof cache.environments !== "object") return 0;
+  let total = 0;
+  for (const env of Object.values(cache.environments)) {
+    const products = env?.products;
+    if (Array.isArray(products)) total += products.length;
+  }
+  return total;
+}
+
 function writeCache(cache) {
   const payload = JSON.stringify(cache);
+  const newProductCount = countCachedProducts(cache);
   for (const outFile of outFiles) {
     try {
+      if (fs.existsSync(outFile)) {
+        try {
+          const existing = JSON.parse(fs.readFileSync(outFile, "utf8"));
+          const existingCount = countCachedProducts(existing);
+          const existingSize = fs.statSync(outFile).size;
+          // Refuse empty/thinner overwrite of a rich persistent/app cache.
+          if (
+            existingCount > 0 &&
+            (newProductCount === 0 || newProductCount < existingCount * 0.5)
+          ) {
+            console.warn(
+              `[catalog-cache] Keeping richer ${outFile} (${existingCount} products, ${existingSize} bytes) — refuse thin export (${newProductCount} products)`
+            );
+            continue;
+          }
+        } catch {
+          /* parse failed — overwrite */
+        }
+      }
       fs.mkdirSync(path.dirname(outFile), { recursive: true });
       const temporary = `${outFile}.${process.pid}.tmp`;
       fs.writeFileSync(temporary, payload);
@@ -57,6 +87,16 @@ function writeCache(cache) {
 }
 
 if (!dbFile || !fs.existsSync(dbFile)) {
+  const existingPersistent = persistentCachePath(root);
+  if (
+    fs.existsSync(existingPersistent) &&
+    fs.statSync(existingPersistent).size > 50
+  ) {
+    console.warn(
+      "[catalog-cache] No LIVE DB readable — keeping existing persistent cache (refuse empty overwrite)."
+    );
+    process.exit(0);
+  }
   console.warn(
     "[catalog-cache] No LIVE owner database found — writing empty cache (will not ship seed catalogues)."
   );

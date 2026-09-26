@@ -79,6 +79,7 @@ next-env.d.ts
 
 # Hostinger persistent data (survives redeploys)
 /tfrc-persistent/
+**/tfrc-persistent/backups/
 
 # uploads
 /public/uploads/*

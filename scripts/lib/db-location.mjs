@@ -37,12 +37,16 @@ export function isSeedDatabasePath(root, filePath) {
     const resolved = path.resolve(filePath);
     const seed = path.resolve(root, "prisma", "seed-prod.db");
     if (resolved === seed) return true;
-    // App-local prisma/prod.db is often a deploy-time seed copy — never treat it
-    // as richer than the persistent owner database.
+    // App-tree copies are deploy artifacts — never promote them over persistent
+    // owner data, even if a shipped file looks larger.
     const appProd = path.resolve(root, "prisma", "prod.db");
     const persistent = path.resolve(persistentDbPath(root));
-    if (resolved === appProd && fs.existsSync(persistent)) {
-      return fs.statSync(appProd).size <= fs.statSync(persistent).size;
+    if (
+      resolved === appProd &&
+      fs.existsSync(persistent) &&
+      fs.statSync(persistent).size >= 1000
+    ) {
+      return true;
     }
     return false;
   } catch {
@@ -50,17 +54,36 @@ export function isSeedDatabasePath(root, filePath) {
   }
 }
 
+export function normalizeDatabaseUrl(url = process.env.DATABASE_URL) {
+  if (!url) return "";
+  let value = String(url).trim();
+  // Hostinger panel often stores values with surrounding quotes.
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+  return value;
+}
+
 /**
- * Resolve DATABASE_URL file: paths relative to prisma/ (Prisma convention).
+ * Resolve DATABASE_URL file: paths.
+ * - `file:./dev.db` → prisma/dev.db (Prisma convention)
+ * - `file:../tfrc-persistent/prod.db` → sibling of app root (Hostinger durable path)
  * Returns absolute path or null.
  */
 export function resolveDatabaseUrlPath(root, url = process.env.DATABASE_URL) {
-  const raw = url?.trim();
+  const raw = normalizeDatabaseUrl(url);
   if (!raw || !raw.startsWith("file:")) return null;
   let file = raw.slice("file:".length);
   // Strip optional leading slashes used by some file: URLs on Windows.
   if (/^\/+[A-Za-z]:/.test(file)) file = file.replace(/^\/+/, "");
   if (path.isAbsolute(file)) return path.resolve(file);
+  // Paths that leave the app tree (../tfrc-persistent) are rooted at project root.
+  if (file.startsWith("..")) {
+    return path.resolve(root, file);
+  }
   // Prisma resolves ./dev.db relative to the prisma directory.
   return path.resolve(root, "prisma", file.replace(/^\.\//, ""));
 }

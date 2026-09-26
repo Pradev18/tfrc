@@ -1,12 +1,14 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
+import { persistentUploadsDir } from "@/lib/sqlite-paths";
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
 
 function storeDirectories(): string[] {
   const cwd = process.cwd();
   return [
+    path.join(persistentUploadsDir(cwd), "owner-reports"),
     path.join(cwd, "uploads", "owner-reports"),
     path.join(cwd, "public", "uploads", "owner-reports"),
     path.join(cwd, ".next", "standalone", "uploads", "owner-reports"),
