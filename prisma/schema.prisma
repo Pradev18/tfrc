@@ -772,3 +772,21 @@ model OfficeReportLine {
   @@index([itemCode])
   @@schema("activity")
 }
+
+/** Lightweight storefront analytics beacon (page views, clicks, etc.). */
+model StoreEvent {
+  id              String   @id @default(cuid())
+  eventType       String
+  environmentSlug String?
+  path            String?
+  productId       String?
+  sessionId       String?
+  metadata        String?
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([eventType])
+  @@index([environmentSlug])
+  @@index([sessionId])
+  @@schema("activity")
+}
