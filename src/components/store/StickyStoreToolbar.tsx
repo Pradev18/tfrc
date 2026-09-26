@@ -107,6 +107,36 @@ export function StickyStoreToolbar({
               {t("store.inStock")}
             </button>
 
+            <button
+              type="button"
+              onClick={() => {
+                const nextSale = !filters.sale;
+                onFiltersChange(
+                  nextSale
+                    ? { sale: true, sort: "discount" }
+                    : {
+                        sale: false,
+                        sort:
+                          filters.sort === "discount"
+                            ? "serial_no_asc"
+                            : filters.sort,
+                      }
+                );
+              }}
+              className={`${chipClass} ${
+                filters.sale || filters.sort === "discount"
+                  ? "text-white"
+                  : "border border-black/[0.08] bg-white"
+              }`}
+              style={
+                filters.sale || filters.sort === "discount"
+                  ? { backgroundColor: v.cta }
+                  : { color: v.heading }
+              }
+            >
+              {t("store.discount")}
+            </button>
+
             <UiSelect
               value={filters.brand ?? ""}
               onValueChange={(value) => onFiltersChange({ brand: value || null })}
@@ -119,14 +149,28 @@ export function StickyStoreToolbar({
             />
 
             <UiSelect
-              value={filters.sort}
-              onValueChange={(value) =>
-                onFiltersChange({ sort: value as StoreFilters["sort"] })
+              value={
+                filters.sort === "item_no_asc"
+                  ? "serial_no_asc"
+                  : filters.sort === "item_no_desc"
+                    ? "serial_no_desc"
+                    : filters.sort
               }
+              onValueChange={(value) => {
+                if (value === "discount") {
+                  onFiltersChange({ sort: "discount", sale: true });
+                  return;
+                }
+                onFiltersChange({
+                  sort: value as StoreFilters["sort"],
+                  sale: filters.sort === "discount" ? false : filters.sale,
+                });
+              }}
               ariaLabel={t("store.sortProducts")}
               options={[
                 { value: "serial_no_asc", label: t("store.itemNoAsc") },
                 { value: "serial_no_desc", label: t("store.itemNoDesc") },
+                { value: "discount", label: t("store.discount") },
                 { value: "item_code_asc", label: t("store.itemCodeAsc") },
                 { value: "item_code_desc", label: t("store.itemCodeDesc") },
                 { value: "newest", label: t("store.newest") },

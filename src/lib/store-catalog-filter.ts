@@ -171,7 +171,7 @@ export function filterProducts(
     result = result.filter((p) => p.brand?.slug === filters.brand);
   }
 
-  if (filters.sale) {
+  if (filters.sale || filters.sort === "discount") {
     result = result.filter((p) => mapProductPrices(p).pricing.isOnSale);
   }
 

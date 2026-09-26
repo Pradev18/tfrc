@@ -327,7 +327,7 @@ async function getProductsFromPrisma(filters: ProductFilters = {}) {
     where.inventory = { isInStock: true };
   }
 
-  if (filters.onSale) {
+  if (filters.onSale || filters.sort === "discount") {
     where.prices = { some: { type: "SALE" } };
   }
 

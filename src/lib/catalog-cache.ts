@@ -243,7 +243,7 @@ export function getCachedProducts(
   if (opts.brandSlug) {
     items = items.filter((p) => p.brand?.slug === opts.brandSlug);
   }
-  if (opts.onSale) {
+  if (opts.onSale || opts.sort === "discount") {
     items = items.filter((p) =>
       (p.prices ?? []).some((price) => price.type === "SALE")
     );

@@ -130,18 +130,26 @@ export function CatalogueFilters({ shopCategories, brands, environmentSlug }: Ca
                 ? "serial_no_desc"
                 : (searchParams.get("sort") ?? "serial_no_asc")
           }
-          onValueChange={(value) => update("sort", value)}
+          onValueChange={(value) => {
+            const params = new URLSearchParams(searchParams.toString());
+            if (value) params.set("sort", value);
+            else params.delete("sort");
+            if (value === "discount") params.set("sale", "true");
+            else if (searchParams.get("sort") === "discount") params.delete("sale");
+            params.delete("page");
+            router.push(`${basePath}?${params.toString()}`);
+          }}
           ariaLabel="Sort products"
           options={[
             { value: "serial_no_asc", label: "Serial no ↑" },
             { value: "serial_no_desc", label: "Serial no ↓" },
+            { value: "discount", label: "Discount" },
             { value: "item_code_asc", label: "Item code ↑" },
             { value: "item_code_desc", label: "Item code ↓" },
             { value: "newest", label: "Newest" },
             { value: "featured", label: "Featured" },
             { value: "price_asc", label: "Price: Low to High" },
             { value: "price_desc", label: "Price: High to Low" },
-            { value: "discount", label: "Biggest Discount" },
             { value: "name", label: "Name A–Z" },
           ]}
           className="rounded-xl border-[#ebe8e3] bg-[#faf9f7]"

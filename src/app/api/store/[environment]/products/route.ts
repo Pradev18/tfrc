@@ -75,7 +75,7 @@ export async function GET(
       search: sp.get("q") ?? undefined,
       shopCategorySlug: sp.get("shop") ?? undefined,
       brandSlug: sp.get("brand") ?? undefined,
-      onSale: sp.get("sale") === "true",
+      onSale: sp.get("sale") === "true" || sort === "discount",
       inStock: sp.get("inStock") === "true",
       sort,
       page,

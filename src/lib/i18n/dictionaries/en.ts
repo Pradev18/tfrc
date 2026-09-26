@@ -46,6 +46,7 @@ export const en = {
     itemCodeDesc: "Item code ↓",
     priceAsc: "Price ↑",
     priceDesc: "Price ↓",
+    discount: "Discount",
     sortAZ: "A–Z",
     clear: "Clear",
     noMatch: "No products match your search or filters",
