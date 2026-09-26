@@ -26,6 +26,7 @@ function LoginForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [waitingApproval, setWaitingApproval] = useState(false);
+  const [approvalRecipients, setApprovalRecipients] = useState<string[]>([]);
   const attemptRef = useRef(0);
   const searchParams = useSearchParams();
   const callbackUrl = safeAdminCallback(searchParams.get("callbackUrl"));
@@ -95,6 +96,7 @@ function LoginForm() {
         requestId?: string;
         pollToken?: string;
         grantToken?: string;
+        recipients?: string[];
         error?: string;
       };
       if (!response.ok) {
@@ -115,6 +117,9 @@ function LoginForm() {
         throw new Error("Login approval could not be created.");
       }
 
+      setApprovalRecipients(
+        Array.isArray(data.recipients) ? data.recipients.filter(Boolean) : []
+      );
       setWaitingApproval(true);
       await waitForApproval({
         requestId: data.requestId,
@@ -168,8 +173,16 @@ function LoginForm() {
             <div className="rounded-lg border border-[#d9bce2] bg-[#faf5fc] p-4 text-sm">
               <p className="font-semibold text-[#6d237d]">Approval email sent</p>
               <p className="mt-1 leading-6 text-text-muted">
-                Waiting for authentication from info@tfrcwholesale.com. This page will sign in
-                automatically after approval.
+                Waiting for authentication
+                {approvalRecipients.length > 0
+                  ? ` at ${approvalRecipients.join(", ")}`
+                  : " from info@tfrcwholesale.com"}
+                . This page will sign in automatically after approval.
+              </p>
+              <p className="mt-2 leading-6 text-text-muted">
+                If nothing appears in Inbox within 1–2 minutes, check{" "}
+                <strong>Spam / Junk</strong> in Hostinger webmail. Same-mailbox
+                Hostinger mail is often filtered there.
               </p>
             </div>
           )}

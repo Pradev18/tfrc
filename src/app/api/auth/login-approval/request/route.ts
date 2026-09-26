@@ -98,34 +98,35 @@ export async function POST(req: NextRequest) {
   approvalUrl.searchParams.set("token", requestToken);
 
   try {
-    await sendAdminLoginApprovalEmail({
+    const mailed = await sendAdminLoginApprovalEmail({
       approvalUrl: approvalUrl.toString(),
       loginEmail: user.email,
       ipAddress,
       userAgent: req.headers.get("user-agent") || "Unknown browser",
       expiresMinutes: Math.floor(LOGIN_APPROVAL_TTL_MS / 60_000),
     });
+    return NextResponse.json(
+      {
+        requestId: approval.id,
+        pollToken,
+        grantToken,
+        approvalRequired: true,
+        expiresAt: expiresAt.toISOString(),
+        recipients: mailed.recipients,
+        message:
+          "Credentials verified. Approval email sent — check Inbox and Spam/Junk.",
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     await prisma.loginApproval.delete({ where: { id: approval.id } }).catch(() => null);
     console.error("[login-approval] SMTP send failed", error);
     return NextResponse.json(
       {
         error:
-          "Could not send the approval email. Check the Hostinger SMTP configuration.",
+          "Could not send the approval email. Check Hostinger SMTP_USER / SMTP_PASSWORD, or use the LOGIN_APPROVAL_SECRET inbox backup after deploy.",
       },
       { status: 503, headers: { "Cache-Control": "no-store" } }
     );
   }
-
-  return NextResponse.json(
-    {
-      requestId: approval.id,
-      pollToken,
-      grantToken,
-      approvalRequired: true,
-      expiresAt: expiresAt.toISOString(),
-      message: "Credentials verified. Approval email sent.",
-    },
-    { headers: { "Cache-Control": "no-store" } }
-  );
 }

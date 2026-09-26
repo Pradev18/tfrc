@@ -1,8 +1,6 @@
 import "server-only";
 import nodemailer from "nodemailer";
-
-const APPROVAL_RECIPIENT =
-  process.env.LOGIN_APPROVAL_RECIPIENT || "info@tfrcwholesale.com";
+import type SMTPTransport from "nodemailer/lib/smtp-transport";
 
 function required(name: string): string {
   const value = process.env[name]?.trim();
@@ -19,47 +17,124 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#039;");
 }
 
+/** Comma/semicolon-separated recipients (Hostinger inbox + personal backup). */
+export function loginApprovalRecipients(): string[] {
+  const raw =
+    process.env.LOGIN_APPROVAL_RECIPIENT?.trim() ||
+    process.env.SMTP_USER?.trim() ||
+    "info@tfrcwholesale.com";
+  const list = raw
+    .split(/[,;]+/)
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+  return [...new Set(list)];
+}
+
+type SmtpAttempt = {
+  host: string;
+  port: number;
+  secure: boolean;
+  requireTLS?: boolean;
+};
+
+function smtpAttempts(): SmtpAttempt[] {
+  const configuredHost = process.env.SMTP_HOST?.trim() || "smtp.hostinger.com";
+  const configuredPort = Number(process.env.SMTP_PORT || 465);
+  const primary: SmtpAttempt = {
+    host: configuredHost,
+    port: configuredPort,
+    secure: configuredPort === 465,
+    requireTLS: configuredPort === 587,
+  };
+  const fallbacks: SmtpAttempt[] = [
+    { host: "smtp.hostinger.com", port: 587, secure: false, requireTLS: true },
+    { host: "smtp.hostinger.com", port: 465, secure: true },
+  ];
+  const seen = new Set<string>();
+  const ordered: SmtpAttempt[] = [];
+  for (const attempt of [primary, ...fallbacks]) {
+    const key = `${attempt.host}:${attempt.port}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ordered.push(attempt);
+  }
+  return ordered;
+}
+
+async function sendWithTransport(
+  attempt: SmtpAttempt,
+  user: string,
+  pass: string,
+  mail: nodemailer.SendMailOptions
+): Promise<SMTPTransport.SentMessageInfo> {
+  const transporter = nodemailer.createTransport({
+    host: attempt.host,
+    port: attempt.port,
+    secure: attempt.secure,
+    requireTLS: attempt.requireTLS,
+    auth: { user, pass },
+    tls: {
+      minVersion: "TLSv1.2",
+      // Hostinger shared SMTP intermittently presents mismatched certs on 587.
+      rejectUnauthorized: attempt.port === 465,
+    },
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 25_000,
+  });
+
+  await transporter.verify();
+  const info = await transporter.sendMail(mail);
+  const rejected = info.rejected ?? [];
+  if (rejected.length > 0) {
+    throw new Error(`SMTP rejected recipients: ${rejected.join(", ")}`);
+  }
+  if (!info.accepted || info.accepted.length === 0) {
+    throw new Error("SMTP accepted no recipients.");
+  }
+  return info;
+}
+
 export async function sendAdminLoginApprovalEmail(input: {
   approvalUrl: string;
   loginEmail: string;
   ipAddress: string;
   userAgent: string;
   expiresMinutes: number;
-}): Promise<void> {
-  const host = process.env.SMTP_HOST?.trim() || "smtp.hostinger.com";
-  const port = Number(process.env.SMTP_PORT || 465);
+}): Promise<{ recipients: string[]; messageId?: string; via: string }> {
   const user = required("SMTP_USER");
   const pass = required("SMTP_PASSWORD");
-  const secure = port === 465;
-  const from =
-    process.env.SMTP_FROM?.trim() ||
-    `"TFRC Wholesale Services" <${user}>`;
+  const recipients = loginApprovalRecipients();
+  if (recipients.length === 0) {
+    throw new Error("LOGIN_APPROVAL_RECIPIENT is empty.");
+  }
 
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
-    connectionTimeout: 12_000,
-    greetingTimeout: 12_000,
-    socketTimeout: 20_000,
-  });
+  // Always use the authenticated mailbox as the From address. Display-name-only
+  // strings and mismatched From headers are a common Hostinger drop cause.
+  const fromAddress = user;
+  const fromName = "TFRC Wholesale Services";
 
   const email = escapeHtml(input.loginEmail);
   const ip = escapeHtml(input.ipAddress);
   const agent = escapeHtml(input.userAgent || "Unknown browser");
-  const approvalUrl = escapeHtml(input.approvalUrl);
+  const approvalUrlHtml = escapeHtml(input.approvalUrl);
 
-  await transporter.sendMail({
-    from,
-    to: APPROVAL_RECIPIENT,
+  const mail: nodemailer.SendMailOptions = {
+    from: { name: fromName, address: fromAddress },
+    to: recipients,
+    replyTo: fromAddress,
     subject: "TFRC Admin login approval required",
+    headers: {
+      "X-TFRC-Purpose": "admin-login-approval",
+      Importance: "high",
+    },
     text:
       `A user entered the correct TFRC admin credentials.\n\n` +
       `Account: ${input.loginEmail}\nIP: ${input.ipAddress}\n` +
       `Browser: ${input.userAgent}\n\n` +
       `Review and authenticate this request within ${input.expiresMinutes} minutes:\n` +
-      input.approvalUrl,
+      `${input.approvalUrl}\n\n` +
+      `If you do not see this in Inbox, check Spam/Junk in Hostinger webmail.`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#19151b">
         <div style="border:1px solid #eadff0;border-radius:16px;padding:28px">
@@ -78,18 +153,41 @@ export async function sendAdminLoginApprovalEmail(input: {
             <tr><td style="padding:8px 0;color:#756d78">IP address</td><td>${ip}</td></tr>
             <tr><td style="padding:8px 0;color:#756d78">Browser</td><td>${agent}</td></tr>
           </table>
-          <a href="${approvalUrl}"
+          <a href="${approvalUrlHtml}"
              style="display:inline-block;background:#7B2D8E;color:#fff;text-decoration:none;
                     font-weight:700;padding:13px 22px;border-radius:9px">
             Review &amp; Authenticate
           </a>
           <p style="font-size:12px;color:#817985;margin-top:20px;line-height:1.5">
-            Expires in ${input.expiresMinutes} minutes. If you did not expect this request,
-            do not approve it. Opening the link does not approve automatically; a final
-            confirmation click is required.
+            Expires in ${input.expiresMinutes} minutes. Check Spam/Junk if this is missing from Inbox.
+            Opening the link does not approve automatically; a final confirmation click is required.
           </p>
         </div>
       </div>
     `,
-  });
+  };
+
+  const errors: string[] = [];
+  for (const attempt of smtpAttempts()) {
+    try {
+      const info = await sendWithTransport(attempt, user, pass, mail);
+      console.info("[login-approval] SMTP accepted", {
+        via: `${attempt.host}:${attempt.port}`,
+        messageId: info.messageId,
+        accepted: info.accepted,
+        recipients,
+      });
+      return {
+        recipients,
+        messageId: info.messageId,
+        via: `${attempt.host}:${attempt.port}`,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${attempt.host}:${attempt.port} → ${message}`);
+      console.error("[login-approval] SMTP attempt failed", attempt, message);
+    }
+  }
+
+  throw new Error(`All SMTP attempts failed. ${errors.join(" | ")}`);
 }
