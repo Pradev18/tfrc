@@ -209,56 +209,69 @@ export async function deleteCatalogue(id: string, userId?: string) {
   const env = await prisma.environment.findUnique({ where: { id } });
   if (!env) throw new Error("Catalogue not found");
 
-  await prisma.$transaction(async (tx) => {
-    const categoryIds = (
-      await tx.category.findMany({
-        where: { environmentId: id },
-        select: { id: true },
-      })
-    ).map((category) => category.id);
+  // Neon default interactive TX is 5s — deleting products + categories needs more.
+  await prisma.$transaction(
+    async (tx) => {
+      const categoryIds = (
+        await tx.category.findMany({
+          where: { environmentId: id },
+          select: { id: true },
+        })
+      ).map((category) => category.id);
 
-    // Products own prices, inventory, media, variants, tags and promotion
-    // links through cascade relations, so removing them clears the full
-    // catalogue inventory without leaving detached public products behind.
-    await tx.product.deleteMany({ where: { environmentId: id } });
+      // Products own prices, inventory, media, variants, tags and promotion
+      // links through cascade relations, so removing them clears the full
+      // catalogue inventory without leaving detached public products behind.
+      await tx.product.deleteMany({ where: { environmentId: id } });
 
-    // Category rows have a self-reference. Detach the hierarchy first so the
-    // complete catalogue category tree can be removed in one operation.
-    if (categoryIds.length > 0) {
-      await tx.product.updateMany({
-        where: { categoryId: { in: categoryIds } },
-        data: { categoryId: null },
+      // Category rows have a self-reference. Detach the hierarchy first so the
+      // complete catalogue category tree can be removed in one operation.
+      if (categoryIds.length > 0) {
+        await tx.product.updateMany({
+          where: { categoryId: { in: categoryIds } },
+          data: { categoryId: null },
+        });
+        await tx.product.updateMany({
+          where: { subcategoryId: { in: categoryIds } },
+          data: { subcategoryId: null },
+        });
+        await tx.category.updateMany({
+          where: { parentId: { in: categoryIds } },
+          data: { parentId: null },
+        });
+      }
+      await tx.category.deleteMany({ where: { environmentId: id } });
+
+      await tx.shopCategory.deleteMany({ where: { environmentId: id } });
+      await tx.banner.deleteMany({ where: { environmentId: id } });
+      await tx.homepageSection.deleteMany({ where: { environmentId: id } });
+      await tx.importJob.deleteMany({ where: { environmentId: id } });
+      await tx.customerInquiry.deleteMany({ where: { environmentSlug: env.slug } });
+      await tx.environment.delete({ where: { id } });
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: "DELETE",
+          resource: "Environment",
+          resourceId: id,
+          oldValue: JSON.stringify({ name: env.name, slug: env.slug }),
+        },
       });
-      await tx.product.updateMany({
-        where: { subcategoryId: { in: categoryIds } },
-        data: { subcategoryId: null },
-      });
-      await tx.category.updateMany({
-        where: { parentId: { in: categoryIds } },
-        data: { parentId: null },
-      });
-    }
-    await tx.category.deleteMany({ where: { environmentId: id } });
-
-    await tx.shopCategory.deleteMany({ where: { environmentId: id } });
-    await tx.banner.deleteMany({ where: { environmentId: id } });
-    await tx.homepageSection.deleteMany({ where: { environmentId: id } });
-    await tx.importJob.deleteMany({ where: { environmentId: id } });
-    await tx.customerInquiry.deleteMany({ where: { environmentSlug: env.slug } });
-    await tx.environment.delete({ where: { id } });
-
-    await tx.auditLog.create({
-      data: {
-        userId,
-        action: "DELETE",
-        resource: "Environment",
-        resourceId: id,
-        oldValue: JSON.stringify({ name: env.name, slug: env.slug }),
-      },
-    });
-  });
+    },
+    { maxWait: 20_000, timeout: 120_000 }
+  );
 
   removeCachedEnvironment(env.slug);
+  try {
+    const { persistRuntimeCatalogueDataSafely } = await import(
+      "@/lib/persist-runtime-data.server"
+    );
+    await persistRuntimeCatalogueDataSafely();
+  } catch (error) {
+    console.warn("[catalogue] cache refresh after delete failed:", error);
+  }
+
   return { id: env.id, name: env.name, slug: env.slug };
 }
 
