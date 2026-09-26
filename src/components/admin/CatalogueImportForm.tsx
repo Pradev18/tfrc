@@ -170,8 +170,29 @@ export function CatalogueImportForm({
       }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Import failed";
-      setError(message);
-      adminNotify(message);
+      const stuck =
+        /already running|heavy admin job|PDF is currently generating/i.test(
+          message
+        );
+      if (stuck) {
+        try {
+          await fetch("/api/admin/heavy-jobs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ kinds: ["catalogue-import"] }),
+            cache: "no-store",
+          });
+        } catch {
+          /* ignore */
+        }
+        const clearedMessage =
+          `${message}\n\nCleared a stuck import lock. Click Preview / Import once more.`;
+        setError(clearedMessage);
+        adminNotify(clearedMessage);
+      } else {
+        setError(message);
+        adminNotify(message);
+      }
       setProgress("");
     } finally {
       requestInFlightRef.current = false;

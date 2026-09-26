@@ -101,7 +101,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
       const busy = heavyJobBusyResponse(e);
       return NextResponse.json(busy.body, {
         status: busy.status,
-        headers: { "Cache-Control": "no-store", "Retry-After": "15" },
+        headers: {
+          "Cache-Control": "no-store",
+          "Retry-After": String(busy.body.retryAfterSec || 15),
+        },
       });
     }
     return NextResponse.json(
