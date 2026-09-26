@@ -318,10 +318,13 @@ export async function generateShopCategories(environmentId: string, slug: string
 
   // Replace category defs + product assignments together so storefront never
   // briefly sees empty categories mid-regenerate.
-  await prisma.$transaction(async (tx) => {
-    await tx.shopCategory.deleteMany({ where: { environmentId } });
-    await tx.shopCategory.createMany({ data: defsToDbRows(environmentId, pack) });
-  });
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.shopCategory.deleteMany({ where: { environmentId } });
+      await tx.shopCategory.createMany({ data: defsToDbRows(environmentId, pack) });
+    },
+    { maxWait: 15_000, timeout: 60_000 }
+  );
   await syncEnvironmentShopCategories(environmentId, pack);
   return pack.length;
 }

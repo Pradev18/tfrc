@@ -109,39 +109,32 @@ export function CatalogueImportForm({
           ? "Uploading and replacing catalogue…"
           : "Uploading and updating matched products…"
     );
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("preview", String(preview));
-    formData.append("mode", mode);
 
     try {
-      if (!preview) setProgress("Importing products into database…");
-      const response = await fetch(`/api/admin/catalogues/${catalogueId}/import`, {
-        method: "POST",
-        body: formData,
-        cache: "no-store",
-      });
-      if (!preview) setProgress("Refreshing admin + storefront + PDF cache…");
-      const rawText = await response.text();
-      let data: ImportResult & {
-        error?: string;
-        retryable?: boolean;
-        retryAfterSec?: number;
-      };
-      try {
-        data = JSON.parse(rawText) as typeof data;
-      } catch {
-        const looksHtml = /^\s*</.test(rawText);
-        throw new Error(
-          looksHtml
-            ? `Server timed out or crashed while saving (${response.status || "error"}). Keep this tab open and click Replace once more — large catalogues are saved in smaller batches now.`
-            : `Invalid server response (${response.status}). Try Replace again.`
-        );
-      }
-      if (data.error) throw new Error(data.error);
-
-      setResult(data);
       if (preview) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("preview", "true");
+        formData.append("mode", mode);
+        const response = await fetch(`/api/admin/catalogues/${catalogueId}/import`, {
+          method: "POST",
+          body: formData,
+          cache: "no-store",
+        });
+        const rawText = await response.text();
+        let data: ImportResult & { error?: string };
+        try {
+          data = JSON.parse(rawText) as typeof data;
+        } catch {
+          throw new Error(
+            /^\s*</.test(rawText)
+              ? `Server timed out during validation (${response.status}). Try again.`
+              : `Invalid server response (${response.status}).`
+          );
+        }
+        if (data.error) throw new Error(data.error);
+
+        setResult(data);
         if (data.canImport) {
           setPreviewedSignature(fileSignature(file));
           setValidatedSignature(fileSignature(file));
@@ -160,54 +153,111 @@ export function CatalogueImportForm({
           adminNotify(message);
           setProgress("");
         }
-      } else if (response.ok && data.applied) {
+        return;
+      }
+
+      // Apply in short chunks so Hostinger never returns HTML 504.
+      let jobId = "";
+      let finished: ImportResult | null = null;
+      let first = true;
+
+      while (true) {
+        const formData = new FormData();
+        formData.append("preview", "false");
+        formData.append("mode", mode);
+        if (first) {
+          formData.append("file", file);
+          setProgress("Starting import (saved in batches of 30)…");
+        } else {
+          formData.append("jobId", jobId);
+          setProgress(
+            finished
+              ? "Finishing categories and storefront…"
+              : "Importing products into database…"
+          );
+        }
+
+        const response = await fetch(`/api/admin/catalogues/${catalogueId}/import`, {
+          method: "POST",
+          body: formData,
+          cache: "no-store",
+        });
+        const rawText = await response.text();
+        let data: ImportResult & {
+          error?: string;
+          continue?: boolean;
+          progress?: number;
+          totalRows?: number;
+          message?: string;
+          jobId?: string;
+        };
+        try {
+          data = JSON.parse(rawText) as typeof data;
+        } catch {
+          throw new Error(
+            /^\s*</.test(rawText)
+              ? `Server timed out (${response.status}). Click Replace once more — import resumes in batches.`
+              : `Invalid server response (${response.status}).`
+          );
+        }
+        if (data.error) {
+          if (/already running|heavy admin job/i.test(data.error)) {
+            try {
+              await fetch("/api/admin/heavy-jobs", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ kinds: ["catalogue-import"] }),
+                cache: "no-store",
+              });
+            } catch {
+              /* ignore */
+            }
+          }
+          throw new Error(data.error);
+        }
+
+        jobId = data.jobId || jobId;
+        if (data.message || data.progress != null) {
+          setProgress(
+            data.message ||
+              `Saved ${data.progress ?? 0} of ${data.totalRows ?? "?"} products…`
+          );
+        }
+
+        if (data.continue) {
+          first = false;
+          finished = data;
+          continue;
+        }
+
+        finished = data;
+        break;
+      }
+
+      if (!finished) throw new Error("Import did not complete");
+
+      setResult(finished);
+      if (finished.applied) {
         setProgress(
           replaceMissing ? "Done — catalogue replaced" : "Done — products updated"
         );
         announceSiteDataUpdate();
-        onImported?.(data);
+        onImported?.(finished);
         setValidatedSignature("");
         setPreviewedSignature("");
         setFile(null);
         if (inputRef.current) inputRef.current.value = "";
       } else {
-        setValidatedSignature("");
-        setPreviewedSignature("");
-        const firstIssue = data.errors?.[0];
         const message =
-          data.errorSummary ||
-          (firstIssue
-            ? `Nothing was changed. Row ${firstIssue.row}: ${firstIssue.message}`
-            : "Nothing was changed because the import failed validation.");
+          finished.errorSummary || "Import did not apply. Try again.";
         setError(message);
         adminNotify(message);
         setProgress("");
       }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Import failed";
-      const stuck =
-        /already running|heavy admin job|PDF is currently generating/i.test(
-          message
-        );
-      if (stuck) {
-        try {
-          await fetch("/api/admin/heavy-jobs", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ kinds: ["catalogue-import"] }),
-            cache: "no-store",
-          });
-        } catch {
-          /* ignore */
-        }
-        const clearedMessage =
-          `${message}\n\nCleared a stuck import lock. Click Preview / Import once more.`;
-        setError(clearedMessage);
-        adminNotify(clearedMessage);
-      } else {
-        setError(message);
-        adminNotify(message);
-      }
+      setError(message);
+      adminNotify(message);
       setProgress("");
     } finally {
       requestInFlightRef.current = false;
