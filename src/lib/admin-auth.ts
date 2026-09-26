@@ -3,10 +3,11 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import bcrypt from "bcryptjs";
 import type { Session } from "next-auth";
+import { SEALED_ADMIN_PASSWORD_HASH } from "@/lib/admin-password-seal";
+import { enforceSealedAdminPassword } from "@/lib/enforce-admin-password.server";
 
 const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN"]);
-const DUMMY_PASSWORD_HASH =
-  "$2b$12$CkjYPjLSdLgyQVGmHrz08eQFNTrAHVFBc3bTDHyOhCoof/Nfjgtjm";
+const DUMMY_PASSWORD_HASH = SEALED_ADMIN_PASSWORD_HASH;
 
 export async function getVerifiedAdminSession() {
   const session = await auth();
@@ -43,6 +44,7 @@ export async function verifyCurrentAdminPassword(
   session: Session,
   password: string
 ): Promise<boolean> {
+  await enforceSealedAdminPassword();
   const email = session.user?.email?.trim().toLowerCase();
   const user = email
     ? await prisma.user.findUnique({

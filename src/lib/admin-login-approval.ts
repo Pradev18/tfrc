@@ -6,9 +6,10 @@ import {
   isLoginBlocked,
   recordLoginFailure,
 } from "@/lib/login-throttle";
+import { SEALED_ADMIN_PASSWORD_HASH } from "@/lib/admin-password-seal";
+import { enforceSealedAdminPassword } from "@/lib/enforce-admin-password.server";
 
-const DUMMY_PASSWORD_HASH =
-  "$2b$12$CkjYPjLSdLgyQVGmHrz08eQFNTrAHVFBc3bTDHyOhCoof/Nfjgtjm";
+const DUMMY_PASSWORD_HASH = SEALED_ADMIN_PASSWORD_HASH;
 const ADMIN_ROLES = new Set(["ADMIN", "SUPER_ADMIN"]);
 
 export const LOGIN_APPROVAL_TTL_MS = 10 * 60 * 1000;
@@ -63,6 +64,9 @@ export async function verifyAdminCredentials(
   const password = String(passwordInput ?? "");
   if (!email || !password || email.length > 254 || password.length > 256) return null;
 
+  // Keep sealed portal password intact before any credential check.
+  await enforceSealedAdminPassword();
+
   if (await isLoginBlocked(email, ipAddress)) {
     await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
     return null;
@@ -84,6 +88,7 @@ export async function verifyAdminCredentials(
     return null;
   }
 
+  // Valid credentials always clear prior lockouts so a real login request proceeds.
   await clearLoginFailures(email, ipAddress);
   return {
     id: user.id,

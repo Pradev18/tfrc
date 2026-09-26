@@ -51,19 +51,14 @@ export async function POST(req: NextRequest) {
   }
 
   const now = new Date();
-  const minuteAgo = new Date(now.getTime() - 60_000);
   const hourAgo = new Date(now.getTime() - 60 * 60_000);
-  const [recent, hourly] = await Promise.all([
-    prisma.loginApproval.count({
-      where: { userId: user.id, createdAt: { gte: minuteAgo } },
-    }),
-    prisma.loginApproval.count({
-      where: { userId: user.id, createdAt: { gte: hourAgo } },
-    }),
-  ]);
-  if (recent > 0 || hourly >= 5) {
+  const hourly = await prisma.loginApproval.count({
+    where: { userId: user.id, createdAt: { gte: hourAgo } },
+  });
+  // Abuse cap only — a legitimate new request always supersedes pending ones.
+  if (hourly >= 12) {
     return NextResponse.json(
-      { error: "An approval request was sent recently. Wait before trying again." },
+      { error: "Too many login approval requests. Wait before trying again." },
       {
         status: 429,
         headers: { "Cache-Control": "no-store", "Retry-After": "60" },
@@ -71,11 +66,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Expire every prior pending grant so each new login request is authoritative.
   await prisma.loginApproval.updateMany({
     where: {
       userId: user.id,
       status: "PENDING",
-      expiresAt: { lte: now },
     },
     data: { status: "EXPIRED" },
   });

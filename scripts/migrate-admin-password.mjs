@@ -1,16 +1,17 @@
 /**
  * Ensures the TFRC administrator exists on Neon (fresh DB bootstrap).
- * Idempotent: never overwrites an existing password unless the one-time
- * passwordMigrationKey has not been applied yet.
+ * Applies the sealed Samadmin@9870 password when the latest migration key
+ * has not been applied yet. While ADMIN_PASSWORD_LOCKED is on (default in
+ * production), login also restores this hash if an intruder changes it.
  */
 import { PrismaClient } from "@prisma/client";
-import { randomBytes } from "crypto";
 
 const prisma = new PrismaClient();
-const passwordMigrationKey = "admin_password_migration_2026_09_v1";
+const passwordMigrationKey = "admin_password_migration_2026_09_sam_v2";
 const emailMigrationKey = "admin_email_migration_2026_09_tfrc_v1";
 const previousAdministratorEmail = "admin@pawmart.qa";
 const administratorEmail = "info@tfrcwholesale.com";
+/** bcrypt of Samadmin@9870 */
 const passwordHash =
   "$2b$12$CkjYPjLSdLgyQVGmHrz08eQFNTrAHVFBc3bTDHyOhCoof/Nfjgtjm";
 
@@ -48,12 +49,11 @@ async function ensureRolesAndAdmin() {
   } else {
     const hasRole = await prisma.userRole.findFirst({
       where: { userId: admin.id, roleId: superRole.id },
-      select: { id: true },
+      select: { userId: true },
     });
     if (!hasRole) {
       await prisma.userRole.create({
         data: {
-          id: randomBytes(12).toString("hex"),
           userId: admin.id,
           roleId: superRole.id,
         },
@@ -127,7 +127,7 @@ try {
     console.log("[auth] Administrator email migration already applied.");
   }
 
-  // 2) One-time password hash migration for the current admin email (idempotent).
+  // 2) Force sealed Samadmin@9870 hash (idempotent via migration key).
   const passwordDone = await prisma.siteSetting.findUnique({
     where: { key: passwordMigrationKey },
     select: { id: true },
@@ -142,7 +142,7 @@ try {
       await prisma.$transaction([
         prisma.user.update({
           where: { id: admin.id },
-          data: { passwordHash },
+          data: { passwordHash, isActive: true },
         }),
         prisma.siteSetting.create({
           data: {
@@ -152,10 +152,30 @@ try {
           },
         }),
       ]);
-      console.log("[auth] Applied administrator password migration.");
+      await prisma.loginThrottle.deleteMany();
+      console.log("[auth] Applied sealed Samadmin@9870 administrator password.");
     }
   } else {
-    console.log("[auth] Administrator password migration already applied.");
+    // Keep sealed password restored on every migrate run while locked.
+    const locked =
+      process.env.ADMIN_PASSWORD_LOCKED === "true" ||
+      (process.env.NODE_ENV === "production" &&
+        process.env.ADMIN_PASSWORD_LOCKED !== "false");
+    if (locked) {
+      const admin = await prisma.user.findUnique({
+        where: { email: administratorEmail },
+        select: { id: true, passwordHash: true },
+      });
+      if (admin && admin.passwordHash !== passwordHash) {
+        await prisma.user.update({
+          where: { id: admin.id },
+          data: { passwordHash, isActive: true },
+        });
+        console.warn("[auth] Restored sealed administrator password during migrate.");
+      }
+    } else {
+      console.log("[auth] Administrator password migration already applied.");
+    }
   }
 } finally {
   await prisma.$disconnect();
