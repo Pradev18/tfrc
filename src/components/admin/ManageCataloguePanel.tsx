@@ -52,6 +52,7 @@ export function ManageCataloguePanel({
   const [appliedQ, setAppliedQ] = useState("");
   const [selectedCategorySlug, setSelectedCategorySlug] = useState("");
   const [sort, setSort] = useState("serial_no_asc");
+  const [pdfCategoryHeaders, setPdfCategoryHeaders] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(15);
   const [loading, setLoading] = useState(false);
@@ -187,6 +188,7 @@ export function ManageCataloguePanel({
       q: appliedQ || "",
       shop: selectedCategorySlug || "",
       sort: sort || "serial_no_asc",
+      categoryHeaders: pdfCategoryHeaders,
     };
   }
 
@@ -198,6 +200,7 @@ export function ManageCataloguePanel({
       q: filters.q,
       shop: filters.shop,
       sort: filters.sort,
+      categoryHeaders: filters.categoryHeaders ? "1" : "0",
     });
     return `/api/admin/catalogues/${catalogueId}/pdf?${params.toString()}`;
   }
@@ -454,6 +457,21 @@ export function ManageCataloguePanel({
               ]}
               className="min-h-[44px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm sm:w-52"
             />
+            <UiSelect
+              value={pdfCategoryHeaders ? "with_headers" : "without_headers"}
+              onValueChange={(value) => {
+                setPdfCategoryHeaders(value !== "without_headers");
+              }}
+              ariaLabel="PDF category headers"
+              options={[
+                { value: "with_headers", label: "PDF: with category headers" },
+                {
+                  value: "without_headers",
+                  label: "PDF: without category headers",
+                },
+              ]}
+              className="min-h-[44px] w-full rounded-xl border border-border bg-white px-3 py-2 text-sm sm:w-64"
+            />
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={searchProducts} className="btn-primary px-4 py-2 text-sm">
                 Search
@@ -479,7 +497,8 @@ export function ManageCataloguePanel({
           </div>
           <p className="mb-4 text-xs text-text-muted">
             Download PDF uses the sort selected above (Serial no / Item code), plus search and
-            category. Products keep that order; category headers stay with their items.
+            category. Choose <span className="font-medium">without category headers</span> to print
+            items in one continuous serial-number stream with no section titles.
           </p>
 
           {loading ? (

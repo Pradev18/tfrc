@@ -53,10 +53,13 @@ const jobsById = new Map<string, CataloguePdfJob>();
 
 function readPdfFiltersFromSearch(req: NextRequest): CataloguePdfFilters {
   const sp = req.nextUrl.searchParams;
+  const headersParam = sp.get("categoryHeaders");
   return {
     q: sp.get("q") ?? "",
     shop: sp.get("shop") ?? "",
     sort: (sp.get("sort") as CataloguePdfSort | null) ?? undefined,
+    categoryHeaders:
+      headersParam === "0" || headersParam === "false" ? false : undefined,
   };
 }
 
@@ -72,6 +75,10 @@ async function readPdfFilters(req: NextRequest): Promise<Required<CataloguePdfFi
             q: body.q ?? fromQuery.q,
             shop: body.shop ?? fromQuery.shop,
             sort: body.sort ?? fromQuery.sort,
+            categoryHeaders:
+              typeof body.categoryHeaders === "boolean"
+                ? body.categoryHeaders
+                : fromQuery.categoryHeaders,
           });
         }
       }

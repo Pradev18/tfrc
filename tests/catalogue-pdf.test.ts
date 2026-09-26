@@ -66,6 +66,7 @@ function payload(
     muted: "#6b6560",
     surface: "#f5f8f6",
     cta: "#1b4332",
+    categoryHeaders: true,
     categories,
     ...overrides,
   };
@@ -310,5 +311,21 @@ describe("catalogue PDF links and assets", () => {
     expect(source).toMatch(/\/MediaBox\s*\[0 0 595\.\d+ 841\.\d+\]/);
     expect(source).not.toContain("window.print");
     expect(source).not.toContain("setTimeout");
+  });
+
+  it("prints a flat serial stream without category section headers", () => {
+    const fixture = payload([4, 3, 5], { categoryHeaders: false });
+    const packed = packCataloguePhysicalPages(fixture);
+    // All cards stay in one continuous stream — no mid-page category bands.
+    expect(packed.every((page) => page.sections.length === 1)).toBe(true);
+    expect(
+      packed.flatMap((page) => page.sections.flatMap((s) => s.products)).map((p) => p.productId)
+    ).toEqual(
+      fixture.categories.flatMap((c) => c.products).map((p) => p.productId)
+    );
+
+    const result = buildCataloguePdfDocument(fixture);
+    expect(result.stats.productCards).toBe(12);
+    expect(result.stats.pageCardCounts.reduce((a, b) => a + b, 0)).toBe(12);
   });
 });

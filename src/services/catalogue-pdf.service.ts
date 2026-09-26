@@ -32,6 +32,11 @@ export interface CataloguePdfFilters {
   q?: string;
   shop?: string;
   sort?: CataloguePdfSort;
+  /**
+   * When false, products print in one continuous serial/item-code stream with
+   * no category section headers. Defaults to true.
+   */
+  categoryHeaders?: boolean;
 }
 
 export interface CataloguePdfProduct {
@@ -88,6 +93,8 @@ export interface CataloguePdfPayload {
   muted: string;
   surface: string;
   cta: string;
+  /** When false, brochure omits category bands and prints a continuous card stream. */
+  categoryHeaders: boolean;
   categories: CataloguePdfCategory[];
 }
 
@@ -112,6 +119,7 @@ export function normalizeCataloguePdfFilters(
     q: input?.q?.trim() ?? "",
     shop: input?.shop?.trim() ?? "",
     sort,
+    categoryHeaders: input?.categoryHeaders !== false,
   };
 }
 
@@ -125,6 +133,7 @@ export function cataloguePdfJobKey(
     normalized.sort,
     normalized.q.toLowerCase(),
     normalized.shop,
+    normalized.categoryHeaders ? "headers" : "flat",
   ].join("|");
 }
 
@@ -530,17 +539,25 @@ export async function getCataloguePdfPayload(
 
   let categories: CataloguePdfCategory[] = [];
 
-  if (isItemFilterSort(filters.sort)) {
+  // Flat brochure: continuous serial/item-code stream with no category headers.
+  const useFlatStream = !filters.categoryHeaders;
+  const effectiveSort: CataloguePdfSort = useFlatStream
+    ? isItemFilterSort(filters.sort)
+      ? filters.sort
+      : "serial_no_asc"
+    : filters.sort;
+
+  if (useFlatStream || isItemFilterSort(filters.sort)) {
     // Match the admin list: global item-no / item-code order first, then keep
     // category headers by grouping contiguous same-category cards so the PDF
     // sequence stays 1,2,3… (not reshuffled by category).
     const sortedRows = [...productsWithCat].sort((a, b) => {
-      if (filters.sort === "item_code_asc") {
+      if (effectiveSort === "item_code_asc") {
         return String(a.product.productId).localeCompare(String(b.product.productId), undefined, {
           numeric: true,
         });
       }
-      if (filters.sort === "item_code_desc") {
+      if (effectiveSort === "item_code_desc") {
         return String(b.product.productId).localeCompare(String(a.product.productId), undefined, {
           numeric: true,
         });
@@ -548,7 +565,7 @@ export async function getCataloguePdfPayload(
       return compareItemNo(
         a.product,
         b.product,
-        filters.sort === "serial_no_desc" || filters.sort === "item_no_desc"
+        effectiveSort === "serial_no_desc" || effectiveSort === "item_no_desc"
           ? "desc"
           : "asc"
       );
@@ -559,45 +576,56 @@ export async function getCataloguePdfPayload(
       catalogueMeta,
       whatsappSettings,
       siteUrl,
-      filters.sort
+      effectiveSort
     );
 
-    // Map collapsed cards back to category via product id / productId.
-    const catByProductKey = new Map<string, string>();
-    for (const row of sortedRows) {
-      catByProductKey.set(row.product.id, row.categorySlug);
-      catByProductKey.set(row.product.productId, row.categorySlug);
-    }
-
-    type Section = CataloguePdfCategory;
-    const sections: Section[] = [];
-    let current: Section | null = null;
-
-    for (const card of collapsed) {
-      const slug =
-        catByProductKey.get(card.id) ||
-        catByProductKey.get(card.productId) ||
-        OTHER_SHOP_CATEGORY.slug;
-      const name =
-        categoryNameBySlug.get(slug) ||
-        slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-
-      if (!current || current.slug !== slug) {
-        current = {
-          slug,
-          name,
-          productCount: 0,
-          products: [],
-        };
-        sections.push(current);
+    if (useFlatStream) {
+      categories = [
+        {
+          slug: "__flat__",
+          name: "All products",
+          productCount: collapsed.length,
+          products: collapsed,
+        },
+      ];
+    } else {
+      // Map collapsed cards back to category via product id / productId.
+      const catByProductKey = new Map<string, string>();
+      for (const row of sortedRows) {
+        catByProductKey.set(row.product.id, row.categorySlug);
+        catByProductKey.set(row.product.productId, row.categorySlug);
       }
-      current.products.push(card);
-      current.productCount += 1;
-    }
 
-    // Collapse identical adjacent headers that share the same slug after
-    // variant collapse (already contiguous). Keep as-is for true sequence.
-    categories = sections;
+      type Section = CataloguePdfCategory;
+      const sections: Section[] = [];
+      let current: Section | null = null;
+
+      for (const card of collapsed) {
+        const slug =
+          catByProductKey.get(card.id) ||
+          catByProductKey.get(card.productId) ||
+          OTHER_SHOP_CATEGORY.slug;
+        const name =
+          categoryNameBySlug.get(slug) ||
+          slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+        if (!current || current.slug !== slug) {
+          current = {
+            slug,
+            name,
+            productCount: 0,
+            products: [],
+          };
+          sections.push(current);
+        }
+        current.products.push(card);
+        current.productCount += 1;
+      }
+
+      // Collapse identical adjacent headers that share the same slug after
+      // variant collapse (already contiguous). Keep as-is for true sequence.
+      categories = sections;
+    }
   } else {
     for (const cat of shopCategories) {
       const list = buckets.get(cat.slug) ?? [];
@@ -698,6 +726,7 @@ export async function getCataloguePdfPayload(
     muted: visual.muted,
     surface: visual.sectionAlt,
     cta: visual.cta,
+    categoryHeaders: filters.categoryHeaders,
     categories,
   };
 }

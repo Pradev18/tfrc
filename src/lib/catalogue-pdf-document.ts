@@ -526,11 +526,19 @@ function drawCover(
 
   const statY = featureY + 15;
   const statWidth = 55;
-  [
-    ["PRODUCTS", String(payload.totalProducts)],
-    ["CARDS", String(payload.listedCards)],
-    ["CATEGORIES", String(payload.categories.length)],
-  ].forEach(([label, value], index) => {
+  const showCategoryToc = payload.categoryHeaders !== false;
+  const coverStats: [string, string][] = showCategoryToc
+    ? [
+        ["PRODUCTS", String(payload.totalProducts)],
+        ["CARDS", String(payload.listedCards)],
+        ["CATEGORIES", String(payload.categories.length)],
+      ]
+    : [
+        ["PRODUCTS", String(payload.totalProducts)],
+        ["CARDS", String(payload.listedCards)],
+        ["LAYOUT", "Serial"],
+      ];
+  coverStats.forEach(([label, value], index) => {
     const x = 19 + index * (statWidth + 4);
     doc.setFillColor(255, 255, 255);
     doc.setDrawColor(...colors.line);
@@ -538,45 +546,57 @@ function drawCover(
     doc.setTextColor(...colors.muted);
     doc.setFontSize(6.5);
     doc.setFont("helvetica", "bold");
-    doc.text(label!, x + statWidth / 2, statY + 6, { align: "center" });
+    doc.text(label, x + statWidth / 2, statY + 6, { align: "center" });
     doc.setTextColor(...colors.heading);
     doc.setFontSize(17);
-    doc.text(value!, x + statWidth / 2, statY + 15.5, { align: "center" });
+    doc.text(value, x + statWidth / 2, statY + 15.5, { align: "center" });
   });
 
   const tocY = statY + 26;
-  doc.setTextColor(...colors.cta);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("CATEGORIES", PAGE_MARGIN, tocY);
-
-  const categories = payload.categories.filter((category) => category.products.length > 0);
-  const tocRows = Math.max(1, Math.min(10, Math.ceil(categories.length / 2)));
-  const tocColumns = Math.max(2, Math.ceil(categories.length / tocRows));
-  const availableTocHeight = 49;
-  const tocGap = tocColumns > 4 ? 1.5 : 4;
-  const tocRowHeight = Math.min(8, availableTocHeight / tocRows);
-  const tocWidth = (CONTENT_WIDTH - tocGap * (tocColumns - 1)) / tocColumns;
-  categories.forEach((category, index) => {
-    const column = Math.floor(index / tocRows);
-    const row = index % tocRows;
-    const x = PAGE_MARGIN + column * (tocWidth + tocGap);
-    const y = tocY + 4 + row * tocRowHeight;
-    doc.setFillColor(...mix(colors.accent, 0.93));
-    doc.roundedRect(x, y, tocWidth, Math.max(3.8, tocRowHeight - 0.7), 1.2, 1.2, "F");
+  if (showCategoryToc) {
     doc.setTextColor(...colors.cta);
-    doc.setFontSize(Math.max(4.2, Math.min(7.4, tocRowHeight - 1.2)));
     doc.setFont("helvetica", "bold");
-    const name = ellipsiseLine(
-      normalisePdfText(category.name),
-      Math.max(8, Math.floor(tocWidth / 1.9))
-    );
-    const baseline = y + Math.max(3, tocRowHeight - 2.8);
-    doc.text(`${index + 1}. ${name}`, x + 1.5, baseline);
-    doc.text(String(category.productCount), x + tocWidth - 1.5, baseline, {
-      align: "right",
+    doc.setFontSize(12);
+    doc.text("CATEGORIES", PAGE_MARGIN, tocY);
+
+    const categories = payload.categories.filter((category) => category.products.length > 0);
+    const tocRows = Math.max(1, Math.min(10, Math.ceil(categories.length / 2)));
+    const tocColumns = Math.max(2, Math.ceil(categories.length / tocRows));
+    const availableTocHeight = 49;
+    const tocGap = tocColumns > 4 ? 1.5 : 4;
+    const tocRowHeight = Math.min(8, availableTocHeight / tocRows);
+    const tocWidth = (CONTENT_WIDTH - tocGap * (tocColumns - 1)) / tocColumns;
+    categories.forEach((category, index) => {
+      const column = Math.floor(index / tocRows);
+      const row = index % tocRows;
+      const x = PAGE_MARGIN + column * (tocWidth + tocGap);
+      const y = tocY + 4 + row * tocRowHeight;
+      doc.setFillColor(...mix(colors.accent, 0.93));
+      doc.roundedRect(x, y, tocWidth, Math.max(3.8, tocRowHeight - 0.7), 1.2, 1.2, "F");
+      doc.setTextColor(...colors.cta);
+      doc.setFontSize(Math.max(4.2, Math.min(7.4, tocRowHeight - 1.2)));
+      doc.setFont("helvetica", "bold");
+      const name = ellipsiseLine(
+        normalisePdfText(category.name),
+        Math.max(8, Math.floor(tocWidth / 1.9))
+      );
+      const baseline = y + Math.max(3, tocRowHeight - 2.8);
+      doc.text(`${index + 1}. ${name}`, x + 1.5, baseline);
+      doc.text(String(category.productCount), x + tocWidth - 1.5, baseline, {
+        align: "right",
+      });
     });
-  });
+  } else {
+    doc.setTextColor(...colors.muted);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(
+      "Products print in continuous serial-number order without category headers.",
+      PAGE_MARGIN,
+      tocY + 4,
+      { maxWidth: CONTENT_WIDTH }
+    );
+  }
 
   const qrY = 238;
   const qrWidth = (CONTENT_WIDTH - 4) / 2;
@@ -876,6 +896,48 @@ function tryPlaceCategoryStart(cursorY: number): {
 export function packCataloguePhysicalPages(
   payload: CataloguePdfPayload
 ): PhysicalPageLayout[] {
+  // Continuous serial stream — no category bands; fill each page with cards only.
+  if (payload.categoryHeaders === false) {
+    const allProducts = payload.categories.flatMap((category) => category.products);
+    if (allProducts.length === 0) return [];
+
+    const pages: PhysicalPageLayout[] = [];
+    const remainingRows = chunkIntoRows(allProducts);
+    const flatCategory: CataloguePdfCategory = {
+      slug: "__flat__",
+      name: "",
+      productCount: allProducts.length,
+      products: allProducts,
+    };
+
+    while (remainingRows.length > 0) {
+      const gridY = CATEGORY_TOP;
+      const maxRows = maxRowsFromGridY(gridY);
+      if (maxRows < 1) break;
+      const takenRows = remainingRows.splice(0, maxRows);
+      const products = takenRows.flat();
+      pages.push({
+        sections: [
+          {
+            category: flatCategory,
+            products,
+            categoryPageIndex: pages.length,
+            categoryPageCount: 0,
+            bandY: gridY,
+            gridY,
+          },
+        ],
+      });
+    }
+
+    for (const page of pages) {
+      for (const section of page.sections) {
+        section.categoryPageCount = pages.length;
+      }
+    }
+    return pages;
+  }
+
   const pages: PhysicalPageLayout[] = [];
   let current: PhysicalPageLayout | null = null;
   /** Bottom Y of the last placed card row on the current page (mm). */
@@ -1000,7 +1062,9 @@ export function buildCataloguePdfDocument(
     drawHeader(doc, payload, colors, counters);
 
     for (const section of page.sections) {
-      drawCategoryBand(doc, section, colors, section.bandY);
+      if (payload.categoryHeaders !== false) {
+        drawCategoryBand(doc, section, colors, section.bandY);
+      }
 
       section.products.forEach((product, cardIndex) => {
         const column = cardIndex % PDF_COLS;
