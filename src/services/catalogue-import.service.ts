@@ -280,139 +280,157 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
   let updated = 0;
   let archived = 0;
   let currentRow = parsed.rows[0];
+  const importedProductIds: string[] = [];
+  /** Small batches avoid Hostinger/Cloudflare HTML gateway timeouts on large Excels. */
+  const BATCH_SIZE = 25;
+
+  async function upsertOneRow(
+    tx: Prisma.TransactionClient,
+    row: (typeof parsed.rows)[number]
+  ) {
+    currentRow = row;
+    const segments = rowCategorySegments(row);
+    const { rootId, leafId } = await upsertCategoryTree(
+      tx,
+      segments,
+      cache,
+      environmentId,
+      environmentSlug
+    );
+    const brandSlug = createCategorySlug(row.brand);
+    const brand = await tx.brand.upsert({
+      where: { slug: brandSlug },
+      create: { name: row.brand, slug: brandSlug },
+      update: { name: row.brand },
+    });
+
+    const slug = rowToProductSlug(row);
+    const images = rowImages(row);
+    const qty = row.quantity_to_sell_on_facebook ?? 10;
+    const isInStock = qty > 0 && row.availability.toLowerCase().includes("in stock");
+    const saleWindow = parseSaleWindow(row.sale_price_effective_date);
+
+    const existing = await tx.product.findUnique({ where: { productId: row.id } });
+    if (existing?.environmentId && existing.environmentId !== environmentId) {
+      throw new Error(`Product id ${row.id} already belongs to another catalogue`);
+    }
+    const productData = {
+      productId: row.id,
+      sku: row.id,
+      itemNo: row.item_no,
+      name: row.title,
+      slug,
+      description: row.description,
+      shortDescription: row.description.slice(0, 200),
+      categoryId: rootId,
+      subcategoryId: leafId !== rootId ? leafId : null,
+      brandId: brand.id,
+      environmentId,
+      status: ProductStatus.ACTIVE,
+      deletedAt: null,
+      condition: row.condition,
+      googleCategory: row.google_product_category,
+      fbCategory: row.fb_product_category,
+      departmentSource: department,
+      variantGroupKey: variantIdentityById.get(row.id)?.groupKey ?? null,
+      variantLabel: variantIdentityById.get(row.id)?.label ?? null,
+      isVariantPrimary:
+        !variantIdentityById.get(row.id)?.groupKey ||
+        primaryIdByVariantGroup.get(variantIdentityById.get(row.id)!.groupKey!) ===
+          row.id,
+      gtin: row.gtin,
+    };
+
+    let productId: string;
+    if (existing) {
+      await tx.product.update({ where: { id: existing.id }, data: productData });
+      productId = existing.id;
+      await tx.productImage.deleteMany({ where: { productId } });
+      await tx.productVideo.deleteMany({ where: { productId } });
+      await tx.price.deleteMany({ where: { productId } });
+      await tx.productTag.deleteMany({ where: { productId } });
+      updated++;
+    } else {
+      const p = await tx.product.create({ data: productData });
+      productId = p.id;
+      created++;
+    }
+    importedProductIds.push(row.id);
+
+    if (images.length) {
+      await tx.productImage.createMany({
+        data: images.map((url, i) => ({
+          productId,
+          url,
+          isPrimary: i === 0,
+          sortOrder: i,
+          altText: row.title,
+        })),
+      });
+    }
+
+    if (row.video_url?.startsWith("http")) {
+      await tx.productVideo.create({
+        data: { productId, url: row.video_url, tag: row.video_tag },
+      });
+    }
+
+    await tx.price.createMany({
+      data: [
+        { productId, amount: row.price, currency: "QAR", type: "REGULAR" },
+        ...(row.sale_price
+          ? [
+              {
+                productId,
+                amount: row.sale_price,
+                currency: "QAR",
+                type: "SALE" as const,
+                saleStart: saleWindow.saleStart,
+                saleEnd: saleWindow.saleEnd,
+              },
+            ]
+          : []),
+      ],
+    });
+
+    const tagsBySlug = new Map(
+      row.product_tags
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+        .map((tagName) => [createCategorySlug(tagName), tagName])
+    );
+    for (const [tagSlug, tagName] of tagsBySlug) {
+      const tag = await tx.tag.upsert({
+        where: { slug: tagSlug },
+        create: { name: tagName, slug: tagSlug },
+        update: { name: tagName },
+      });
+      await tx.productTag.create({ data: { productId, tagId: tag.id } });
+    }
+
+    await tx.inventory.upsert({
+      where: { productId },
+      create: { productId, quantity: qty, isInStock },
+      update: { quantity: qty, isInStock },
+    });
+  }
 
   try {
+    for (let offset = 0; offset < parsed.rows.length; offset += BATCH_SIZE) {
+      const batch = parsed.rows.slice(offset, offset + BATCH_SIZE);
+      await prisma.$transaction(
+        async (tx) => {
+          for (const row of batch) {
+            await upsertOneRow(tx, row);
+          }
+        },
+        { maxWait: 20_000, timeout: 90_000 }
+      );
+      await yieldEventLoop(10);
+    }
+
     await prisma.$transaction(
       async (tx) => {
-        const importedProductIds: string[] = [];
-
-        for (const row of parsed.rows) {
-          currentRow = row;
-          const segments = rowCategorySegments(row);
-          const { rootId, leafId } = await upsertCategoryTree(
-            tx,
-            segments,
-            cache,
-            environmentId,
-            environmentSlug
-          );
-      const brandSlug = createCategorySlug(row.brand);
-          const brand = await tx.brand.upsert({
-        where: { slug: brandSlug },
-        create: { name: row.brand, slug: brandSlug },
-        update: { name: row.brand },
-      });
-
-      const slug = rowToProductSlug(row);
-      const images = rowImages(row);
-      const qty = row.quantity_to_sell_on_facebook ?? 10;
-      const isInStock = qty > 0 && row.availability.toLowerCase().includes("in stock");
-          const saleWindow = parseSaleWindow(row.sale_price_effective_date);
-
-          const existing = await tx.product.findUnique({ where: { productId: row.id } });
-          if (existing?.environmentId && existing.environmentId !== environmentId) {
-            throw new Error(`Product id ${row.id} already belongs to another catalogue`);
-          }
-      const productData = {
-        productId: row.id,
-        sku: row.id,
-        itemNo: row.item_no,
-        name: row.title,
-        slug,
-        description: row.description,
-        shortDescription: row.description.slice(0, 200),
-        categoryId: rootId,
-        subcategoryId: leafId !== rootId ? leafId : null,
-        brandId: brand.id,
-        environmentId,
-        status: ProductStatus.ACTIVE,
-            deletedAt: null,
-            condition: row.condition,
-        googleCategory: row.google_product_category,
-        fbCategory: row.fb_product_category,
-        departmentSource: department,
-        variantGroupKey: variantIdentityById.get(row.id)?.groupKey ?? null,
-        variantLabel: variantIdentityById.get(row.id)?.label ?? null,
-        isVariantPrimary:
-          !variantIdentityById.get(row.id)?.groupKey ||
-          primaryIdByVariantGroup.get(variantIdentityById.get(row.id)!.groupKey!) === row.id,
-        gtin: row.gtin,
-      };
-
-      let productId: string;
-      if (existing) {
-            await tx.product.update({ where: { id: existing.id }, data: productData });
-        productId = existing.id;
-            await tx.productImage.deleteMany({ where: { productId } });
-            await tx.productVideo.deleteMany({ where: { productId } });
-            await tx.price.deleteMany({ where: { productId } });
-            await tx.productTag.deleteMany({ where: { productId } });
-        updated++;
-      } else {
-            const p = await tx.product.create({ data: productData });
-        productId = p.id;
-        created++;
-      }
-          importedProductIds.push(row.id);
-
-      if (images.length) {
-            await tx.productImage.createMany({
-          data: images.map((url, i) => ({
-            productId,
-            url,
-            isPrimary: i === 0,
-            sortOrder: i,
-            altText: row.title,
-          })),
-        });
-      }
-
-      if (row.video_url?.startsWith("http")) {
-            await tx.productVideo.create({
-          data: { productId, url: row.video_url, tag: row.video_tag },
-        });
-      }
-
-          await tx.price.createMany({
-        data: [
-          { productId, amount: row.price, currency: "QAR", type: "REGULAR" },
-          ...(row.sale_price
-            ? [
-                {
-                  productId,
-                  amount: row.sale_price,
-                  currency: "QAR",
-                  type: "SALE" as const,
-                  saleStart: saleWindow.saleStart,
-                  saleEnd: saleWindow.saleEnd,
-                },
-              ]
-            : []),
-        ],
-      });
-
-          const tagsBySlug = new Map(
-            row.product_tags
-              .map((tag) => tag.trim())
-              .filter(Boolean)
-              .map((tagName) => [createCategorySlug(tagName), tagName])
-          );
-          for (const [tagSlug, tagName] of tagsBySlug) {
-            const tag = await tx.tag.upsert({
-              where: { slug: tagSlug },
-              create: { name: tagName, slug: tagSlug },
-              update: { name: tagName },
-            });
-            await tx.productTag.create({ data: { productId, tagId: tag.id } });
-          }
-
-          await tx.inventory.upsert({
-        where: { productId },
-        create: { productId, quantity: qty, isInStock },
-        update: { quantity: qty, isInStock },
-          });
-        }
-
         if (mode === "replace") {
           const archivedResult = await tx.product.updateMany({
             where: {
@@ -425,7 +443,6 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
           archived = archivedResult.count;
         }
 
-        // Every Excel row must be live after upsert (merge keeps other catalogue products).
         const importedLiveCount = await tx.product.count({
           where: {
             environmentId,
@@ -437,7 +454,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
         if (importedLiveCount !== importedProductIds.length) {
           throw new Error(
             `Import completeness check failed: Excel has ${importedProductIds.length} products to apply, ` +
-              `but only ${importedLiveCount} are live. Nothing was changed.`
+              `but only ${importedLiveCount} are live. Re-try Replace once.`
           );
         }
 
@@ -452,7 +469,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
           if (liveCount !== importedProductIds.length) {
             throw new Error(
               `Replace completeness check failed: expected ${importedProductIds.length} live products, ` +
-                `got ${liveCount}. Nothing was changed.`
+                `got ${liveCount}. Re-try Replace once.`
             );
           }
         }
@@ -471,7 +488,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
           }
         }
       },
-      { maxWait: 15_000, timeout: 180_000 }
+      { maxWait: 15_000, timeout: 60_000 }
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Product import failed";
@@ -548,5 +565,6 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
     canImport: true,
     errors: [],
     errorSummary: undefined,
+    preview: undefined,
   };
 }

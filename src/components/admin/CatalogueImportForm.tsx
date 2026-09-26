@@ -122,7 +122,22 @@ export function CatalogueImportForm({
         cache: "no-store",
       });
       if (!preview) setProgress("Refreshing admin + storefront + PDF cache…");
-      const data = (await response.json()) as ImportResult & { error?: string };
+      const rawText = await response.text();
+      let data: ImportResult & {
+        error?: string;
+        retryable?: boolean;
+        retryAfterSec?: number;
+      };
+      try {
+        data = JSON.parse(rawText) as typeof data;
+      } catch {
+        const looksHtml = /^\s*</.test(rawText);
+        throw new Error(
+          looksHtml
+            ? `Server timed out or crashed while saving (${response.status || "error"}). Keep this tab open and click Replace once more — large catalogues are saved in smaller batches now.`
+            : `Invalid server response (${response.status}). Try Replace again.`
+        );
+      }
       if (data.error) throw new Error(data.error);
 
       setResult(data);
