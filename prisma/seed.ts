@@ -129,8 +129,8 @@ async function importRow(
   const isInStock = row.availability.toLowerCase().includes("in stock");
   const qty = row.quantity_to_sell_on_facebook ?? (isInStock ? 10 : 0);
 
-  const existing = await prisma.product.findUnique({
-    where: { productId: row.id },
+  const existing = await prisma.product.findFirst({
+    where: { environmentId, productId: row.id },
   });
 
   const productData = {

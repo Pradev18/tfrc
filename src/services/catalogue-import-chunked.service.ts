@@ -437,14 +437,12 @@ async function bulkUpsertCatalogueRows(
   ]);
 
   const existing = await prisma.product.findMany({
-    where: { productId: { in: rows.map((r) => r.id) } },
+    where: {
+      environmentId: ctx.environmentId,
+      productId: { in: rows.map((r) => r.id) },
+    },
     select: { id: true, productId: true, environmentId: true },
   });
-  for (const product of existing) {
-    if (product.environmentId && product.environmentId !== ctx.environmentId) {
-      throw new Error(`Product id ${product.productId} already belongs to another catalogue`);
-    }
-  }
   const existingByCode = new Map(existing.map((p) => [p.productId, p]));
 
   const toCreate = rows.filter((r) => !existingByCode.has(r.id));
@@ -500,7 +498,10 @@ async function bulkUpsertCatalogueRows(
 
     // Re-resolve ids in case skipDuplicates skipped some
     const createdRows = await prisma.product.findMany({
-      where: { productId: { in: toCreate.map((r) => r.id) } },
+      where: {
+        environmentId: ctx.environmentId,
+        productId: { in: toCreate.map((r) => r.id) },
+      },
       select: { id: true, productId: true },
     });
     for (const row of createdRows) idByCode.set(row.productId, row.id);

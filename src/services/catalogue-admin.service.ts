@@ -103,10 +103,44 @@ export async function getCatalogueBySlug(slug: string) {
   return { ...env, config: buildConfigFromEnvironment(env) };
 }
 
+/**
+ * Catalogue display names and public URLs are unique.
+ * Product names and product URLs never block a new catalogue.
+ */
+async function assertCatalogueIdentityAvailable(input: {
+  name: string;
+  slug: string;
+  excludeId?: string;
+}) {
+  const name = input.name.trim();
+  const slug = input.slug.trim();
+  if (!name || !slug) throw new Error("Catalogue name and URL are required");
+
+  const catalogues = await prisma.environment.findMany({
+    where: input.excludeId ? { id: { not: input.excludeId } } : undefined,
+    select: { name: true, slug: true },
+  });
+
+  const sameName = catalogues.find(
+    (catalogue) => catalogue.name.trim().toLowerCase() === name.toLowerCase()
+  );
+  if (sameName) {
+    throw new Error(
+      `A catalogue named “${sameName.name}” already exists. Each catalogue name can be used only once. Product names are allowed to match.`
+    );
+  }
+
+  const sameSlug = catalogues.find((catalogue) => catalogue.slug === slug);
+  if (sameSlug) {
+    throw new Error(
+      `The catalogue URL /${slug} is already used by “${sameSlug.name}”. Choose a different catalogue URL. A product with this name does not block a new catalogue.`
+    );
+  }
+}
+
 export async function createCatalogue(input: CreateCatalogueInput, userId?: string) {
   const slug = input.slug ? slugify(input.slug) : slugify(input.name);
-  const existing = await prisma.environment.findUnique({ where: { slug } });
-  if (existing) throw new Error("A catalogue with this URL page name already exists");
+  await assertCatalogueIdentityAvailable({ name: input.name, slug });
 
   const maxOrder = await prisma.environment.aggregate({ _max: { sortOrder: true } });
   const settings = JSON.stringify({
@@ -174,11 +208,21 @@ export async function updateCatalogue(id: string, input: UpdateCatalogueInput, u
     ...(input.visuals ? { visuals: { ...(currentSettings.visuals as object), ...input.visuals } } : {}),
   };
 
+  const nextName = input.name !== undefined ? input.name.trim() : current.name;
+  const nextSlug = input.slug !== undefined ? slugify(input.slug) : current.slug;
+  if (input.name !== undefined || input.slug !== undefined) {
+    await assertCatalogueIdentityAvailable({
+      name: nextName,
+      slug: nextSlug,
+      excludeId: id,
+    });
+  }
+
   const env = await prisma.environment.update({
     where: { id },
     data: {
-      ...(input.name !== undefined ? { name: input.name.trim() } : {}),
-      ...(input.slug !== undefined ? { slug: slugify(input.slug) } : {}),
+      ...(input.name !== undefined ? { name: nextName } : {}),
+      ...(input.slug !== undefined ? { slug: nextSlug } : {}),
       ...(input.tagline !== undefined ? { tagline: input.tagline.trim() || null } : {}),
       ...(input.description !== undefined ? { description: input.description.trim() || null } : {}),
       ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl || null } : {}),

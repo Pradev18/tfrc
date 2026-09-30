@@ -95,55 +95,10 @@ export interface ImportCatalogueOptions {
   mode?: "merge" | "replace";
 }
 
-async function validateProductOwnership(
-  rows: Array<{ id: string; rowNumber: number }>,
-  environmentId: string
-) {
-  const conflicts = new Map<string, string>();
-  for (let offset = 0; offset < rows.length; offset += 500) {
-    const batchIds = rows.slice(offset, offset + 500).map((row) => row.id);
-    const existing = await prisma.product.findMany({
-      where: {
-        productId: { in: batchIds },
-        environmentId: { not: environmentId },
-      },
-      select: {
-        productId: true,
-        environment: { select: { name: true } },
-      },
-    });
-    for (const product of existing) {
-      conflicts.set(product.productId, product.environment?.name ?? "another catalogue");
-    }
-    // Keep storefront / other admin requests responsive during ownership scans.
-    await yieldEventLoop(offset > 0 && offset % 2000 === 0 ? 10 : 0);
-  }
-
-  return rows
-    .filter((row) => conflicts.has(row.id))
-    .map((row) => ({
-      row: row.rowNumber,
-      message:
-        `Template column id “${row.id}” is already used in “${conflicts.get(row.id)}”. ` +
-        "Each product ID can belong to only one catalogue. Import this file into that catalogue, " +
-        "or download the Meta template and give this catalogue new unique IDs.",
-    }));
-}
-
 function summarizeValidationErrors(
   errors: Array<{ row: number; message: string }>
 ): string | undefined {
   if (errors.length === 0) return undefined;
-  const ownership = errors.filter((error) => error.message.includes("already used in"));
-  if (ownership.length > 0) {
-    const match = ownership[0].message.match(/already used in “([^”]+)”/);
-    const catalogueName = match?.[1] ?? "another catalogue";
-    return (
-      `${ownership.length} product ID(s) already belong to “${catalogueName}”. ` +
-      "This Excel is not for a new catalogue. Open that existing catalogue and replace there, " +
-      "or download the Meta template and use new unique IDs."
-    );
-  }
   return `This Excel does not match the Meta catalogue template. First error: ${errors[0].message}`;
 }
 
@@ -156,14 +111,12 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
   const mode = options.mode === "replace" ? "replace" : "merge";
   const parsed = await parseExcelBufferAsync(buffer, department);
   await yieldEventLoop();
-  const ownershipErrors = await validateProductOwnership(parsed.rows, environmentId);
-  const validationErrors = [...parsed.errors, ...ownershipErrors].sort((a, b) => a.row - b.row);
+  const validationErrors = [...parsed.errors].sort((a, b) => a.row - b.row);
   const totalRows = parsed.rows.length + parsed.errors.length;
-  const validRows = Math.max(0, parsed.rows.length - ownershipErrors.length);
+  const validRows = parsed.rows.length;
   const invalidRows = validationErrors.length;
-  const conflictingRows = new Set(ownershipErrors.map((error) => error.row));
 
-  const importableRows = parsed.rows.filter((row) => !conflictingRows.has(row.rowNumber));
+  const importableRows = parsed.rows;
   const existingInCatalogue = await prisma.product.findMany({
     where: {
       environmentId,
@@ -310,10 +263,9 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
     const isInStock = qty > 0 && row.availability.toLowerCase().includes("in stock");
     const saleWindow = parseSaleWindow(row.sale_price_effective_date);
 
-    const existing = await tx.product.findUnique({ where: { productId: row.id } });
-    if (existing?.environmentId && existing.environmentId !== environmentId) {
-      throw new Error(`Product id ${row.id} already belongs to another catalogue`);
-    }
+    const existing = await tx.product.findFirst({
+      where: { environmentId, productId: row.id },
+    });
     const productData = {
       productId: row.id,
       sku: row.id,

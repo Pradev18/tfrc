@@ -112,7 +112,8 @@ export function CreateCatalogueWizard() {
           <label className="block">
             <span className="text-sm font-medium">URL page name</span>
             <span className="mt-1 block text-xs text-text-muted">
-              Public page address: /{form.slug || "your-catalogue"}
+              Public page address: /{form.slug || "your-catalogue"}. This URL must be new.
+              A product that already uses this name does not block the catalogue.
             </span>
             <input
               value={form.slug}

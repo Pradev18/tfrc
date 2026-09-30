@@ -219,12 +219,14 @@ model Tag {
 
 model Product {
   id               String                 @id @default(cuid())
-  productId        String                 @unique
-  sku              String                 @unique
+  /** Excel item code. Unique inside one catalogue; the same code may exist in another catalogue. */
+  productId        String
+  sku              String
   /** Excel serial_no — catalogue sequence for Serial no ↑/↓ and PDF order. */
   itemNo           Int?
   name             String
-  slug             String                 @unique
+  /** Unique inside one catalogue. Store URLs are /{catalogue}/product/{slug}. */
+  slug             String
   shortDescription String?
   description      String?
   environmentId    String?
@@ -280,6 +282,11 @@ model Product {
   @@index([environmentId, shopCategorySlug])
   @@index([environmentId, variantGroupKey, isVariantPrimary])
   @@index([environmentId, status, isVariantPrimary, deletedAt])
+  @@unique([environmentId, productId])
+  @@unique([environmentId, sku])
+  @@unique([environmentId, slug])
+  @@index([productId])
+  @@index([slug])
   @@index([environmentId, itemNo])
   @@schema("catalog")
 }
