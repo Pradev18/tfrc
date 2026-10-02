@@ -896,7 +896,9 @@ function tryPlaceCategoryStart(cursorY: number): {
 export function packCataloguePhysicalPages(
   payload: CataloguePdfPayload
 ): PhysicalPageLayout[] {
-  // Continuous serial stream — no category bands; fill each page with cards only.
+  // No category headers: serial / item-code order is one continuous sequence.
+  // Fill the existing 4×3 grid (12 cards) before the next page. Card size stays
+  // the same; only the last page of the sequence may hold fewer than 12.
   if (payload.categoryHeaders === false) {
     const allProducts = payload.categories.flatMap((category) => category.products);
     if (allProducts.length === 0) return [];
@@ -911,10 +913,7 @@ export function packCataloguePhysicalPages(
     };
 
     while (remainingRows.length > 0) {
-      const gridY = CATEGORY_TOP;
-      const maxRows = maxRowsFromGridY(gridY);
-      if (maxRows < 1) break;
-      const takenRows = remainingRows.splice(0, maxRows);
+      const takenRows = remainingRows.splice(0, PDF_ROWS);
       const products = takenRows.flat();
       pages.push({
         sections: [
@@ -923,8 +922,8 @@ export function packCataloguePhysicalPages(
             products,
             categoryPageIndex: pages.length,
             categoryPageCount: 0,
-            bandY: gridY,
-            gridY,
+            bandY: GRID_TOP,
+            gridY: GRID_TOP,
           },
         ],
       });

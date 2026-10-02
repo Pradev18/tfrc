@@ -43,14 +43,26 @@ export function UiSelect({
       const rect = buttonRef.current?.getBoundingClientRect();
       if (!rect) return;
       const margin = 8;
+      const gap = 4;
+      const width = Math.max(rect.width, 160);
+      // Measure the open menu so a short list stays attached to the button.
+      // Falling back to option count avoids jumping to the top of the page.
+      const measured = menuRef.current?.offsetHeight ?? 0;
+      const estimated = measured > 0 ? measured : Math.min(320, options.length * 46 + 16);
       const availableBelow = window.innerHeight - rect.bottom - margin;
       const availableAbove = rect.top - margin;
-      const maxHeight = Math.max(120, Math.min(320, Math.max(availableBelow, availableAbove)));
-      const opensAbove = availableBelow < 180 && availableAbove > availableBelow;
+      const opensAbove = estimated > availableBelow && availableAbove > availableBelow;
+      const maxHeight = Math.max(
+        120,
+        Math.min(320, opensAbove ? availableAbove - gap : availableBelow - gap)
+      );
+      const usedHeight = Math.min(estimated, maxHeight);
       setPosition({
-        left: Math.min(rect.left, window.innerWidth - Math.max(rect.width, 160) - margin),
-        top: opensAbove ? Math.max(margin, rect.top - maxHeight - margin) : rect.bottom + margin,
-        width: Math.max(rect.width, 160),
+        left: Math.min(Math.max(margin, rect.left), window.innerWidth - width - margin),
+        top: opensAbove
+          ? Math.max(margin, rect.top - usedHeight - gap)
+          : rect.bottom + gap,
+        width,
         maxHeight,
       });
     }
@@ -70,17 +82,19 @@ export function UiSelect({
     }
 
     placeMenu();
+    const frame = window.requestAnimationFrame(placeMenu);
     document.addEventListener("mousedown", closeOnOutside);
     document.addEventListener("keydown", closeOnEscape);
     window.addEventListener("resize", placeMenu);
     window.addEventListener("scroll", placeMenu, true);
     return () => {
+      window.cancelAnimationFrame(frame);
       document.removeEventListener("mousedown", closeOnOutside);
       document.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("resize", placeMenu);
       window.removeEventListener("scroll", placeMenu, true);
     };
-  }, [open]);
+  }, [open, options.length]);
 
   return (
     <>

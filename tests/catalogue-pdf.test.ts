@@ -314,18 +314,22 @@ describe("catalogue PDF links and assets", () => {
   });
 
   it("prints a flat serial stream without category section headers", () => {
-    const fixture = payload([4, 3, 5], { categoryHeaders: false });
+    const fixture = payload([25], { categoryHeaders: false });
     const packed = packCataloguePhysicalPages(fixture);
-    // All cards stay in one continuous stream — no mid-page category bands.
     expect(packed.every((page) => page.sections.length === 1)).toBe(true);
+    expect(packed.map((page) => page.sections[0]!.products.length)).toEqual([12, 12, 1]);
     expect(
       packed.flatMap((page) => page.sections.flatMap((s) => s.products)).map((p) => p.productId)
-    ).toEqual(
-      fixture.categories.flatMap((c) => c.products).map((p) => p.productId)
+    ).toEqual(fixture.categories[0]!.products.map((p) => p.productId));
+    expect(packed[0]!.sections[0]!.products.map((p) => p.productId)).toEqual(
+      Array.from({ length: 12 }, (_, i) => `SKU-${i + 1}`)
     );
+    expect(packed[1]!.sections[0]!.products[0]!.productId).toBe("SKU-13");
 
     const result = buildCataloguePdfDocument(fixture);
-    expect(result.stats.productCards).toBe(12);
-    expect(result.stats.pageCardCounts.reduce((a, b) => a + b, 0)).toBe(12);
+    expect(result.stats.pageCardCounts).toEqual([12, 12, 1]);
+    expect(result.stats.productCards).toBe(25);
+    // One WhatsApp link per product card; pagination must not drop them.
+    expect(result.stats.linkAnnotations).toBeGreaterThanOrEqual(25);
   });
 });
