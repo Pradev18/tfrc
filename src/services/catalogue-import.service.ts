@@ -99,7 +99,19 @@ function summarizeValidationErrors(
   errors: Array<{ row: number; message: string }>
 ): string | undefined {
   if (errors.length === 0) return undefined;
-  return `This Excel does not match the Meta catalogue template. First error: ${errors[0].message}`;
+  const first = errors[0]!;
+  const more =
+    errors.length > 1
+      ? ` (${errors.length - 1} more row problem${errors.length === 2 ? "" : "s"}.)`
+      : "";
+  if (
+    first.message.startsWith("This is not a supported Meta catalogue") ||
+    first.message.startsWith("The workbook") ||
+    first.message.startsWith("The selected worksheet")
+  ) {
+    return `${first.message}${more}`;
+  }
+  return `Row ${first.row}: ${first.message}${more}`;
 }
 
 export async function importCatalogueExcel(options: ImportCatalogueOptions) {

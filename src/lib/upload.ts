@@ -54,6 +54,57 @@ export function mediaPublicUrl(filename: string): string {
   return `/api/media/${encodeURIComponent(filename)}`;
 }
 
+const rememberedInDb = new Set<string>();
+
+/** Keep the file in Postgres. Hosting disk is wiped on redeploy; the database is not. */
+async function rememberInDatabase(
+  filename: string,
+  contentType: string,
+  buffer: Buffer
+): Promise<boolean> {
+  if (rememberedInDb.has(filename)) return true;
+  try {
+    const { default: prisma } = await import("@/lib/db");
+    await prisma.storedMedia.upsert({
+      where: { filename },
+      create: {
+        filename,
+        contentType,
+        bytes: buffer,
+        byteSize: buffer.length,
+      },
+      update: {
+        contentType,
+        bytes: buffer,
+        byteSize: buffer.length,
+      },
+    });
+    rememberedInDb.add(filename);
+    return true;
+  } catch (error) {
+    console.error("[upload] could not store image in the database:", error);
+    return false;
+  }
+}
+
+async function readFromDatabase(
+  filename: string
+): Promise<{ buffer: Buffer; contentType: string } | null> {
+  try {
+    const { default: prisma } = await import("@/lib/db");
+    const row = await prisma.storedMedia.findUnique({ where: { filename } });
+    if (!row?.bytes) return null;
+    rememberedInDb.add(filename);
+    return {
+      buffer: Buffer.from(row.bytes),
+      contentType: row.contentType || "application/octet-stream",
+    };
+  } catch (error) {
+    console.error("[upload] could not read image from the database:", error);
+    return null;
+  }
+}
+
 /** Flood-fill near-black pixels connected to image edges → transparent PNG. */
 async function stripEdgeBlackToPng(input: Buffer, threshold = 32): Promise<Buffer | null> {
   try {
@@ -158,6 +209,9 @@ export async function saveUploadedImage(file: File): Promise<string> {
 
   const filename = `${randomUUID()}.${extension}`;
 
+  // Database first. This is the copy that still exists after a hosting redeploy.
+  const stored = await rememberInDatabase(filename, mime, buffer);
+
   // Production path: Cloudflare R2 (CDN) — survives Hostinger redeploys and loads fast.
   if (isR2Configured()) {
     try {
@@ -184,7 +238,7 @@ export async function saveUploadedImage(file: File): Promise<string> {
     }
   }
 
-  if (!written) {
+  if (!written && !stored) {
     // Last-resort Hostinger fallback: keep small logos inside the database URL itself.
     if (buffer.length <= 450_000) {
       return `data:${mime};base64,${buffer.toString("base64")}`;
@@ -211,18 +265,27 @@ export async function readUploadedImage(
       await access(fullPath, fs.constants.R_OK);
       const buffer = await readFile(fullPath);
       const detected = detectImageType(buffer);
-      return {
-        buffer,
-        contentType:
-          detected?.mime ??
-          (extension === "jpg" || extension === "jpeg"
-            ? "image/jpeg"
-            : `image/${extension}`),
-      };
+      const contentType =
+        detected?.mime ??
+        (extension === "jpg" || extension === "jpeg" ? "image/jpeg" : `image/${extension}`);
+      await rememberInDatabase(safe, contentType, buffer);
+      return { buffer, contentType };
     } catch {
       /* try next */
     }
   }
 
-  return null;
+  const fromDb = await readFromDatabase(safe);
+  if (!fromDb) return null;
+
+  const cacheDir = uploadDirectories()[0];
+  if (cacheDir) {
+    try {
+      await mkdir(cacheDir, { recursive: true });
+      await writeFile(path.join(cacheDir, safe), fromDb.buffer);
+    } catch {
+      /* database copy is enough */
+    }
+  }
+  return fromDb;
 }

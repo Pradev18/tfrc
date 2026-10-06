@@ -498,6 +498,18 @@ model Media {
   @@schema("catalog")
 }
 
+/// Uploaded catalogue photos. Bytes live in Postgres so a hosting redeploy cannot delete them.
+model StoredMedia {
+  filename    String   @id
+  contentType String
+  bytes       Bytes
+  byteSize    Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@schema("catalog")
+}
+
 model Redirect {
   id         String   @id @default(cuid())
   fromPath   String   @unique

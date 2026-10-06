@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Lock } from "lucide-react";
 import { TfrcBrand } from "@/components/brand/TfrcBrand";
@@ -16,6 +17,7 @@ interface CataloguePortalCardProps {
 
 export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps) {
   const image = normalizeCatalogueImageSrc(portal.image);
+  const [imageFailed, setImageFailed] = useState(false);
 
   return (
     <Link
@@ -30,12 +32,13 @@ export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps)
         className="catalogue-logo catalogue-logo--landing relative h-28 w-28 sm:h-32 sm:w-32"
         data-catalogue={portal.slug}
       >
-        {image ? (
+        {image && !imageFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={image}
             alt={portal.displayName}
             className="catalogue-logo__img"
+            onError={() => setImageFailed(true)}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-3xl font-medium text-[#141414]/20">

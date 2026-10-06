@@ -44,8 +44,18 @@ export interface ParsedCatalog {
 function cellStr(value: unknown): string {
   if (value == null) return "";
   const s = String(value).trim();
-  if (s.startsWith("=")) return "";
-  return s;
+  if (!s.startsWith("=")) return s;
+  return httpUrl(s);
+}
+
+/** Pull an http(s) URL out of a plain cell, a hyperlink target, or an Excel HYPERLINK formula. */
+function httpUrl(value: unknown): string {
+  if (value == null) return "";
+  const raw = String(value).trim();
+  if (!raw) return "";
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  const match = raw.match(/https?:\/\/[^\s"')]+/i);
+  return match ? match[0] : "";
 }
 
 function normalizeHeader(header: string): string {
@@ -53,8 +63,64 @@ function normalizeHeader(header: string): string {
     .replace(/^\uFEFF/, "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/-/g, "_");
+    .replace(/[^\w.\[\]]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
+const ID_HEADERS = ["id", "product_id", "item_id", "item_code", "sku", "retailer_id"];
+const TITLE_HEADERS = ["title", "name", "product_name", "item_name"];
+const PRICE_HEADERS = ["price"];
+const IMAGE_HEADERS = ["image_link", "image_url", "image", "picture", "photo", "main_image"];
+
+function headerNames(row: unknown): string[] {
+  if (!Array.isArray(row)) return [];
+  return row.map((cell) => normalizeHeader(cell == null ? "" : String(cell)));
+}
+
+function isMetaHeaderRow(names: string[]): boolean {
+  const set = new Set(names.filter(Boolean));
+  return (
+    ID_HEADERS.some((name) => set.has(name)) &&
+    TITLE_HEADERS.some((name) => set.has(name)) &&
+    PRICE_HEADERS.some((name) => set.has(name)) &&
+    IMAGE_HEADERS.some((name) => set.has(name))
+  );
+}
+
+/**
+ * Meta files often put a title or instruction line above the real header.
+ * Find that header, then turn the following rows into objects. Excel row
+ * numbers stay accurate when `originRow` is the 1-based row of matrix[0].
+ */
+export function recordsFromSheetMatrix(
+  matrix: unknown[][],
+  originRow = 1
+): Record<string, unknown>[] {
+  if (matrix.length === 0) return [];
+  let headerIndex = 0;
+  const scan = Math.min(matrix.length, 40);
+  for (let i = 0; i < scan; i++) {
+    if (isMetaHeaderRow(headerNames(matrix[i]))) {
+      headerIndex = i;
+      break;
+    }
+  }
+
+  const headers = headerNames(matrix[headerIndex]);
+  const records: Record<string, unknown>[] = [];
+  for (let i = headerIndex + 1; i < matrix.length; i++) {
+    const cells = Array.isArray(matrix[i]) ? matrix[i] : [];
+    const record: Record<string, unknown> = { __excel_row: originRow + i };
+    headers.forEach((name, col) => {
+      if (!name) return;
+      const current = record[name];
+      if (current != null && current !== "") return;
+      record[name] = cells[col] ?? "";
+    });
+    records.push(record);
+  }
+  return records;
 }
 
 function normalizeRow(row: Record<string, unknown>): Record<string, unknown> {
@@ -110,24 +176,25 @@ function mapSheetRowsToCatalog(
     return { rows, errors, whatsappNumber };
   }
 
-  const headers = new Set(Object.keys(raw[0]!));
+  const headers = new Set(Object.keys(raw[0]!).filter((key) => key !== "__excel_row"));
   const requiredColumns = [
-    { label: "id", aliases: ["id", "product_id", "item_id"] },
-    { label: "title", aliases: ["title", "name", "product_name"] },
-    { label: "price", aliases: ["price"] },
-    { label: "image_link", aliases: ["image_link", "image_url"] },
+    { label: "id", aliases: ID_HEADERS },
+    { label: "title", aliases: TITLE_HEADERS },
+    { label: "price", aliases: PRICE_HEADERS },
+    { label: "image_link", aliases: IMAGE_HEADERS },
   ];
   const missing = requiredColumns
     .filter((column) => !column.aliases.some((alias) => headers.has(alias)))
     .map((column) => column.label);
   if (missing.length > 0) {
+    const found = [...headers].filter(Boolean).slice(0, 12).join(", ") || "(none)";
     return {
       rows: [],
       errors: [
         {
           row: 1,
           message:
-            `This is not a supported Meta catalogue Excel sheet. Missing required Meta columns: ${missing.join(", ")}.`,
+            `This is not a supported Meta catalogue Excel sheet. Missing required Meta columns: ${missing.join(", ")}. Columns found: ${found}.`,
         },
       ],
       whatsappNumber: null,
@@ -135,12 +202,15 @@ function mapSheetRowsToCatalog(
   }
 
   raw.forEach((row, index) => {
-    const rowNum = index + 2;
-    const id = cellStr(row.id || row.product_id || row.item_id);
-    const title = cellStr(row.title || row.name || row.product_name);
+    const marked = Number(row.__excel_row);
+    const rowNum = Number.isInteger(marked) && marked > 0 ? marked : index + 2;
+    const id = cellStr(row.id || row.product_id || row.item_id || row.item_code || row.sku);
+    const title = cellStr(row.title || row.name || row.product_name || row.item_name);
 
     const priceValue = cellStr(row.price);
-    const imageValue = cellStr(row.image_link || row.image_url);
+    const imageValue = httpUrl(
+      row.image_link || row.image_url || row.image || row.picture || row.photo || row.main_image
+    );
     const isBlankRow = !id && !title && !priceValue && !imageValue;
     if (isBlankRow) return;
     if (!id || !title) {
@@ -178,9 +248,14 @@ function mapSheetRowsToCatalog(
       whatsappNumber = extractPhoneFromWaLink(link);
     }
 
-    const imageLink = cellStr(row.image_link || row.image_url);
-    if (!imageLink || !imageLink.startsWith("http")) {
-      errors.push({ row: rowNum, message: `Missing valid image_link for ${id}` });
+    const imageLink = httpUrl(
+      row.image_link || row.image_url || row.image || row.picture || row.photo || row.main_image
+    );
+    if (!imageLink) {
+      errors.push({
+        row: rowNum,
+        message: `Missing a web image link (https://...) for ${id}. The image_link cell must be a URL.`,
+      });
       return;
     }
 
@@ -275,10 +350,25 @@ function decodeCatalogueSheetOffThread(
 
     worker.once(
       "message",
-      (message: { ok?: boolean; rows?: Record<string, unknown>[]; error?: string }) => {
+      (message: {
+        ok?: boolean;
+        rows?: Record<string, unknown>[];
+        matrix?: unknown[][];
+        originRow?: number;
+        error?: string;
+      }) => {
         if (settled) return;
         settled = true;
         finish();
+        if (message.ok && Array.isArray(message.matrix)) {
+          resolve(
+            recordsFromSheetMatrix(
+              message.matrix,
+              Number.isInteger(message.originRow) ? message.originRow : 1
+            )
+          );
+          return;
+        }
         if (!message.ok || !Array.isArray(message.rows)) {
           reject(new Error(message.error || "Catalogue Excel decoding failed."));
           return;
@@ -322,10 +412,27 @@ export function parseExcelBuffer(
       whatsappNumber: null,
     };
   }
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+  const range = sheet["!ref"] ? XLSX.utils.decode_range(sheet["!ref"]) : null;
+  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
     defval: "",
+    raw: true,
   });
-  return mapSheetRowsToCatalog(raw, departmentSource);
+  const withLinks = matrix.map((row, rowIndex) => {
+    if (!Array.isArray(row) || !range) return row;
+    return row.map((cell, colIndex) => {
+      const addr = XLSX.utils.encode_cell({
+        r: range.s.r + rowIndex,
+        c: range.s.c + colIndex,
+      });
+      const target = sheet[addr]?.l?.Target;
+      return typeof target === "string" && target.startsWith("http") ? target : cell;
+    });
+  });
+  return mapSheetRowsToCatalog(
+    recordsFromSheetMatrix(withLinks, range ? range.s.r + 1 : 1),
+    departmentSource
+  );
 }
 
 /** Production path: decode XLSX off the event loop, then map rows. */
