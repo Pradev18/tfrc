@@ -77,6 +77,13 @@ function rememberInMemory(filename: string, contentType: string, buffer: Buffer)
   memoryBytes += buffer.length;
 }
 
+/** Prisma Bytes expects a Uint8Array backed by a normal ArrayBuffer, not a Node Buffer. */
+function asStoredBytes(buffer: Buffer): Uint8Array<ArrayBuffer> {
+  const copy = new Uint8Array(buffer.byteLength);
+  copy.set(buffer);
+  return copy;
+}
+
 /** Keep the file in Postgres. Hosting disk is wiped on redeploy; the database is not. */
 async function rememberInDatabase(
   filename: string,
@@ -86,17 +93,18 @@ async function rememberInDatabase(
   if (rememberedInDb.has(filename)) return true;
   try {
     const { default: prisma } = await import("@/lib/db");
+    const bytes = asStoredBytes(buffer);
     await prisma.storedMedia.upsert({
       where: { filename },
       create: {
         filename,
         contentType,
-        bytes: buffer,
+        bytes,
         byteSize: buffer.length,
       },
       update: {
         contentType,
-        bytes: buffer,
+        bytes,
         byteSize: buffer.length,
       },
     });

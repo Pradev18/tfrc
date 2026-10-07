@@ -75,6 +75,9 @@ export function StoreHero({ config, slug, waHref, logoUrl }: StoreHeroProps) {
                 src={brandImage}
                 alt={`${config.displayName} Qatar`}
                 className="catalogue-logo__img"
+                decoding="sync"
+                loading="eager"
+                fetchPriority="high"
               />
             </div>
           ) : null}

@@ -34,7 +34,9 @@ export function CataloguePortalCard({ portal }: CataloguePortalCardProps) {
             src={image}
             alt=""
             className="catalogue-logo__img"
-            decoding="async"
+            decoding="sync"
+            loading="eager"
+            fetchPriority="high"
           />
         ) : (
           <div className="flex h-full items-center justify-center text-3xl font-medium text-[#141414]/20">

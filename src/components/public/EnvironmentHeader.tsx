@@ -111,6 +111,9 @@ export function EnvironmentHeader({
                       src={brandImage}
                       alt={environment.config.displayName}
                       className="catalogue-logo__img"
+                      decoding="sync"
+                      loading="eager"
+                      fetchPriority="high"
                     />
                   </span>
                 ) : (

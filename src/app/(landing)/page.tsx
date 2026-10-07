@@ -89,8 +89,21 @@ export default async function LandingPage() {
     ],
   };
 
+  const logoSources = [
+    ...new Set(
+      portals
+        .map((portal) => portal.image)
+        .filter((src) => src.startsWith("https://"))
+    ),
+  ];
+
   return (
     <>
+      <link rel="preconnect" href="https://pub-8f9c76c0cd304a4dbefccb7ee30896db.r2.dev" crossOrigin="anonymous" />
+      <link rel="dns-prefetch" href="https://pub-8f9c76c0cd304a4dbefccb7ee30896db.r2.dev" />
+      {logoSources.map((src) => (
+        <link key={src} rel="preload" as="image" href={src} fetchPriority="high" />
+      ))}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
