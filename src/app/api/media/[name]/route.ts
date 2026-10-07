@@ -14,7 +14,10 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   const file = await readUploadedImage(filename);
 
   if (!file) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Not found" },
+      { status: 404, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   return new NextResponse(new Uint8Array(file.buffer), {

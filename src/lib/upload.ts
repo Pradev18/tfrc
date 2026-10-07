@@ -55,6 +55,27 @@ export function mediaPublicUrl(filename: string): string {
 }
 
 const rememberedInDb = new Set<string>();
+const MEMORY_BUDGET = 48 * 1024 * 1024;
+const memoryImages = new Map<string, { buffer: Buffer; contentType: string }>();
+let memoryBytes = 0;
+
+function rememberInMemory(filename: string, contentType: string, buffer: Buffer) {
+  const existing = memoryImages.get(filename);
+  if (existing) {
+    memoryBytes -= existing.buffer.length;
+    memoryImages.delete(filename);
+  }
+  while (memoryBytes + buffer.length > MEMORY_BUDGET && memoryImages.size > 0) {
+    const oldest = memoryImages.keys().next().value;
+    if (!oldest) break;
+    const item = memoryImages.get(oldest);
+    memoryImages.delete(oldest);
+    if (item) memoryBytes -= item.buffer.length;
+  }
+  if (buffer.length > MEMORY_BUDGET) return;
+  memoryImages.set(filename, { buffer, contentType });
+  memoryBytes += buffer.length;
+}
 
 /** Keep the file in Postgres. Hosting disk is wiped on redeploy; the database is not. */
 async function rememberInDatabase(
@@ -105,88 +126,12 @@ async function readFromDatabase(
   }
 }
 
-/** Flood-fill near-black pixels connected to image edges → transparent PNG. */
-async function stripEdgeBlackToPng(input: Buffer, threshold = 32): Promise<Buffer | null> {
-  try {
-    const sharp = (await import("sharp")).default;
-    const { data, info } = await sharp(input)
-      .ensureAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-
-    const { width, height, channels } = info;
-    if (channels < 4) return null;
-
-    const visited = new Uint8Array(width * height);
-    const queue: number[] = [];
-
-    const isNearBlack = (i: number) => {
-      const o = i * 4;
-      const a = data[o + 3];
-      if (a < 8) return true;
-      return data[o] <= threshold && data[o + 1] <= threshold && data[o + 2] <= threshold;
-    };
-
-    const push = (x: number, y: number) => {
-      if (x < 0 || y < 0 || x >= width || y >= height) return;
-      const i = y * width + x;
-      if (visited[i]) return;
-      if (!isNearBlack(i)) return;
-      visited[i] = 1;
-      queue.push(i);
-    };
-
-    for (let x = 0; x < width; x++) {
-      push(x, 0);
-      push(x, height - 1);
-    }
-    for (let y = 0; y < height; y++) {
-      push(0, y);
-      push(width - 1, y);
-    }
-
-    let cleared = 0;
-    while (queue.length) {
-      const i = queue.pop()!;
-      const o = i * 4;
-      data[o] = 0;
-      data[o + 1] = 0;
-      data[o + 2] = 0;
-      data[o + 3] = 0;
-      cleared++;
-      const x = i % width;
-      const y = (i / width) | 0;
-      push(x + 1, y);
-      push(x - 1, y);
-      push(x, y + 1);
-      push(x, y - 1);
-    }
-
-    // Only rewrite when a meaningful edge black field was removed.
-    if (cleared < width * height * 0.02) return null;
-
-    const pad = Math.max(8, Math.round(Math.max(width, height) * 0.07));
-    return sharp(data, { raw: { width, height, channels: 4 } })
-      .extend({
-        top: pad,
-        bottom: pad,
-        left: pad,
-        right: pad,
-        background: { r: 0, g: 0, b: 0, alpha: 0 },
-      })
-      .png()
-      .toBuffer();
-  } catch {
-    return null;
-  }
-}
-
 export async function saveUploadedImage(file: File): Promise<string> {
   if (file.size === 0 || file.size > MAX_BYTES) {
     throw new Error("Image must be under 5 MB");
   }
 
-  let buffer: Buffer<ArrayBufferLike> = Buffer.from(await file.arrayBuffer());
+  const buffer = Buffer.from(await file.arrayBuffer());
   const detected = detectImageType(buffer);
   if (!detected) {
     throw new Error("Only JPEG, PNG, WebP, or GIF images are allowed");
@@ -198,45 +143,45 @@ export async function saveUploadedImage(file: File): Promise<string> {
     throw new Error("Only JPEG, PNG, WebP, or GIF images are allowed");
   }
 
-  const stripped = await stripEdgeBlackToPng(buffer);
-  let extension = detected.extension;
-  let mime = detected.mime;
-  if (stripped) {
-    buffer = stripped;
-    extension = "png";
-    mime = "image/png";
-  }
-
+  const extension = detected.extension;
+  const mime = detected.mime;
   const filename = `${randomUUID()}.${extension}`;
+  rememberInMemory(filename, mime, buffer);
 
-  // Database first. This is the copy that still exists after a hosting redeploy.
-  const stored = await rememberInDatabase(filename, mime, buffer);
+  const diskWrite = (async () => {
+    let written = false;
+    const errors: string[] = [];
+    await Promise.all(
+      uploadDirectories().map(async (dir) => {
+        try {
+          await mkdir(dir, { recursive: true });
+          await writeFile(path.join(dir, filename), buffer);
+          written = true;
+        } catch (error) {
+          errors.push(`${dir}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      })
+    );
+    return { written, errors };
+  })();
 
-  // Production path: Cloudflare R2 (CDN) — survives Hostinger redeploys and loads fast.
-  if (isR2Configured()) {
-    try {
-      return await uploadBufferToR2({
+  const databaseWrite = rememberInDatabase(filename, mime, buffer);
+  const cloudWrite = isR2Configured()
+    ? uploadBufferToR2({
         key: `uploads/${filename}`,
         body: buffer,
         contentType: mime,
-      });
-    } catch (error) {
-      console.error("[upload] R2 upload failed, falling back to disk:", error);
-    }
-  }
+      }).catch((error: unknown) => {
+        console.error("[upload] Cloudflare upload failed, keeping the database copy:", error);
+        return null;
+      })
+    : Promise.resolve(null);
 
-  let written = false;
-  const errors: string[] = [];
+  const [disk, stored, cloudUrl] = await Promise.all([diskWrite, databaseWrite, cloudWrite]);
+  if (cloudUrl) return cloudUrl;
 
-  for (const dir of uploadDirectories()) {
-    try {
-      await mkdir(dir, { recursive: true });
-      await writeFile(path.join(dir, filename), buffer);
-      written = true;
-    } catch (error) {
-      errors.push(`${dir}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
+  const written = disk.written;
+  const errors = disk.errors;
 
   if (!written && !stored) {
     // Last-resort Hostinger fallback: keep small logos inside the database URL itself.
@@ -259,6 +204,9 @@ export async function readUploadedImage(
   const extension = safe.split(".").pop()?.toLowerCase() ?? "";
   if (!ALLOWED_EXTENSIONS.has(extension)) return null;
 
+  const cached = memoryImages.get(safe);
+  if (cached) return cached;
+
   for (const dir of uploadDirectories()) {
     const fullPath = path.join(dir, safe);
     try {
@@ -268,7 +216,8 @@ export async function readUploadedImage(
       const contentType =
         detected?.mime ??
         (extension === "jpg" || extension === "jpeg" ? "image/jpeg" : `image/${extension}`);
-      await rememberInDatabase(safe, contentType, buffer);
+      rememberInMemory(safe, contentType, buffer);
+      void rememberInDatabase(safe, contentType, buffer);
       return { buffer, contentType };
     } catch {
       /* try next */
@@ -277,6 +226,7 @@ export async function readUploadedImage(
 
   const fromDb = await readFromDatabase(safe);
   if (!fromDb) return null;
+  rememberInMemory(safe, fromDb.contentType, fromDb.buffer);
 
   const cacheDir = uploadDirectories()[0];
   if (cacheDir) {

@@ -1,15 +1,12 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 export function isR2Configured(): boolean {
-  return (
-    (process.env.MEDIA_STORAGE || "").toLowerCase() === "r2" &&
-    Boolean(
-      process.env.R2_ACCOUNT_ID?.trim() &&
-        process.env.R2_ACCESS_KEY_ID?.trim() &&
-        process.env.R2_SECRET_ACCESS_KEY?.trim() &&
-        process.env.R2_BUCKET?.trim() &&
-        process.env.R2_PUBLIC_URL?.trim()
-    )
+  return Boolean(
+    process.env.R2_ACCOUNT_ID?.trim() &&
+      process.env.R2_ACCESS_KEY_ID?.trim() &&
+      process.env.R2_SECRET_ACCESS_KEY?.trim() &&
+      process.env.R2_BUCKET?.trim() &&
+      process.env.R2_PUBLIC_URL?.trim()
   );
 }
 

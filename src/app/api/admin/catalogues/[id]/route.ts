@@ -40,7 +40,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     const previous = await getCatalogueById(id);
     const env = await updateCatalogue(id, body, session!.user?.id);
     await touchSiteRevision();
-    await persistRuntimeCatalogueDataSafely();
+    void persistRuntimeCatalogueDataSafely();
     revalidatePath("/", "layout");
     if (previous?.slug) {
       revalidatePath(`/${previous.slug}`);

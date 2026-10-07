@@ -27,6 +27,7 @@ export function EditCatalogueForm({ catalogue }: EditCatalogueFormProps) {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [localPreview, setLocalPreview] = useState("");
   const [form, setForm] = useState({
     name: catalogue.name,
     slug: catalogue.slug,
@@ -110,15 +111,16 @@ export function EditCatalogueForm({ catalogue }: EditCatalogueFormProps) {
 
   async function handleImageChange(file: File | undefined) {
     if (!file) return;
+    const preview = URL.createObjectURL(file);
+    setLocalPreview(preview);
     setUploading(true);
     setError("");
-    setMessage("Uploading image…");
+    setMessage("");
     try {
       const url = await uploadImage(file);
       const nextForm = { ...form, logoUrl: url };
       setForm(nextForm);
-      setMessage("Image uploaded — saving catalogue…");
-      await saveCatalogue(nextForm, "Image applied — admin + home page updated");
+      await saveCatalogue(nextForm, "Logo saved");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Image upload failed");
       setMessage("");
@@ -202,9 +204,12 @@ export function EditCatalogueForm({ catalogue }: EditCatalogueFormProps) {
             e.target.value = "";
           }}
         />
-        {form.logoUrl && (
+        {(localPreview || form.logoUrl) && (
           <div className="relative mt-3 h-36 w-36 overflow-hidden rounded-xl border bg-white">
-            <CatalogueImage src={form.logoUrl} className="h-full w-full bg-white object-cover" />
+            <CatalogueImage
+              src={localPreview || form.logoUrl}
+              className="h-full w-full bg-white object-cover"
+            />
           </div>
         )}
         {uploading && <p className="mt-2 text-xs text-text-muted">Uploading & applying image…</p>}

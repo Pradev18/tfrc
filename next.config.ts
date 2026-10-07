@@ -42,6 +42,10 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "pub-48a60a3633b2416d8d515c0e0574569c.r2.dev",
       },
+      {
+        protocol: "https",
+        hostname: "pub-8f9c76c0cd304a4dbefccb7ee30896db.r2.dev",
+      },
     ],
   },
   async headers() {

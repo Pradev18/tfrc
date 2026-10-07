@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { Lock } from "lucide-react";
 import { TfrcBrand } from "@/components/brand/TfrcBrand";
@@ -12,18 +11,15 @@ import { useT } from "@/context/LanguageContext";
 
 interface CataloguePortalCardProps {
   portal: LandingPortal;
-  index: number;
 }
 
-export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps) {
+export function CataloguePortalCard({ portal }: CataloguePortalCardProps) {
   const image = normalizeCatalogueImageSrc(portal.image);
-  const [imageFailed, setImageFailed] = useState(false);
 
   return (
     <Link
       href={`/${portal.slug}`}
-      className="landing-portal-card group landing-fade-up flex w-32 flex-col items-center sm:w-36"
-      style={{ animationDelay: `${index * 0.07}s` }}
+      className="landing-portal-card group flex w-32 flex-col items-center sm:w-36"
       aria-label={
         portal.isLocked ? `${portal.displayName} (locked)` : portal.displayName
       }
@@ -32,13 +28,13 @@ export function CataloguePortalCard({ portal, index }: CataloguePortalCardProps)
         className="catalogue-logo catalogue-logo--landing relative h-28 w-28 sm:h-32 sm:w-32"
         data-catalogue={portal.slug}
       >
-        {image && !imageFailed ? (
+        {image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={image}
-            alt={portal.displayName}
+            alt=""
             className="catalogue-logo__img"
-            onError={() => setImageFailed(true)}
+            decoding="async"
           />
         ) : (
           <div className="flex h-full items-center justify-center text-3xl font-medium text-[#141414]/20">
@@ -87,8 +83,8 @@ export function LandingHero({ waHref, portals = LANDING_PORTALS }: LandingHeroPr
         </div>
 
         <div id="catalogues" className="landing-portal-grid mx-auto mt-8 md:mt-10">
-          {portals.map((portal, i) => (
-            <CataloguePortalCard key={portal.slug} portal={portal} index={i} />
+          {portals.map((portal) => (
+            <CataloguePortalCard key={portal.slug} portal={portal} />
           ))}
         </div>
 
