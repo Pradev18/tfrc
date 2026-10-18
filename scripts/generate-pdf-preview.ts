@@ -3,7 +3,7 @@
  *
  * Usage:
  *   npx tsx scripts/generate-pdf-preview.ts
- *   npx tsx scripts/generate-pdf-preview.ts <slug-or-id>
+ *   npx tsx scripts/generate-pdf-preview.ts <slug-or-id> --serial-flat
  *
  * Resolves any active catalogue by id/slug. Never invents Sample Product data.
  * The same renderer is used for every catalogue — only DB-driven content changes.
@@ -63,9 +63,13 @@ async function main() {
   }
 
   try {
-    const arg = process.argv[2];
+    const serialFlat = process.argv.includes("--serial-flat");
+    const arg = process.argv.slice(2).find((value) => !value.startsWith("--"));
     const catalogueId = await resolveCatalogueId(arg);
-    const payload = await getCataloguePdfPayload(catalogueId);
+    const payload = await getCataloguePdfPayload(
+      catalogueId,
+      serialFlat ? { sort: "serial_no_asc", categoryHeaders: false } : undefined
+    );
     if (!payload) {
       throw new Error(`getCataloguePdfPayload returned null for ${catalogueId}`);
     }
@@ -97,7 +101,7 @@ async function main() {
 
     const out = resolve(
       process.cwd(),
-      `tmp-${stats.catalogueSlug}-product-brochure.pdf`
+      `tmp-${stats.catalogueSlug}-product-brochure${serialFlat ? "-serial-flat" : ""}.pdf`
     );
     writeFileSync(out, Buffer.from(pdf));
 

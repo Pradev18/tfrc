@@ -95,6 +95,8 @@ export interface CataloguePdfPayload {
   cta: string;
   /** When false, brochure omits category bands and prints a continuous card stream. */
   categoryHeaders: boolean;
+  /** Selected ordering, used to choose the serial-only flat page layout. */
+  sort: CataloguePdfSort;
   categories: CataloguePdfCategory[];
 }
 
@@ -727,6 +729,7 @@ export async function getCataloguePdfPayload(
     surface: visual.sectionAlt,
     cta: visual.cta,
     categoryHeaders: filters.categoryHeaders,
+    sort: filters.sort,
     categories,
   };
 }

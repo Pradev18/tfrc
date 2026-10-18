@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildCataloguePdfDocument,
   chunkCatalogueProducts,
@@ -67,6 +67,7 @@ function payload(
     surface: "#f5f8f6",
     cta: "#1b4332",
     categoryHeaders: true,
+    sort: "serial_no_asc",
     categories,
     ...overrides,
   };
@@ -305,6 +306,31 @@ describe("catalogue PDF links and assets", () => {
     expect(result.stats.renderedFallbacks).toBe(0);
   });
 
+  it("recovers a product image after the normal fetch attempts time out", async () => {
+    const fixture = payload([1]);
+    const url = `https://images.example.test/slow-${Date.now()}.png`;
+    fixture.categories[0]!.products[0]!.imageUrl = url;
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error("The operation was aborted due to timeout"))
+      .mockRejectedValueOnce(new Error("The operation was aborted due to timeout"))
+      .mockRejectedValueOnce(new Error("The operation was aborted due to timeout"))
+      .mockResolvedValueOnce(new Response(Buffer.from(TINY_PNG.split(",")[1]!, "base64"), {
+        status: 200,
+        headers: { "Content-Type": "image/png" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await assembleCataloguePdfDocument(fixture, {
+        origin: "https://example.test",
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      expect(result.stats.embeddedProductImages).toBe(1);
+      expect(result.stats.fallbackProductImages).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("emits true A4 pages and never contains browser print code", () => {
     const result = buildCataloguePdfDocument(payload([1]));
     const source = pdfSource(result.bytes);
@@ -313,23 +339,52 @@ describe("catalogue PDF links and assets", () => {
     expect(source).not.toContain("setTimeout");
   });
 
-  it("prints a flat serial stream without category section headers", () => {
+  it("prints a flat serial stream in four rows without category section headers", () => {
     const fixture = payload([25], { categoryHeaders: false });
     const packed = packCataloguePhysicalPages(fixture);
     expect(packed.every((page) => page.sections.length === 1)).toBe(true);
-    expect(packed.map((page) => page.sections[0]!.products.length)).toEqual([12, 12, 1]);
+    expect(packed.map((page) => page.sections[0]!.products.length)).toEqual([16, 9]);
     expect(
       packed.flatMap((page) => page.sections.flatMap((s) => s.products)).map((p) => p.productId)
     ).toEqual(fixture.categories[0]!.products.map((p) => p.productId));
     expect(packed[0]!.sections[0]!.products.map((p) => p.productId)).toEqual(
-      Array.from({ length: 12 }, (_, i) => `SKU-${i + 1}`)
+      Array.from({ length: 16 }, (_, i) => `SKU-${i + 1}`)
     );
-    expect(packed[1]!.sections[0]!.products[0]!.productId).toBe("SKU-13");
+    expect(packed[1]!.sections[0]!.products[0]!.productId).toBe("SKU-17");
 
     const result = buildCataloguePdfDocument(fixture);
-    expect(result.stats.pageCardCounts).toEqual([12, 12, 1]);
+    expect(result.stats.pageCardCounts).toEqual([16, 9]);
     expect(result.stats.productCards).toBe(25);
     // One WhatsApp link per product card; pagination must not drop them.
     expect(result.stats.linkAnnotations).toBeGreaterThanOrEqual(25);
+  });
+
+  it.each([
+    [12, [12]],
+    [16, [16]],
+    [24, [16, 8]],
+    [32, [16, 16]],
+    [33, [16, 16, 1]],
+    [445, [...Array(27).fill(16), 13]],
+  ])("paginates %i serial cards as %j", (count, expected) => {
+    const fixture = payload([count], { categoryHeaders: false });
+    const pages = packCataloguePhysicalPages(fixture);
+    expect(pages.map((page) => page.sections[0]!.products.length)).toEqual(expected);
+    expect(pages.flatMap((page) => page.sections[0]!.products.map((p) => p.productId))).toEqual(
+      fixture.categories[0]!.products.map((p) => p.productId)
+    );
+    const result = buildCataloguePdfDocument(fixture);
+    expect(result.stats.pageCardCounts).toEqual(expected);
+    expect(result.stats.pageCount).toBe(expected.length + 1); // cover page
+    expect(physicalPageCount(result.bytes)).toBe(expected.length + 1);
+    expect(result.stats.linkAnnotations).toBe(count + 2);
+  }, 30_000);
+
+  it("keeps non-serial flat sorts on the existing three-row layout", () => {
+    const fixture = payload([16], {
+      categoryHeaders: false,
+      sort: "item_code_asc",
+    });
+    expect(packCataloguePhysicalPages(fixture).map((page) => page.sections[0]!.products.length)).toEqual([12, 4]);
   });
 });

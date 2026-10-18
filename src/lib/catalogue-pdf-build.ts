@@ -1,6 +1,9 @@
 import type { CataloguePdfPayload } from "@/services/catalogue-pdf.service";
 import { buildCataloguePdfDocument } from "@/lib/catalogue-pdf-document";
-import { embedCatalogueImages } from "@/lib/catalogue-pdf-images";
+import {
+  embedCatalogueImages,
+  isRetryableCatalogueImageFailure,
+} from "@/lib/catalogue-pdf-images";
 import { getSiteUrl } from "@/lib/site-config";
 
 /**
@@ -52,6 +55,19 @@ export async function assembleCataloguePdfDocument(
   ]);
   const embedded = firstPass.embedded;
   const failures = firstPass.failures;
+
+  // Retry only temporary primary-image failures with a longer timeout and
+  // lower concurrency. Successful images remain cached and are not fetched again.
+  const retryablePrimaryUrls = products
+    .map((product) => candidateUrls.get(product.id)?.[0])
+    .filter((url): url is string =>
+      Boolean(url && !embedded.has(url) && isRetryableCatalogueImageFailure(failures.get(url) ?? ""))
+    );
+  if (retryablePrimaryUrls.length > 0) {
+    const recovery = await embedCatalogueImages(retryablePrimaryUrls, { recovery: true });
+    for (const [url, dataUri] of recovery.embedded) embedded.set(url, dataUri);
+    for (const [url, reason] of recovery.failures) failures.set(url, reason);
+  }
 
   // If a primary image is permanently unavailable, try the product's remaining
   // images in order. Only unresolved products trigger extra network work.

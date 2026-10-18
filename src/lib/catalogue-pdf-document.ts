@@ -9,6 +9,7 @@ export const PDF_PRODUCTS_PER_PAGE = 12;
 export const PDF_COLS = 4;
 /** Design baseline rows on a fresh page (capacity target, not a hard page rule). */
 export const PDF_ROWS = 3;
+const SERIAL_FLAT_ROWS = 4;
 
 const PAGE_WIDTH = 210;
 const PAGE_HEIGHT = 297;
@@ -726,7 +727,8 @@ function drawProductCard(
     fallbacks: number;
     productImages: number;
     productFallbacks: number;
-  }
+  },
+  serialFlat = false
 ) {
   doc.setFillColor(255, 255, 255);
   doc.setDrawColor(...colors.line);
@@ -794,14 +796,17 @@ function drawProductCard(
   cursorY += 2.9;
 
   if (product.availableSizes.length > 0) {
-    const sizes = ellipsiseLine(
-      `Sizes: ${product.availableSizes.map(normalisePdfText).join(", ")}`,
-      44
-    );
+    const sizes = `Sizes: ${product.availableSizes.map(normalisePdfText).join(", ")}`;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(5.4);
     doc.setTextColor(...colors.cta);
-    doc.text(sizes, bodyX, cursorY);
+    if (serialFlat) {
+      doc.text(fittedLines(doc, sizes, bodyWidth, 2), bodyX, cursorY, {
+        lineHeightFactor: 1.05,
+      });
+    } else {
+      doc.text(ellipsiseLine(sizes, 44), bodyX, cursorY);
+    }
   }
 
   const buttonHeight = 5.8;
@@ -897,8 +902,8 @@ export function packCataloguePhysicalPages(
   payload: CataloguePdfPayload
 ): PhysicalPageLayout[] {
   // No category headers: serial / item-code order is one continuous sequence.
-  // Fill the existing 4×3 grid (12 cards) before the next page. Card size stays
-  // the same; only the last page of the sequence may hold fewer than 12.
+  // Serial order uses four rows in the space freed by the missing category band.
+  // Other flat sort selections retain the existing three-row layout.
   if (payload.categoryHeaders === false) {
     const allProducts = payload.categories.flatMap((category) => category.products);
     if (allProducts.length === 0) return [];
@@ -912,8 +917,13 @@ export function packCataloguePhysicalPages(
       products: allProducts,
     };
 
+    const serialLayout =
+      payload.sort === "serial_no_asc" || payload.sort === "serial_no_desc";
+    const rowsPerPage = serialLayout ? SERIAL_FLAT_ROWS : PDF_ROWS;
+    const gridY = serialLayout ? CATEGORY_TOP : GRID_TOP;
+
     while (remainingRows.length > 0) {
-      const takenRows = remainingRows.splice(0, PDF_ROWS);
+      const takenRows = remainingRows.splice(0, rowsPerPage);
       const products = takenRows.flat();
       pages.push({
         sections: [
@@ -922,8 +932,8 @@ export function packCataloguePhysicalPages(
             products,
             categoryPageIndex: pages.length,
             categoryPageCount: 0,
-            bandY: GRID_TOP,
-            gridY: GRID_TOP,
+            bandY: gridY,
+            gridY,
           },
         ],
       });
@@ -1074,7 +1084,9 @@ export function buildCataloguePdfDocument(
           PAGE_MARGIN + column * (CARD_WIDTH + GRID_GAP),
           section.gridY + row * (CARD_HEIGHT + GRID_GAP),
           colors,
-          counters
+          counters,
+          payload.categoryHeaders === false &&
+            (payload.sort === "serial_no_asc" || payload.sort === "serial_no_desc")
         );
       });
     }

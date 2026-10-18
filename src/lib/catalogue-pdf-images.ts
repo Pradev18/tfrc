@@ -7,10 +7,21 @@ const MAX_SOURCE_BYTES = 20_000_000;
 const FETCH_TIMEOUT_MS = 12_000;
 const FETCH_ATTEMPTS = 3;
 const CONCURRENCY = 6;
+const RECOVERY_TIMEOUT_MS = 30_000;
+const RECOVERY_ATTEMPTS = 2;
+const RECOVERY_CONCURRENCY = 2;
 const MEMORY_CACHE_MAX = 600;
 const DISK_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const cache = new Map<string, string>();
 const inFlight = new Map<string, Promise<string>>();
+
+export interface CatalogueImageEmbeddingOptions {
+  recovery?: boolean;
+}
+
+export function isRetryableCatalogueImageFailure(reason: string): boolean {
+  return /timeout|timed out|aborted|fetch failed|network|temporary image server error/i.test(reason);
+}
 
 export interface CatalogueImageEmbeddingResult {
   embedded: Map<string, string>;
@@ -125,13 +136,15 @@ async function readLocalMedia(url: string): Promise<Buffer | null> {
   return file?.buffer ?? null;
 }
 
-async function fetchRemoteBuffer(url: string): Promise<Buffer> {
+async function fetchRemoteBuffer(url: string, recovery: boolean): Promise<Buffer> {
   let lastError: Error | null = null;
+  const attempts = recovery ? RECOVERY_ATTEMPTS : FETCH_ATTEMPTS;
+  const timeoutMs = recovery ? RECOVERY_TIMEOUT_MS : FETCH_TIMEOUT_MS;
 
-  for (let attempt = 1; attempt <= FETCH_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       const response = await fetch(url, {
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
         redirect: "follow",
         headers: {
           Accept: "image/jpeg,image/png,image/webp,image/gif,image/*;q=0.8",
@@ -161,7 +174,7 @@ async function fetchRemoteBuffer(url: string): Promise<Buffer> {
       const permanent =
         /HTTP 4\d\d/.test(lastError.message) &&
         !/HTTP (408|429)/.test(lastError.message);
-      if (permanent || attempt === FETCH_ATTEMPTS) break;
+      if (permanent || attempt === attempts) break;
       await new Promise((resolve) => setTimeout(resolve, 300 * 2 ** (attempt - 1)));
     }
   }
@@ -169,7 +182,7 @@ async function fetchRemoteBuffer(url: string): Promise<Buffer> {
   throw lastError ?? new Error("image download failed");
 }
 
-async function acquireImageAsDataUri(url: string): Promise<string> {
+async function acquireImageAsDataUri(url: string, recovery: boolean): Promise<string> {
   const cached = cache.get(url);
   if (cached) return remember(url, cached);
 
@@ -189,33 +202,35 @@ async function acquireImageAsDataUri(url: string): Promise<string> {
     return remember(url, toDataUri(normalised, "image/jpeg"));
   }
 
-  const source = await fetchRemoteBuffer(url);
+  const source = await fetchRemoteBuffer(url, recovery);
   const normalised = await normaliseForPdf(source);
   await writeDiskCache(url, normalised);
   return remember(url, toDataUri(normalised, "image/jpeg"));
 }
 
-async function fetchImageAsDataUri(url: string): Promise<string> {
+async function fetchImageAsDataUri(url: string, recovery: boolean): Promise<string> {
   const existing = inFlight.get(url);
   if (existing) return existing;
-  const request = acquireImageAsDataUri(url).finally(() => inFlight.delete(url));
+  const request = acquireImageAsDataUri(url, recovery).finally(() => inFlight.delete(url));
   inFlight.set(url, request);
   return request;
 }
 
 export async function embedCatalogueImages(
-  urls: Array<string | null>
+  urls: Array<string | null>,
+  options: CatalogueImageEmbeddingOptions = {}
 ): Promise<CatalogueImageEmbeddingResult> {
   const unique = [...new Set(urls.filter((url): url is string => Boolean(url)))];
   const embedded = new Map<string, string>();
   const failures = new Map<string, string>();
 
-  for (let index = 0; index < unique.length; index += CONCURRENCY) {
-    const batch = unique.slice(index, index + CONCURRENCY);
+  const concurrency = options.recovery ? RECOVERY_CONCURRENCY : CONCURRENCY;
+  for (let index = 0; index < unique.length; index += concurrency) {
+    const batch = unique.slice(index, index + concurrency);
     const results = await Promise.all(
       batch.map(async (url) => {
         try {
-          return [url, await fetchImageAsDataUri(url), null] as const;
+          return [url, await fetchImageAsDataUri(url, options.recovery === true), null] as const;
         } catch (error) {
           return [
             url,
