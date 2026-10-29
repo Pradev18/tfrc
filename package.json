@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/build-excel-workers.mjs && next dev",
-    "build": "node scripts/build-excel-workers.mjs && prisma generate && node scripts/ensure-prod-db.mjs && node scripts/export-catalog-cache.mjs && next build && node scripts/copy-db-to-next.mjs",
-    "hostinger:build": "node scripts/build-excel-workers.mjs && prisma generate && node scripts/ensure-prod-db.mjs && node scripts/export-catalog-cache.mjs && NODE_OPTIONS=--max-old-space-size=4096 next build && node scripts/copy-db-to-next.mjs",
+    "build": "node scripts/build-excel-workers.mjs && prisma generate && node scripts/ensure-prod-db.mjs && node scripts/export-catalog-cache.mjs && node scripts/next-build-safe.mjs && node scripts/copy-db-to-next.mjs",
+    "hostinger:build": "node scripts/build-excel-workers.mjs && prisma generate && node scripts/ensure-prod-db.mjs && node scripts/export-catalog-cache.mjs && node scripts/next-build-safe.mjs && node scripts/copy-db-to-next.mjs",
     "hostinger:setup": "node scripts/ensure-prod-db.mjs",
     "start": "node scripts/ensure-prod-db.mjs && node scripts/export-catalog-cache.mjs && node --max-old-space-size=2048 ./node_modules/next/dist/bin/next start",
     "lint": "next lint",

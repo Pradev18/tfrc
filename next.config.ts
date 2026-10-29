@@ -25,6 +25,11 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "30mb",
     },
+    // Hostinger Node plans hit OS thread limits during page-data collection.
+    // Keep the production build single-worker so it finishes on shared hosting.
+    cpus: Number(process.env.NEXT_BUILD_CPUS || 1),
+    workerThreads: false,
+    staticGenerationMaxConcurrency: 2,
   },
   images: {
     formats: ["image/avif", "image/webp"],
