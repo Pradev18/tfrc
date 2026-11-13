@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { normalizeCatalogueImageSrc } from "@/lib/media-url";
 import { brandInitial, brandAvatarTone } from "@/lib/brand-avatar";
@@ -30,6 +30,8 @@ interface BrandScrollProps {
    * Storefront leaves this unset.
    */
   onMissingLogoClick?: (brand: StoreBrandItem) => void;
+  /** Admin: brand id currently uploading a logo — show spinner on that card. */
+  uploadingBrandId?: string | null;
 }
 
 const EDGE_ZONE_PX = 72;
@@ -47,16 +49,30 @@ export function BrandScroll({
   onSelect,
   onPrefetch,
   onMissingLogoClick,
+  uploadingBrandId = null,
 }: BrandScrollProps) {
   const t = useT();
   const v = getEnvVisual(environmentSlug);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const edgeDirRef = useRef<-1 | 0 | 1>(0);
-  const [failedImageUrls, setFailedImageUrls] = useState<Set<string>>(
+  /** Failed by brand id so a new logo URL can retry after upload. */
+  const [failedBrandIds, setFailedBrandIds] = useState<Set<string>>(
     () => new Set()
   );
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+
+  useEffect(() => {
+    // New logo URLs (blob preview or CDN) must not stay stuck on a prior onError letter.
+    setFailedBrandIds((current) => {
+      if (current.size === 0) return current;
+      const next = new Set(current);
+      for (const brand of brands) {
+        if (brand.imageUrl?.trim()) next.delete(brand.id);
+      }
+      return next.size === current.size ? current : next;
+    });
+  }, [brands]);
 
   const updateScrollHints = useCallback(() => {
     const el = scrollerRef.current;
@@ -127,11 +143,11 @@ export function BrandScroll({
 
   if (brands.length === 0) return null;
 
-  const markImageFailed = (url: string) => {
-    setFailedImageUrls((current) => {
-      if (current.has(url)) return current;
+  const markImageFailed = (brandId: string) => {
+    setFailedBrandIds((current) => {
+      if (current.has(brandId)) return current;
       const next = new Set(current);
-      next.add(url);
+      next.add(brandId);
       return next;
     });
   };
@@ -237,14 +253,19 @@ export function BrandScroll({
         {brands.map((brand) => {
           const active = activeSlug === brand.slug;
           const image = normalizeCatalogueImageSrc(brand.imageUrl);
-          const showImage = Boolean(image) && !failedImageUrls.has(image);
-          const pickLogo = Boolean(onMissingLogoClick) && !showImage;
+          const uploading = uploadingBrandId === brand.id;
+          const showImage =
+            Boolean(image) && !failedBrandIds.has(brand.id);
+          const pickLogo =
+            Boolean(onMissingLogoClick) && !showImage && !uploading;
 
           return (
             <button
               key={brand.id}
               type="button"
+              disabled={uploading}
               onClick={() => {
+                if (uploading) return;
                 if (pickLogo) {
                   onMissingLogoClick?.(brand);
                   return;
@@ -262,24 +283,34 @@ export function BrandScroll({
               }}
               className={tileClass}
               aria-pressed={active}
+              aria-busy={uploading}
               aria-label={
                 pickLogo
                   ? `Upload logo for ${brand.name}`
-                  : undefined
+                  : uploading
+                    ? `Uploading logo for ${brand.name}`
+                    : undefined
               }
-              title={pickLogo ? "Choose a photo for this brand" : undefined}
+              title={
+                pickLogo
+                  ? "Choose a photo for this brand"
+                  : uploading
+                    ? "Uploading…"
+                    : undefined
+              }
               role="listitem"
             >
               <span className={`${imageClass} relative`} style={tileShadow(active)}>
                 {showImage ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
+                    key={image}
                     src={image}
                     alt=""
                     className="max-h-full max-w-full object-contain object-center"
-                    loading="lazy"
+                    loading="eager"
                     decoding="async"
-                    onError={() => markImageFailed(image)}
+                    onError={() => markImageFailed(brand.id)}
                   />
                 ) : (
                   <span
@@ -293,6 +324,14 @@ export function BrandScroll({
                     {brandInitial(brand.name)}
                   </span>
                 )}
+                {uploading ? (
+                  <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-white/75">
+                    <Loader2
+                      className="h-6 w-6 animate-spin"
+                      style={{ color: v.cta }}
+                    />
+                  </span>
+                ) : null}
                 {pickLogo ? (
                   <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/55 py-0.5 text-center text-[9px] font-semibold uppercase tracking-wide text-white">
                     Add photo

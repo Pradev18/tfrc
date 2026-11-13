@@ -211,8 +211,16 @@ export function ManageCataloguePanel({
       return;
     }
 
+    // Instant local preview — user sees the photo immediately (with spinner).
+    const localPreview = URL.createObjectURL(file);
     setUploadingBrandId(brand.id);
     setError("");
+    setBrands((current) =>
+      current.map((item) =>
+        item.id === brand.id ? { ...item, imageUrl: localPreview } : item
+      )
+    );
+
     try {
       const body = new FormData();
       body.set("brandId", brand.id);
@@ -228,25 +236,75 @@ export function ManageCataloguePanel({
         );
       }
       const logoUrl =
-        (data as { brand?: { logoUrl?: string | null }; url?: string }).brand
-          ?.logoUrl ??
-        (data as { url?: string }).url ??
-        null;
+        (
+          (data as { brand?: { logoUrl?: string | null }; url?: string }).brand
+            ?.logoUrl ??
+          (data as { url?: string }).url ??
+          ""
+        ).trim() || localPreview;
+
+      // Keep showing the photo (CDN URL preferred; blob until CDN is ready).
       setBrands((current) =>
         current.map((item) =>
           item.id === brand.id ? { ...item, imageUrl: logoUrl } : item
         )
       );
-      announceSiteDataUpdate();
-      window.dispatchEvent(new Event("tfrc-brands-updated"));
+      setUploadingBrandId(null);
       adminNotify(`Uploaded logo for ${brand.name}`);
-      void loadBrands();
+      announceSiteDataUpdate();
+
+      // Background refresh — never replace a visible logo with a missing letter.
+      void (async () => {
+        try {
+          const refresh = await fetch(
+            `/api/admin/catalogues/${catalogueId}/brands?_=${Date.now()}`,
+            { cache: "no-store" }
+          );
+          const payload = await refresh.json().catch(() => ({}));
+          if (!refresh.ok) return;
+          const list = (payload.brands ?? []) as Array<{
+            id: string;
+            name: string;
+            slug: string;
+            logoUrl: string | null;
+            productCount: number;
+          }>;
+          setBrands((current) => {
+            const byId = new Map(list.map((row) => [row.id, row]));
+            return brandsForStrip(
+              current.map((item) => {
+                const row = byId.get(item.id);
+                const nextLogo = row?.logoUrl?.trim() || item.imageUrl || null;
+                return {
+                  id: item.id,
+                  name: row?.name ?? item.name,
+                  slug: row?.slug ?? item.slug,
+                  imageUrl: nextLogo,
+                  productCount: row?.productCount ?? item.productCount,
+                };
+              })
+            );
+          });
+          if (logoUrl.startsWith("blob:")) {
+            /* keep blob until a real URL appears */
+          } else {
+            URL.revokeObjectURL(localPreview);
+          }
+        } finally {
+          window.dispatchEvent(new Event("tfrc-brands-updated"));
+        }
+      })();
     } catch (cause) {
+      URL.revokeObjectURL(localPreview);
+      setBrands((current) =>
+        current.map((item) =>
+          item.id === brand.id ? { ...item, imageUrl: null } : item
+        )
+      );
       const message =
         cause instanceof Error ? cause.message : "Brand logo upload failed";
       setError(message);
       adminNotify(message);
-    } finally {
       setUploadingBrandId(null);
     }
   }
@@ -594,6 +652,7 @@ export function ManageCataloguePanel({
                     activeSlug={selectedBrandSlug}
                     onSelect={selectBrand}
                     onMissingLogoClick={openBrandLogoPicker}
+                    uploadingBrandId={uploadingBrandId}
                   />
                 </div>
               ) : null}
