@@ -71,6 +71,8 @@ export function ManageCataloguePanel({
   const [uploadingBrandId, setUploadingBrandId] = useState<string | null>(null);
   const brandFileInputRef = useRef<HTMLInputElement>(null);
   const pendingBrandUploadRef = useRef<StoreBrandItem | null>(null);
+  /** Brand ids cleared locally — ignore stale API logos until PATCH finishes. */
+  const pendingLogoClearsRef = useRef<Set<string>>(new Set());
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const canPaginate = total > pageSize;
@@ -132,7 +134,9 @@ export function ManageCataloguePanel({
           id: brand.id,
           name: brand.name,
           slug: brand.slug,
-          imageUrl: brand.logoUrl,
+          imageUrl: pendingLogoClearsRef.current.has(brand.id)
+            ? null
+            : brand.logoUrl,
           productCount: brand.productCount,
         }))
       )
@@ -200,20 +204,21 @@ export function ManageCataloguePanel({
 
   async function clearBrandLogo(brand: StoreBrandItem) {
     const previous = brand.imageUrl ?? null;
-    // Instant UI → letter card (admin + no refresh needed).
+    // Instant letter — no spinner (full cache refresh used to freeze the card).
+    pendingLogoClearsRef.current.add(brand.id);
     setBrands((current) =>
       current.map((item) =>
         item.id === brand.id ? { ...item, imageUrl: null } : item
       )
     );
     if (previous?.startsWith("blob:")) URL.revokeObjectURL(previous);
-    setUploadingBrandId(brand.id);
     setError("");
     try {
       const res = await fetch(`/api/admin/catalogues/${catalogueId}/brands`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ brandId: brand.id, logoUrl: null }),
+        cache: "no-store",
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -221,15 +226,16 @@ export function ManageCataloguePanel({
           (data as { error?: string }).error || "Could not remove brand logo"
         );
       }
+      pendingLogoClearsRef.current.delete(brand.id);
       setBrands((current) =>
         current.map((item) =>
           item.id === brand.id ? { ...item, imageUrl: null } : item
         )
       );
       announceSiteDataUpdate();
-      window.dispatchEvent(new Event("tfrc-brands-updated"));
       adminNotify(`Removed logo for ${brand.name}`);
     } catch (cause) {
+      pendingLogoClearsRef.current.delete(brand.id);
       setBrands((current) =>
         current.map((item) =>
           item.id === brand.id ? { ...item, imageUrl: previous } : item
@@ -239,8 +245,6 @@ export function ManageCataloguePanel({
         cause instanceof Error ? cause.message : "Could not remove brand logo";
       setError(message);
       adminNotify(message);
-    } finally {
-      setUploadingBrandId(null);
     }
   }
 

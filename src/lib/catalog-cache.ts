@@ -191,6 +191,47 @@ export function getCachedEnvironment(slug: string): CachedEnvironment | null {
   return cache?.environments[slug] ?? null;
 }
 
+/**
+ * Fast path for brand logo add/clear — updates in-memory + disk cache without
+ * a full Neon rescan (Hostinger full refresh is too slow for × / upload UX).
+ */
+export function patchBrandLogoInCatalogCache(opts: {
+  brandId: string;
+  brandSlug: string;
+  logoUrl: string | null;
+}): void {
+  const cache = loadCatalogCache();
+  if (!cache) return;
+
+  let changed = false;
+  for (const environment of Object.values(cache.environments)) {
+    for (const brand of environment.brands) {
+      if (brand.id === opts.brandId || brand.slug === opts.brandSlug) {
+        if (brand.logoUrl !== opts.logoUrl) {
+          brand.logoUrl = opts.logoUrl;
+          changed = true;
+        }
+      }
+    }
+    for (const product of environment.products) {
+      if (
+        product.brand &&
+        (product.brand.id === opts.brandId || product.brand.slug === opts.brandSlug)
+      ) {
+        if (product.brand.logoUrl !== opts.logoUrl) {
+          product.brand.logoUrl = opts.logoUrl;
+          changed = true;
+        }
+      }
+    }
+  }
+
+  if (changed) {
+    cache.generatedAt = new Date().toISOString();
+    saveCatalogCache(cache);
+  }
+}
+
 export function removeCachedEnvironment(slug: string): void {
   const cache = loadCatalogCache();
   if (cache?.environments[slug]) {

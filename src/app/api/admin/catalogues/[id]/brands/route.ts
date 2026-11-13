@@ -5,6 +5,7 @@ import { getCatalogueById } from "@/services/catalogue-admin.service";
 import prisma from "@/lib/db";
 import { touchSiteRevision } from "@/lib/site-revision.server";
 import { refreshCatalogCacheFromDatabase } from "@/lib/catalog-cache-refresh.server";
+import { patchBrandLogoInCatalogCache } from "@/lib/catalog-cache";
 import { requireCatalogueUnlocked } from "@/lib/catalogue-lock";
 import { normalizeBrandLogoInput } from "@/lib/brand-logo-url";
 import { saveBrandLogoImage } from "@/lib/upload";
@@ -33,12 +34,20 @@ async function publishBrandLogoChange(
   catalogueId: string,
   brand: { id: string; name: string; slug: string; logoUrl: string | null }
 ) {
-  await refreshCatalogCacheFromDatabase();
+  // Instant store reflection — patch logo in file cache, then refresh in background.
+  patchBrandLogoInCatalogCache({
+    brandId: brand.id,
+    brandSlug: brand.slug,
+    logoUrl: brand.logoUrl,
+  });
   await touchSiteRevision();
   revalidatePath(`/${catalogueSlug}`);
   revalidatePath(`/${catalogueSlug}`, "layout");
   revalidatePath(`/admin/catalogues/${catalogueId}`);
   revalidatePath(`/admin/catalogues/${catalogueId}/manage`);
+  void refreshCatalogCacheFromDatabase().catch((error) => {
+    console.error("[brands] background catalog cache refresh failed:", error);
+  });
   return brand;
 }
 
