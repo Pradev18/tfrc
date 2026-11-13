@@ -11,6 +11,10 @@ import {
   CategoryScroll,
   type ShopCategoryItem,
 } from "@/components/store/CategoryScroll";
+import {
+  BrandScroll,
+  type StoreBrandItem,
+} from "@/components/store/BrandScroll";
 import { ALL_PRODUCTS_CATEGORY_SLUG } from "@/lib/store-category-navigation";
 import { adminNotify } from "@/lib/admin-notify";
 
@@ -52,12 +56,14 @@ export function ManageCataloguePanel({
   const [q, setQ] = useState("");
   const [appliedQ, setAppliedQ] = useState("");
   const [selectedCategorySlug, setSelectedCategorySlug] = useState("");
+  const [selectedBrandSlug, setSelectedBrandSlug] = useState<string | null>(null);
   const [sort, setSort] = useState("serial_no_asc");
   const [pdfCategoryHeaders, setPdfCategoryHeaders] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(15);
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<AdminShopCategory[]>([]);
+  const [brands, setBrands] = useState<StoreBrandItem[]>([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -71,8 +77,11 @@ export function ManageCataloguePanel({
     setLoading(true);
     setError("");
     try {
+      const brandQuery = selectedBrandSlug
+        ? `&brand=${encodeURIComponent(selectedBrandSlug)}`
+        : "";
       const res = await fetch(
-        `/api/admin/catalogues/${catalogueId}/products?q=${encodeURIComponent(appliedQ)}&shop=${encodeURIComponent(selectedCategorySlug)}&sort=${encodeURIComponent(sort)}&page=${page}&limit=${pageSize}&_=${Date.now()}`,
+        `/api/admin/catalogues/${catalogueId}/products?q=${encodeURIComponent(appliedQ)}&shop=${encodeURIComponent(selectedCategorySlug)}${brandQuery}&sort=${encodeURIComponent(sort)}&page=${page}&limit=${pageSize}&_=${Date.now()}`,
         { cache: "no-store", headers: { "Cache-Control": "no-store" } }
       );
       const data = await res.json();
@@ -90,7 +99,7 @@ export function ManageCataloguePanel({
     } finally {
       setLoading(false);
     }
-  }, [appliedQ, catalogueId, selectedCategorySlug, sort, page, pageSize]);
+  }, [appliedQ, catalogueId, selectedBrandSlug, selectedCategorySlug, sort, page, pageSize]);
 
   const loadCategories = useCallback(async () => {
     const res = await fetch(`/api/admin/catalogues/${catalogueId}/categories?_=${Date.now()}`, {
@@ -100,13 +109,47 @@ export function ManageCataloguePanel({
     setCategories(data.categories ?? []);
   }, [catalogueId]);
 
+  const loadBrands = useCallback(async () => {
+    const res = await fetch(`/api/admin/catalogues/${catalogueId}/brands?_=${Date.now()}`, {
+      cache: "no-store",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+    const list = (data.brands ?? []) as Array<{
+      id: string;
+      name: string;
+      slug: string;
+      logoUrl: string | null;
+      productCount: number;
+    }>;
+    setBrands(
+      list.map((brand) => ({
+        id: brand.id,
+        name: brand.name,
+        slug: brand.slug,
+        imageUrl: brand.logoUrl,
+        productCount: brand.productCount,
+      }))
+    );
+  }, [catalogueId]);
+
   useEffect(() => {
     if (tab === "products") {
       loadProducts();
       loadCategories();
+      loadBrands();
     }
     if (tab === "categories") loadCategories();
-  }, [tab, loadProducts, loadCategories]);
+    if (tab === "brands") loadBrands();
+  }, [tab, loadProducts, loadCategories, loadBrands]);
+
+  useEffect(() => {
+    const onBrandsUpdated = () => {
+      void loadBrands();
+    };
+    window.addEventListener("tfrc-brands-updated", onBrandsUpdated);
+    return () => window.removeEventListener("tfrc-brands-updated", onBrandsUpdated);
+  }, [loadBrands]);
 
   function searchProducts() {
     const nextQuery = q.trim();
@@ -122,6 +165,12 @@ export function ManageCataloguePanel({
     setSelectedCategorySlug(
       !slug || slug === ALL_PRODUCTS_CATEGORY_SLUG ? "" : slug
     );
+    setPage(1);
+    setTab("products");
+  }
+
+  function selectBrand(slug: string | null) {
+    setSelectedBrandSlug(slug);
     setPage(1);
     setTab("products");
   }
@@ -430,6 +479,30 @@ export function ManageCataloguePanel({
                 activeSlug={selectedCategorySlug || ALL_PRODUCTS_CATEGORY_SLUG}
                 onSelect={selectCategory}
               />
+              {brands.length > 0 ? (
+                <div className="mt-4 border-t border-border/70 pt-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                      Brands
+                    </p>
+                    {selectedBrandSlug ? (
+                      <button
+                        type="button"
+                        onClick={() => selectBrand(null)}
+                        className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+                      >
+                        Clear brand
+                      </button>
+                    ) : null}
+                  </div>
+                  <BrandScroll
+                    brands={brands}
+                    environmentSlug={catalogueSlug}
+                    activeSlug={selectedBrandSlug}
+                    onSelect={selectBrand}
+                  />
+                </div>
+              ) : null}
             </div>
           )}
 

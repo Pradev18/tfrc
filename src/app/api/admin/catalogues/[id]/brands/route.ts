@@ -4,7 +4,7 @@ import { requireAdminSession } from "@/lib/admin-auth";
 import { getCatalogueById } from "@/services/catalogue-admin.service";
 import prisma from "@/lib/db";
 import { touchSiteRevision } from "@/lib/site-revision.server";
-import { persistRuntimeCatalogueDataSafely } from "@/lib/persist-runtime-data.server";
+import { refreshCatalogCacheFromDatabase } from "@/lib/catalog-cache-refresh.server";
 import { requireCatalogueUnlocked } from "@/lib/catalogue-lock";
 import { normalizeBrandLogoInput } from "@/lib/brand-logo-url";
 
@@ -56,15 +56,18 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     },
   });
 
-  return NextResponse.json({
-    brands: brands.map((brand) => ({
-      id: brand.id,
-      name: brand.name,
-      slug: brand.slug,
-      logoUrl: brand.logoUrl,
-      productCount: brand._count.products,
-    })),
-  });
+  return NextResponse.json(
+    {
+      brands: brands.map((brand) => ({
+        id: brand.id,
+        name: brand.name,
+        slug: brand.slug,
+        logoUrl: brand.logoUrl,
+        productCount: brand._count.products,
+      })),
+    },
+    { headers: { "Cache-Control": "no-store, max-age=0" } }
+  );
 }
 
 export async function PATCH(req: NextRequest, context: RouteContext) {
@@ -127,11 +130,16 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     select: { id: true, name: true, slug: true, logoUrl: true },
   });
 
+  // Await cache refresh so store + admin brand strip update immediately (not fire-and-forget).
+  await refreshCatalogCacheFromDatabase();
   await touchSiteRevision();
-  void persistRuntimeCatalogueDataSafely();
   revalidatePath(`/${catalogue.slug}`);
   revalidatePath(`/${catalogue.slug}`, "layout");
   revalidatePath(`/admin/catalogues/${id}`);
+  revalidatePath(`/admin/catalogues/${id}/manage`);
 
-  return NextResponse.json({ brand: updated });
+  return NextResponse.json(
+    { brand: updated },
+    { headers: { "Cache-Control": "no-store, max-age=0" } }
+  );
 }

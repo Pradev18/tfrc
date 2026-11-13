@@ -12,7 +12,7 @@ export interface StoreBrandItem {
   id: string;
   name: string;
   slug: string;
-  /** Logo or first product image — shown with object-fit: contain. */
+  /** Brand.logoUrl only (Excel brand_image / admin) — never a product photo. */
   imageUrl?: string | null;
   productCount?: number;
   categoryCount?: number;

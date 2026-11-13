@@ -79,7 +79,9 @@ export function CatalogueBrandsPanel({
         [brandId]: data.brand.logoUrl ?? "",
       }));
       announceSiteDataUpdate();
-      adminNotify("Brand image saved");
+      adminNotify("Brand image saved — strip updated");
+      // Soft reload so Products tab brand strip picks up logos without waiting.
+      window.dispatchEvent(new Event("tfrc-brands-updated"));
     } catch (e) {
       const message = e instanceof Error ? e.message : "Save failed";
       setError(message);
