@@ -116,10 +116,14 @@ async function failStaleImports(environmentId: string) {
 
 async function ensureBrands(rows: CatalogRow[]): Promise<Map<string, string>> {
   const bySlug = new Map<string, string>();
+  /** Last non-empty brand_image wins so a corrected logo on a later row is applied. */
+  const logoBySlug = new Map<string, string>();
   for (const row of rows) {
     const name = row.brand.trim() || "Unknown";
     const slug = createCategorySlug(name);
     if (!bySlug.has(slug)) bySlug.set(slug, name);
+    const logo = row.brand_image.trim();
+    if (logo) logoBySlug.set(slug, logo);
   }
   const slugs = [...bySlug.keys()];
   if (slugs.length === 0) return new Map();
@@ -129,9 +133,23 @@ async function ensureBrands(rows: CatalogRow[]): Promise<Map<string, string>> {
       id: newId(),
       name: bySlug.get(slug)!,
       slug,
+      ...(logoBySlug.has(slug) ? { logoUrl: logoBySlug.get(slug)! } : {}),
     })),
     skipDuplicates: true,
   });
+
+  // Existing brands skipped by createMany still need name/logo updates from Excel.
+  await Promise.all(
+    slugs.map((slug) =>
+      prisma.brand.updateMany({
+        where: { slug },
+        data: {
+          name: bySlug.get(slug)!,
+          ...(logoBySlug.has(slug) ? { logoUrl: logoBySlug.get(slug)! } : {}),
+        },
+      })
+    )
+  );
 
   const found = await prisma.brand.findMany({
     where: { slug: { in: slugs } },

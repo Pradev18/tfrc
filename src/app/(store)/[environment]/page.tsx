@@ -16,7 +16,31 @@ interface PageProps {
 }
 
 function getBrandsFromCache(slug: string) {
-  return getCachedEnvironment(slug)?.brands ?? [];
+  const cached = getCachedEnvironment(slug);
+  if (!cached) return [];
+
+  // Enrich for the store brand strip only — does not change import/PDF/admin data.
+  // Brand tile image = Brand.logoUrl (Excel brand_image) only. Never use product photos.
+  return cached.brands.map((brand) => {
+    const brandProducts = cached.products.filter(
+      (product) => product.brand?.slug === brand.slug
+    );
+    const logo = brand.logoUrl?.trim() || null;
+    const categoryCount = new Set(
+      brandProducts
+        .map((product) => product.shopCategorySlug)
+        .filter((value): value is string => Boolean(value))
+    ).size;
+
+    return {
+      id: brand.id,
+      name: brand.name,
+      slug: brand.slug,
+      imageUrl: logo,
+      productCount: brandProducts.length,
+      categoryCount: categoryCount || (brandProducts.length > 0 ? 1 : 0),
+    };
+  });
 }
 
 function getActiveProductCountFromCache(slug: string) {

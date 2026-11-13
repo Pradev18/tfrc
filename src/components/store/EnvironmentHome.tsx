@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import type { ShopCategoryItem } from "@/components/store/CategoryScroll";
+import type { StoreBrandItem } from "@/components/store/BrandScroll";
 import { MobileStickyBar } from "@/components/store/MobileStickyBar";
 import { StorePageBackdrop } from "@/components/store/StorePageBackdrop";
 import { UnifiedStoreCatalog } from "@/components/store/UnifiedStoreCatalog";
@@ -8,16 +9,10 @@ import type { ParsedEnvironment } from "@/services/environment.service";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
 import type { InitialStoreFeed } from "@/hooks/useStoreProductFeed";
 
-interface Brand {
-  id: string;
-  name: string;
-  slug: string;
-}
-
 interface EnvironmentHomeProps {
   environment: ParsedEnvironment;
   shopCategories: ShopCategoryItem[];
-  brands: Brand[];
+  brands: StoreBrandItem[];
   waHref: string;
   whatsappSettings: WhatsAppSettings;
   siteUrl: string;

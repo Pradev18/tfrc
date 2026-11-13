@@ -27,7 +27,7 @@ export interface InitialStoreFeed extends FeedPayload {
   shopSlug: string;
 }
 
-const FEED_CACHE_TTL_MS = 30_000;
+const FEED_CACHE_TTL_MS = 90_000;
 // Bust stale CDN responses created by older deployments. Current API responses
 // are no-store; this version prevents an already-cached empty feed from winning.
 const STORE_FEED_SCHEMA_VERSION = "20260924-filters-item-no";
@@ -216,9 +216,10 @@ export function useStoreProductFeed(
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // Keep current cards on screen while the next filter loads (less laggy).
       setState((s) => ({
         ...s,
-        loading: !append,
+        loading: !append && s.items.length === 0,
         loadingMore: append,
         error: null,
       }));

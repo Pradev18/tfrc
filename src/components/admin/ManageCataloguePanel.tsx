@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import { announceSiteDataUpdate } from "@/components/LiveDataRefresh";
 import { CatalogueImportForm } from "@/components/admin/CatalogueImportForm";
+import { CatalogueBrandsPanel } from "@/components/admin/CatalogueBrandsPanel";
 import { CatalogueImage } from "@/components/admin/CatalogueImage";
 import { UiSelect } from "@/components/ui/UiSelect";
 import {
@@ -44,7 +45,7 @@ export function ManageCataloguePanel({
   catalogueName,
   catalogueSlug,
 }: ManageCataloguePanelProps) {
-  const [tab, setTab] = useState<"products" | "categories" | "import">("products");
+  const [tab, setTab] = useState<"products" | "categories" | "brands" | "import">("products");
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [total, setTotal] = useState(0);
   const [catalogueTotal, setCatalogueTotal] = useState(0);
@@ -357,6 +358,7 @@ export function ManageCataloguePanel({
   const tabs = [
     { id: "products" as const, label: `Products (${catalogueTotal || total})` },
     { id: "categories" as const, label: "Shop categories" },
+    { id: "brands" as const, label: "Brands" },
     { id: "import" as const, label: "Import Excel" },
   ];
 
@@ -678,6 +680,15 @@ export function ManageCataloguePanel({
               ))
             )}
           </div>
+        </div>
+      )}
+
+      {tab === "brands" && (
+        <div className="max-w-3xl">
+          <CatalogueBrandsPanel
+            catalogueId={catalogueId}
+            catalogueName={catalogueName}
+          />
         </div>
       )}
 

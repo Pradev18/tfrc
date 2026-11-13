@@ -3,21 +3,16 @@
 import { Search, X, LayoutGrid } from "lucide-react";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { CategoryScroll, type ShopCategoryItem } from "@/components/store/CategoryScroll";
+import { BrandScroll, type StoreBrandItem } from "@/components/store/BrandScroll";
 import type { StoreFilters } from "@/lib/store-catalog-filter";
 import { UiSelect } from "@/components/ui/UiSelect";
 import { scrollToStoreCategory, ALL_PRODUCTS_CATEGORY_SLUG } from "@/lib/store-category-navigation";
 import { useT } from "@/context/LanguageContext";
 
-interface Brand {
-  id: string;
-  name: string;
-  slug: string;
-}
-
 interface StickyStoreToolbarProps {
   environmentSlug: string;
   shopCategories: ShopCategoryItem[];
-  brands: Brand[];
+  brands: StoreBrandItem[];
   filters: StoreFilters;
   searchInput: string;
   onSearchInputChange: (value: string) => void;
@@ -30,6 +25,9 @@ interface StickyStoreToolbarProps {
   totalProducts?: number;
   totalLabel?: string;
   showCategories?: boolean;
+  /** Brand strip under categories — independent of category visibility when brand filter is on. */
+  showBrands?: boolean;
+  onBrandPrefetch?: (slug: string) => void;
 }
 
 const chipClass =
@@ -51,6 +49,8 @@ export function StickyStoreToolbar({
   totalProducts,
   totalLabel,
   showCategories = true,
+  showBrands = true,
+  onBrandPrefetch,
 }: StickyStoreToolbarProps) {
   const t = useT();
   const v = getEnvVisual(environmentSlug);
@@ -87,7 +87,10 @@ export function StickyStoreToolbar({
             {activeCategorySlug && (
               <button
                 type="button"
-                onClick={() => onShowAllCategories?.()}
+                onClick={() => {
+                  // Clear category focus but keep brand / stock / sale filters.
+                  onShowAllCategories?.();
+                }}
                 className={`${chipClass} gap-1 border border-black/[0.08] bg-white`}
                 style={{ color: v.heading }}
               >
@@ -212,6 +215,33 @@ export function StickyStoreToolbar({
                 }
                 if (onCategorySelect) onCategorySelect(slug);
                 else scrollToStoreCategory(slug);
+              }}
+            />
+          </div>
+        )}
+
+        {showBrands && brands.length > 0 && (
+          <div
+            className={`mt-3 pt-3 ${
+              showCategories && shopCategories.length > 0
+                ? ""
+                : "border-t border-black/[0.05]"
+            }`}
+          >
+            <p
+              className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em]"
+              style={{ color: v.muted }}
+            >
+              {t("store.brands")}
+            </p>
+            <BrandScroll
+              brands={brands}
+              environmentSlug={environmentSlug}
+              activeSlug={filters.brand || null}
+              onPrefetch={onBrandPrefetch}
+              onSelect={(slug) => {
+                // Only toggle brand — leave category / All products selection alone.
+                onFiltersChange({ brand: slug });
               }}
             />
           </div>

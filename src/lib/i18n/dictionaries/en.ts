@@ -38,6 +38,8 @@ export const en = {
     allProducts: "All products",
     inStock: "In stock",
     allBrands: "All brands",
+    brands: "Brand",
+    browseBrands: "Browse brands",
     newest: "Newest",
     featured: "Featured",
     itemNoAsc: "Serial no ↑",

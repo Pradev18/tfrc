@@ -67,7 +67,7 @@ export async function refreshCatalogCacheFromDatabase(): Promise<void> {
               saleEnd: true,
             },
           },
-          brand: { select: { id: true, name: true, slug: true } },
+          brand: { select: { id: true, name: true, slug: true, logoUrl: true } },
           inventory: { select: { isInStock: true } },
           category: { select: { id: true, name: true, slug: true } },
           subcategory: { select: { id: true, name: true, slug: true } },
@@ -85,7 +85,7 @@ export async function refreshCatalogCacheFromDatabase(): Promise<void> {
           },
         },
         orderBy: { name: "asc" },
-        select: { id: true, name: true, slug: true },
+        select: { id: true, name: true, slug: true, logoUrl: true },
       }),
       prisma.shopCategory.findMany({
         where: { environmentId: environment.id, isActive: true },

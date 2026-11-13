@@ -263,10 +263,19 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
       environmentSlug
     );
     const brandSlug = createCategorySlug(row.brand);
+    const brandLogo = row.brand_image.trim() || null;
     const brand = await tx.brand.upsert({
       where: { slug: brandSlug },
-      create: { name: row.brand, slug: brandSlug },
-      update: { name: row.brand },
+      create: {
+        name: row.brand,
+        slug: brandSlug,
+        ...(brandLogo ? { logoUrl: brandLogo } : {}),
+      },
+      // Only overwrite logo when Excel provides brand_image (keeps admin/manual logos otherwise).
+      update: {
+        name: row.brand,
+        ...(brandLogo ? { logoUrl: brandLogo } : {}),
+      },
     });
 
     const slug = rowToProductSlug(row);

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { StickyStoreToolbar } from "@/components/store/StickyStoreToolbar";
 import { PaginatedProductGrid } from "@/components/store/PaginatedProductGrid";
 import { LazyCategorySection } from "@/components/store/LazyCategorySection";
@@ -17,6 +17,7 @@ import {
 } from "@/lib/store-catalog-filter";
 import type { WhatsAppSettings } from "@/lib/whatsapp";
 import type { ShopCategoryItem } from "@/components/store/CategoryScroll";
+import type { StoreBrandItem } from "@/components/store/BrandScroll";
 import {
   prefetchStoreFeed,
   seedStoreFeedCache,
@@ -35,17 +36,11 @@ import {
 } from "@/lib/store-category-navigation";
 import { useT } from "@/context/LanguageContext";
 
-interface Brand {
-  id: string;
-  name: string;
-  slug: string;
-}
-
 interface UnifiedStoreCatalogProps {
   environmentSlug: string;
   environmentName: string;
   shopCategories: ShopCategoryItem[];
-  brands: Brand[];
+  brands: StoreBrandItem[];
   whatsappSettings: WhatsAppSettings;
   siteUrl: string;
   totalProducts: number;
@@ -64,7 +59,6 @@ export function UnifiedStoreCatalog({
 }: UnifiedStoreCatalogProps) {
   const t = useT();
   const v = getEnvVisual(environmentSlug);
-  const router = useRouter();
   const searchParams = useSearchParams();
   const basePath = `/${environmentSlug}`;
 
@@ -111,12 +105,14 @@ export function UnifiedStoreCatalog({
     if (debouncedQ === filtersRef.current.q) return;
     const next = { ...filtersRef.current, q: debouncedQ };
     filtersRef.current = next;
-    setFilters(next);
+    startTransition(() => setFilters(next));
     const qs = filtersToSearchParams(next).toString();
-    router.replace(qs ? `${basePath}?${qs}#catalog` : `${basePath}#catalog`, {
-      scroll: false,
-    });
-  }, [debouncedQ, basePath, router]);
+    window.history.replaceState(
+      null,
+      "",
+      qs ? `${basePath}?${qs}#catalog` : `${basePath}#catalog`
+    );
+  }, [debouncedQ, basePath]);
 
   useEffect(() => {
     const hash = window.location.hash;
@@ -147,11 +143,13 @@ export function UnifiedStoreCatalog({
       setFocusedCategorySlug(slug);
       const next = { ...filtersRef.current, shop: slug };
       filtersRef.current = next;
-      setFilters(next);
+      startTransition(() => setFilters(next));
       const qs = filtersToSearchParams(next).toString();
-      router.replace(qs ? `${basePath}?${qs}#category-${slug}` : `${basePath}#category-${slug}`, {
-        scroll: false,
-      });
+      window.history.replaceState(
+        null,
+        "",
+        qs ? `${basePath}?${qs}#category-${slug}` : `${basePath}#category-${slug}`
+      );
       requestAnimationFrame(() => {
         requestAnimationFrame(() => scrollToStoreCategory(slug));
       });
@@ -161,11 +159,13 @@ export function UnifiedStoreCatalog({
       setShowAllProducts(false);
       const next = { ...filtersRef.current, shop: null };
       filtersRef.current = next;
-      setFilters(next);
+      startTransition(() => setFilters(next));
       const qs = filtersToSearchParams(next).toString();
-      router.replace(qs ? `${basePath}?${qs}#catalog` : `${basePath}#catalog`, {
-        scroll: false,
-      });
+      window.history.replaceState(
+        null,
+        "",
+        qs ? `${basePath}?${qs}#catalog` : `${basePath}#catalog`
+      );
       requestAnimationFrame(() => {
         document.getElementById("catalog")?.scrollIntoView({
           behavior: "smooth",
@@ -176,13 +176,16 @@ export function UnifiedStoreCatalog({
     function onAllProducts() {
       setFocusedCategorySlug(null);
       setShowAllProducts(true);
-      const next = { ...filtersRef.current, shop: null };
+      // All products means the full catalogue — clear any active brand filter.
+      const next = { ...filtersRef.current, shop: null, brand: null };
       filtersRef.current = next;
       setFilters(next);
       const qs = filtersToSearchParams(next).toString();
-      router.replace(qs ? `${basePath}?${qs}#catalog` : `${basePath}#catalog`, {
-        scroll: false,
-      });
+      window.history.replaceState(
+        null,
+        "",
+        qs ? `${basePath}?${qs}#catalog` : `${basePath}#catalog`
+      );
       requestAnimationFrame(() => {
         document.getElementById("catalog")?.scrollIntoView({
           behavior: "smooth",
@@ -198,14 +201,18 @@ export function UnifiedStoreCatalog({
       window.removeEventListener(STORE_SHOW_ALL_EVENT, onShowAll);
       window.removeEventListener(STORE_ALL_PRODUCTS_EVENT, onAllProducts);
     };
-  }, [basePath, router]);
+  }, [basePath]);
 
   const syncFilters = useCallback(
     (patch: Partial<StoreFilters>) => {
       const next = { ...filtersRef.current, ...patch };
       const serialSort = isSerialNoSort(next.sort);
-      // Serial no sort without a category = full Excel catalogue order.
-      if ("shop" in patch) {
+      // Brand picks should stay on the All products list so the heading updates.
+      if ("brand" in patch && patch.brand) {
+        setFocusedCategorySlug(null);
+        setShowAllProducts(true);
+        next.shop = null;
+      } else if ("shop" in patch) {
         const shopSlug = patch.shop ?? null;
         setFocusedCategorySlug(shopSlug);
         setShowAllProducts(!shopSlug && serialSort);
@@ -214,15 +221,27 @@ export function UnifiedStoreCatalog({
         setShowAllProducts(true);
       }
       filtersRef.current = next;
-      setFilters(next);
       if ("q" in patch && patch.q !== undefined) setSearchInput(patch.q);
       const qs = filtersToSearchParams(next).toString();
       const hash = next.shop ? `#category-${next.shop}` : "#catalog";
-      router.replace(qs ? `${basePath}?${qs}${hash}` : `${basePath}${hash}`, {
-        scroll: false,
-      });
+      const href = qs ? `${basePath}?${qs}${hash}` : `${basePath}${hash}`;
+      // Sync filter state immediately so the heading/count update on the same tap.
+      // history.replaceState avoids a full App Router RSC refetch (was making brand taps laggy).
+      setFilters(next);
+      window.history.replaceState(null, "", href);
     },
-    [basePath, router]
+    [basePath]
+  );
+
+  const prefetchBrand = useCallback(
+    (brandSlug: string) => {
+      prefetchStoreFeed(
+        environmentSlug,
+        { ...filtersRef.current, brand: brandSlug, shop: null },
+        { includeVariants: true }
+      );
+    },
+    [environmentSlug]
   );
 
   const clearFilters = useCallback(() => {
@@ -230,13 +249,18 @@ export function UnifiedStoreCatalog({
     setFocusedCategorySlug(null);
     setShowAllProducts(false);
     filtersRef.current = DEFAULT_STORE_FILTERS;
-    setFilters(DEFAULT_STORE_FILTERS);
-    router.replace(`${basePath}#catalog`, { scroll: false });
-  }, [basePath, router]);
+    startTransition(() => {
+      setFilters(DEFAULT_STORE_FILTERS);
+    });
+    window.history.replaceState(null, "", `${basePath}#catalog`);
+  }, [basePath]);
 
-  const isFilteredView = Boolean(
-    apiFilters.q || apiFilters.brand || apiFilters.inStock || apiFilters.sale
+  // Brand filter must keep the category strip + pills usable.
+  // Only search / stock / sale collapse into a results-only layout.
+  const hidesBrowseStrips = Boolean(
+    apiFilters.q || apiFilters.inStock || apiFilters.sale
   );
+  const isFilteredView = hidesBrowseStrips;
 
   useEffect(() => {
     syncStoreStickyOffsets();
@@ -247,7 +271,7 @@ export function UnifiedStoreCatalog({
       window.removeEventListener("resize", onResize);
       window.clearTimeout(timer);
     };
-  }, [focusedCategorySlug, showAllProducts, isFilteredView, searchInput, shopCategories.length]);
+  }, [focusedCategorySlug, showAllProducts, isFilteredView, searchInput, shopCategories.length, brands.length, apiFilters.brand]);
 
   const visibleCategories = useMemo(() => {
     if (isFilteredView || showAllProducts) return [];
@@ -322,6 +346,18 @@ export function UnifiedStoreCatalog({
     ? ALL_PRODUCTS_CATEGORY_SLUG
     : focusedCategorySlug;
 
+  const activeBrand = useMemo(
+    () => brands.find((brand) => brand.slug === apiFilters.brand) ?? null,
+    [brands, apiFilters.brand]
+  );
+  const browseTitle = activeBrand?.name ?? t("store.allProducts");
+  const browseProductCount = activeBrand?.productCount ?? totalProducts;
+  const browseCategoryCount = activeBrand?.categoryCount ?? shopCategories.length;
+  const browseSummary = t("store.productsCategories", {
+    products: browseProductCount.toLocaleString(),
+    categories: browseCategoryCount,
+  });
+
   return (
     <section id="catalog" className="store-section scroll-anchor-catalog pb-6 pt-3 md:pb-24 md:pt-5">
       <div className="container-pawmart">
@@ -351,15 +387,24 @@ export function UnifiedStoreCatalog({
           onShowAllCategories={() => showAllStoreCategories()}
           onAllProductsSelect={selectAllProducts}
           totalProducts={totalProducts}
-          totalLabel={t("store.productsCategories", {
-            products: totalProducts.toLocaleString(),
-            categories: shopCategories.length,
-          })}
-          showCategories={!isFilteredView}
+          totalLabel={browseSummary}
+          showCategories={!hidesBrowseStrips}
+          showBrands={!hidesBrowseStrips}
+          onBrandPrefetch={prefetchBrand}
         />
 
         {isFilteredView ? (
           <div className="mt-6 md:mt-8">
+            {activeBrand ? (
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold tracking-tight" style={{ color: v.heading }}>
+                  {browseTitle}
+                </h2>
+                <p className="mt-1 text-sm" style={{ color: v.muted }}>
+                  {browseSummary}
+                </p>
+              </div>
+            ) : null}
             <PaginatedProductGrid
               environmentSlug={environmentSlug}
               environmentName={environmentName}
@@ -374,13 +419,10 @@ export function UnifiedStoreCatalog({
           <div className="mt-6 md:mt-8">
             <div className="mb-4">
               <h2 className="text-lg font-semibold tracking-tight" style={{ color: v.heading }}>
-                {t("store.allProducts")}
+                {browseTitle}
               </h2>
               <p className="mt-1 text-sm" style={{ color: v.muted }}>
-                {t("store.productsCategories", {
-                  products: totalProducts.toLocaleString(),
-                  categories: shopCategories.length,
-                })}
+                {browseSummary}
               </p>
             </div>
             <PaginatedProductGrid

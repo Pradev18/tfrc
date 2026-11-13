@@ -40,6 +40,8 @@ export const arQA: Dictionary = {
     allProducts: "كل المنتجات",
     inStock: "متوفر",
     allBrands: "كل العلامات",
+    brands: "العلامة",
+    browseBrands: "تصفّح العلامات",
     newest: "الأحدث",
     featured: "مميز",
     itemNoAsc: "الرقم التسلسلي ↑",

@@ -11,6 +11,8 @@ export interface CachedBrand {
   id: string;
   name: string;
   slug: string;
+  /** Optional brand logo from DB; store strip may fall back to a product image. */
+  logoUrl?: string | null;
 }
 
 export interface CachedProduct {

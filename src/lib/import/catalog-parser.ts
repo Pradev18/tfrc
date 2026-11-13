@@ -20,6 +20,11 @@ export interface CatalogRow {
   image_link: string;
   additional_image_link: string;
   brand: string;
+  /**
+   * Optional brand logo URL (Excel brand_image). Never mixed with product image_link.
+   * Empty string when the column is missing or not a web URL.
+   */
+  brand_image: string;
   price: number;
   sale_price: number | null;
   google_product_category: string;
@@ -72,6 +77,14 @@ const ID_HEADERS = ["id", "product_id", "item_id", "item_code", "sku", "retailer
 const TITLE_HEADERS = ["title", "name", "product_name", "item_name"];
 const PRICE_HEADERS = ["price"];
 const IMAGE_HEADERS = ["image_link", "image_url", "image", "picture", "photo", "main_image"];
+/** Brand logo only — must never be merged into IMAGE_HEADERS / product images. */
+const BRAND_IMAGE_HEADERS = [
+  "brand_image",
+  "brand_image_link",
+  "brand_logo",
+  "brand_logo_url",
+  "logo_url",
+];
 
 function headerNames(row: unknown): string[] {
   if (!Array.isArray(row)) return [];
@@ -259,6 +272,16 @@ function mapSheetRowsToCatalog(
       return;
     }
 
+    // Optional brand logo — independent of product image_link.
+    let brandImage = "";
+    for (const key of BRAND_IMAGE_HEADERS) {
+      const candidate = httpUrl(row[key]);
+      if (candidate) {
+        brandImage = candidate;
+        break;
+      }
+    }
+
     const quantityRaw = cellStr(row.quantity_to_sell_on_facebook);
     const parsedQuantity = quantityRaw === "" ? null : Number.parseInt(quantityRaw, 10);
     if (
@@ -296,6 +319,7 @@ function mapSheetRowsToCatalog(
       image_link: imageLink,
       additional_image_link: cellStr(row.additional_image_link),
       brand: cellStr(row.brand) || "Unknown",
+      brand_image: brandImage,
       price,
       sale_price: salePrice,
       google_product_category: cellStr(row.google_product_category),

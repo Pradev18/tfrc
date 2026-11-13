@@ -313,6 +313,7 @@ export function CatalogueImportForm({
         <span className="mb-2 block text-xs text-text-muted">
           Required columns: id (item code), title, price, image_link. Optional: serial_no
           (catalogue sequence 1, 2, 3…; also accepts legacy item_no / No), description, brand,
+          brand_image (https logo URL for the Brand strip — letter avatar if empty),
           google_product_category, sale_price, availability, quantity_to_sell_on_facebook.
           Empty rows ignored. .xlsx / .xls up to 25 MB.
         </span>

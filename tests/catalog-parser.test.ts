@@ -111,5 +111,34 @@ describe("Meta catalogue Excel validation", () => {
     ]);
     expect(parsed.rows[0].title).toContain("Black Pet Hat");
     expect(parsed.rows[0].size).toBe("L");
+    expect(parsed.rows[0].brand_image).toContain("brand-logo");
+  });
+
+  it("reads optional brand_image without treating it as the product image", () => {
+    const parsed = parseExcelBuffer(
+      workbookBuffer([
+        {
+          id: "BRAND-1",
+          title: "Levi Jacket",
+          price: "QAR 99.00",
+          image_link: "https://example.com/product.jpg",
+          brand: "Levi",
+          brand_image: "https://example.com/levi-logo.png",
+        },
+        {
+          id: "BRAND-2",
+          title: "No logo item",
+          price: "QAR 10.00",
+          image_link: "https://example.com/other.jpg",
+          brand: "AAA",
+        },
+      ]),
+      "Test"
+    );
+
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.rows[0].image_link).toBe("https://example.com/product.jpg");
+    expect(parsed.rows[0].brand_image).toBe("https://example.com/levi-logo.png");
+    expect(parsed.rows[1].brand_image).toBe("");
   });
 });
