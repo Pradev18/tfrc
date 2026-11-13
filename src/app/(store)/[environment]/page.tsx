@@ -8,6 +8,7 @@ import { getCachedEnvironment } from "@/lib/catalog-cache";
 import { getProducts } from "@/services/product.service";
 import { STORE_PAGE_SIZE } from "@/lib/store-constants";
 import type { InitialStoreFeed } from "@/hooks/useStoreProductFeed";
+import { brandsForLogoStrip } from "@/lib/brand-strip";
 
 export const revalidate = 60;
 
@@ -19,9 +20,8 @@ function getBrandsFromCache(slug: string) {
   const cached = getCachedEnvironment(slug);
   if (!cached) return [];
 
-  // Enrich for the store brand strip only — does not change import/PDF/admin data.
-  // Brand tile image = Brand.logoUrl (Excel brand_image) only. Never use product photos.
-  return cached.brands.map((brand) => {
+  // All catalogues: brand strip only when brand_image / logoUrl exists (no letter cards).
+  const mapped = cached.brands.map((brand) => {
     const brandProducts = cached.products.filter(
       (product) => product.brand?.slug === brand.slug
     );
@@ -41,6 +41,8 @@ function getBrandsFromCache(slug: string) {
       categoryCount: categoryCount || (brandProducts.length > 0 ? 1 : 0),
     };
   });
+
+  return brandsForLogoStrip(mapped);
 }
 
 function getActiveProductCountFromCache(slug: string) {

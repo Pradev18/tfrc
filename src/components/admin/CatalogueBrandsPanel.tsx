@@ -109,10 +109,10 @@ export function CatalogueBrandsPanel({
       <div>
         <h2 className="text-lg font-semibold text-primary">Brand strip</h2>
         <p className="mt-1 text-sm text-text-muted">
-          Upload logos to Cloudflare R2 folder <code className="text-xs">BRAND_LOGO/</code>,
-          then put the public URL (or <code className="text-xs">BRAND_LOGO/name.png</code>) in
-          Excel <code className="text-xs">brand_image</code> or paste it here. Empty → letter
-          avatar — never a product photo.
+          Applies to every catalogue. Upload logos to R2 <code className="text-xs">BRAND_LOGO/</code>,
+          then set Excel <code className="text-xs">brand_image</code> or paste a URL here.
+          Brands without a logo are hidden from the store and Products browse strip (not shown as
+          letter cards).
         </p>
       </div>
 
