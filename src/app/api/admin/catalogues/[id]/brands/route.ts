@@ -7,15 +7,44 @@ import { touchSiteRevision } from "@/lib/site-revision.server";
 import { refreshCatalogCacheFromDatabase } from "@/lib/catalog-cache-refresh.server";
 import { requireCatalogueUnlocked } from "@/lib/catalogue-lock";
 import { normalizeBrandLogoInput } from "@/lib/brand-logo-url";
+import { saveBrandLogoImage } from "@/lib/upload";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
+async function assertBrandInCatalogue(brandId: string, catalogueId: string) {
+  return prisma.brand.findFirst({
+    where: {
+      id: brandId,
+      products: {
+        some: {
+          environmentId: catalogueId,
+          deletedAt: null,
+        },
+      },
+    },
+    select: { id: true, name: true, slug: true, logoUrl: true },
+  });
+}
+
+async function publishBrandLogoChange(
+  catalogueSlug: string,
+  catalogueId: string,
+  brand: { id: string; name: string; slug: string; logoUrl: string | null }
+) {
+  await refreshCatalogCacheFromDatabase();
+  await touchSiteRevision();
+  revalidatePath(`/${catalogueSlug}`);
+  revalidatePath(`/${catalogueSlug}`, "layout");
+  revalidatePath(`/admin/catalogues/${catalogueId}`);
+  revalidatePath(`/admin/catalogues/${catalogueId}/manage`);
+  return brand;
+}
+
 /**
  * Catalogue brand strip admin API — isolated from product/PDF/import routes.
- * Brands are listed for this catalogue only; logoUrl comes from Excel brand_image
- * or an optional admin URL patch (never from product photos).
+ * Logos: Excel brand_image, pasted URL, or device upload → R2 brand_logo/.
  */
 export async function GET(_req: NextRequest, context: RouteContext) {
   const { error } = await requireAdminSession();
@@ -93,18 +122,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "brandId is required" }, { status: 400 });
   }
 
-  const linked = await prisma.brand.findFirst({
-    where: {
-      id: brandId,
-      products: {
-        some: {
-          environmentId: id,
-          deletedAt: null,
-        },
-      },
-    },
-    select: { id: true },
-  });
+  const linked = await assertBrandInCatalogue(brandId, id);
   if (!linked) {
     return NextResponse.json(
       { error: "Brand is not used in this catalogue" },
@@ -118,7 +136,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     return NextResponse.json(
       {
         error:
-          "Use a full https URL or an R2 path like BRAND_LOGO/levi.png",
+          "Use a full https URL or an R2 path like brand_logo/levi.png",
       },
       { status: 400 }
     );
@@ -130,16 +148,66 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     select: { id: true, name: true, slug: true, logoUrl: true },
   });
 
-  // Await cache refresh so store + admin brand strip update immediately (not fire-and-forget).
-  await refreshCatalogCacheFromDatabase();
-  await touchSiteRevision();
-  revalidatePath(`/${catalogue.slug}`);
-  revalidatePath(`/${catalogue.slug}`, "layout");
-  revalidatePath(`/admin/catalogues/${id}`);
-  revalidatePath(`/admin/catalogues/${id}/manage`);
+  await publishBrandLogoChange(catalogue.slug, id, updated);
 
   return NextResponse.json(
     { brand: updated },
     { headers: { "Cache-Control": "no-store, max-age=0" } }
   );
+}
+
+/** Device upload → Cloudflare R2 brand_logo/ → Brand.logoUrl */
+export async function POST(req: NextRequest, context: RouteContext) {
+  const { error } = await requireAdminSession();
+  if (error) return error;
+
+  const { id } = await context.params;
+  const lockError = await requireCatalogueUnlocked(id);
+  if (lockError) return lockError;
+
+  const catalogue = await getCatalogueById(id);
+  if (!catalogue) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  let formData: FormData;
+  try {
+    formData = await req.formData();
+  } catch {
+    return NextResponse.json({ error: "Invalid form data" }, { status: 400 });
+  }
+
+  const brandId = String(formData.get("brandId") || "").trim();
+  const file = formData.get("file");
+  if (!brandId) {
+    return NextResponse.json({ error: "brandId is required" }, { status: 400 });
+  }
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: "Choose an image file" }, { status: 400 });
+  }
+
+  const linked = await assertBrandInCatalogue(brandId, id);
+  if (!linked) {
+    return NextResponse.json(
+      { error: "Brand is not used in this catalogue" },
+      { status: 404 }
+    );
+  }
+
+  try {
+    const url = await saveBrandLogoImage(file, linked.slug);
+    const updated = await prisma.brand.update({
+      where: { id: brandId },
+      data: { logoUrl: url },
+      select: { id: true, name: true, slug: true, logoUrl: true },
+    });
+    await publishBrandLogoChange(catalogue.slug, id, updated);
+    return NextResponse.json(
+      { brand: updated, url },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Upload failed" },
+      { status: 400 }
+    );
+  }
 }

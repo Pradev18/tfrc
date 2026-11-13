@@ -8,7 +8,7 @@ import { getCachedEnvironment } from "@/lib/catalog-cache";
 import { getProducts } from "@/services/product.service";
 import { STORE_PAGE_SIZE } from "@/lib/store-constants";
 import type { InitialStoreFeed } from "@/hooks/useStoreProductFeed";
-import { brandsForLogoStrip } from "@/lib/brand-strip";
+import { brandsForStrip } from "@/lib/brand-strip";
 import prisma from "@/lib/db";
 
 export const revalidate = 30;
@@ -18,9 +18,8 @@ interface PageProps {
 }
 
 /**
- * Brand strip for every catalogue — logos from Neon (same source as admin),
- * so saves show on the store without waiting on a stale file cache.
- * Cards only when logoUrl exists.
+ * Brand strip for every catalogue — from Neon (same as admin).
+ * Real brand names → cards (logo if set, else letter). No usable brands → hide strip.
  */
 async function getBrandsForStoreStrip(slug: string) {
   const cached = getCachedEnvironment(slug);
@@ -28,7 +27,7 @@ async function getBrandsForStoreStrip(slug: string) {
     cached?.id ??
     (
       await prisma.environment.findFirst({
-        where: { slug, isActive: true },
+        where: { slug },
         select: { id: true },
       })
     )?.id;
@@ -37,7 +36,6 @@ async function getBrandsForStoreStrip(slug: string) {
   const brands = await prisma.brand.findMany({
     where: {
       isActive: true,
-      AND: [{ logoUrl: { not: null } }, { NOT: { logoUrl: "" } }],
       products: {
         some: {
           environmentId,
@@ -50,7 +48,7 @@ async function getBrandsForStoreStrip(slug: string) {
     select: { id: true, name: true, slug: true, logoUrl: true },
   });
 
-  return brandsForLogoStrip(
+  return brandsForStrip(
     brands.map((brand) => {
       const brandProducts =
         cached?.products.filter((product) => product.brand?.slug === brand.slug) ??

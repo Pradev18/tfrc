@@ -1,7 +1,11 @@
 /**
  * Brand browse strip rules for every catalogue (existing, new, upcoming).
- * Cards appear only when a real brand name + brand_image / logoUrl exists.
- * No letter-only placeholders in the strip — hide the whole strip if none qualify.
+ *
+ * Show a card when a real brand name exists (Excel brand / import).
+ * - With logoUrl (Excel brand_image or admin device upload) → show logo
+ * - Without logo → letter avatar on the card
+ * Hide the whole strip only when no usable brand names exist at all
+ * (e.g. all products are "Unknown" / empty brand).
  */
 
 export type BrandStripCandidate = {
@@ -12,24 +16,25 @@ export type BrandStripCandidate = {
   productCount?: number;
 };
 
-function hasUsableBrandName(name: string): boolean {
+export function hasUsableBrandName(name: string): boolean {
   const trimmed = name.trim();
   if (!trimmed) return false;
   const lower = trimmed.toLowerCase();
-  return lower !== "unknown" && lower !== "n/a" && lower !== "-";
+  return lower !== "unknown" && lower !== "n/a" && lower !== "-" && lower !== "null";
 }
 
-function hasBrandLogo(brand: BrandStripCandidate): boolean {
-  const logo = (brand.imageUrl ?? brand.logoUrl ?? "").trim();
-  return Boolean(logo);
+export function brandHasLogo(brand: BrandStripCandidate): boolean {
+  return Boolean((brand.imageUrl ?? brand.logoUrl ?? "").trim());
 }
 
-/** Keep only brands that should render as logo cards in store + admin browse. */
-export function brandsForLogoStrip<T extends BrandStripCandidate>(brands: T[]): T[] {
+/** Brands that appear in store + admin browse strips. */
+export function brandsForStrip<T extends BrandStripCandidate>(brands: T[]): T[] {
   return brands.filter(
     (brand) =>
       hasUsableBrandName(brand.name) &&
-      hasBrandLogo(brand) &&
       (brand.productCount == null || brand.productCount > 0)
   );
 }
+
+/** @deprecated Use brandsForStrip — kept for older imports. */
+export const brandsForLogoStrip = brandsForStrip;

@@ -16,7 +16,7 @@ import {
   type StoreBrandItem,
 } from "@/components/store/BrandScroll";
 import { ALL_PRODUCTS_CATEGORY_SLUG } from "@/lib/store-category-navigation";
-import { brandsForLogoStrip } from "@/lib/brand-strip";
+import { brandsForStrip } from "@/lib/brand-strip";
 import { adminNotify } from "@/lib/admin-notify";
 
 const PAGE_SIZE_OPTIONS = [15, 30, 50] as const;
@@ -124,7 +124,7 @@ export function ManageCataloguePanel({
       productCount: number;
     }>;
     setBrands(
-      brandsForLogoStrip(
+      brandsForStrip(
         list.map((brand) => ({
           id: brand.id,
           name: brand.name,

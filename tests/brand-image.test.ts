@@ -11,7 +11,7 @@ import {
   BRAND_LOGO_R2_PREFIX,
   normalizeBrandLogoInput,
 } from "../src/lib/brand-logo-url";
-import { brandsForLogoStrip } from "../src/lib/brand-strip";
+import { brandsForStrip } from "../src/lib/brand-strip";
 
 function workbookBuffer(rows: Record<string, unknown>[]) {
   const workbook = XLSX.utils.book_new();
@@ -112,16 +112,18 @@ describe("brand_image production readiness", () => {
     expect(rowImages(parsed.rows[0])).not.toContain("BRAND_LOGO/levi.png");
   });
 
-  it("hides brand strip cards when logo or brand name is missing", () => {
+  it("shows named brands with or without logos; hides Unknown / empty", () => {
     expect(
-      brandsForLogoStrip([
+      brandsForStrip([
         { name: "Levi", slug: "levi", imageUrl: "https://cdn.example/l.png", productCount: 2 },
         { name: "AAA", slug: "aaa", imageUrl: null, productCount: 3 },
         { name: "Unknown", slug: "unknown", imageUrl: "https://cdn.example/u.png", productCount: 1 },
-        { name: "Nike", slug: "nike", logoUrl: "BRAND_LOGO/nike.png", productCount: 0 },
+        { name: "Nike", slug: "nike", logoUrl: "brand_logo/nike.png", productCount: 0 },
+        { name: "", slug: "empty", imageUrl: null, productCount: 2 },
       ])
     ).toEqual([
       { name: "Levi", slug: "levi", imageUrl: "https://cdn.example/l.png", productCount: 2 },
+      { name: "AAA", slug: "aaa", imageUrl: null, productCount: 3 },
     ]);
   });
 

@@ -134,7 +134,10 @@ async function readFromDatabase(
   }
 }
 
-export async function saveUploadedImage(file: File): Promise<string> {
+async function persistUploadedImage(
+  file: File,
+  opts?: { r2Folder?: string; keyPrefix?: string }
+): Promise<string> {
   if (file.size === 0 || file.size > MAX_BYTES) {
     throw new Error("Image must be under 5 MB");
   }
@@ -153,7 +156,12 @@ export async function saveUploadedImage(file: File): Promise<string> {
 
   const extension = detected.extension;
   const mime = detected.mime;
-  const filename = `${randomUUID()}.${extension}`;
+  const safePrefix = (opts?.keyPrefix || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  const filename = `${safePrefix ? `${safePrefix}-` : ""}${randomUUID()}.${extension}`;
   rememberInMemory(filename, mime, buffer);
 
   const diskWrite = (async () => {
@@ -174,9 +182,10 @@ export async function saveUploadedImage(file: File): Promise<string> {
   })();
 
   const databaseWrite = rememberInDatabase(filename, mime, buffer);
+  const r2Folder = (opts?.r2Folder || "uploads").replace(/^\/+|\/+$/g, "");
   const cloudWrite = isR2Configured()
     ? uploadBufferToR2({
-        key: `uploads/${filename}`,
+        key: `${r2Folder}/${filename}`,
         body: buffer,
         contentType: mime,
       }).catch((error: unknown) => {
@@ -202,6 +211,21 @@ export async function saveUploadedImage(file: File): Promise<string> {
   }
 
   return mediaPublicUrl(filename);
+}
+
+export async function saveUploadedImage(file: File): Promise<string> {
+  return persistUploadedImage(file, { r2Folder: "uploads" });
+}
+
+/** Brand logos → Cloudflare R2 brand_logo/ (Excel or admin device upload). */
+export async function saveBrandLogoImage(
+  file: File,
+  brandSlug: string
+): Promise<string> {
+  return persistUploadedImage(file, {
+    r2Folder: "brand_logo",
+    keyPrefix: brandSlug || "brand",
+  });
 }
 
 export async function readUploadedImage(
