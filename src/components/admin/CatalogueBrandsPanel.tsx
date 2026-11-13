@@ -97,7 +97,7 @@ export function CatalogueBrandsPanel({
     return (
       <p className="rounded-lg bg-surface-muted px-3 py-4 text-sm text-text-muted">
         No brands in {catalogueName} yet. Import Excel with a <strong>brand</strong> column
-        (and optional <strong>brand_image</strong> https links) first.
+        (and optional <strong>brand_image</strong> links from R2 <code className="text-xs">BRAND_LOGO/</code>) first.
       </p>
     );
   }
@@ -107,9 +107,10 @@ export function CatalogueBrandsPanel({
       <div>
         <h2 className="text-lg font-semibold text-primary">Brand strip</h2>
         <p className="mt-1 text-sm text-text-muted">
-          Logos come from Excel <code className="text-xs">brand_image</code> (https URL).
-          If empty, the store shows a letter avatar — never a product photo. You can also
-          paste a logo URL here without re-importing.
+          Upload logos to Cloudflare R2 folder <code className="text-xs">BRAND_LOGO/</code>,
+          then put the public URL (or <code className="text-xs">BRAND_LOGO/name.png</code>) in
+          Excel <code className="text-xs">brand_image</code> or paste it here. Empty → letter
+          avatar — never a product photo.
         </p>
       </div>
 
@@ -155,12 +156,12 @@ export function CatalogueBrandsPanel({
                   </p>
                 </div>
                 <input
-                  type="url"
+                  type="text"
                   value={draft}
                   onChange={(e) =>
                     setDrafts((current) => ({ ...current, [brand.id]: e.target.value }))
                   }
-                  placeholder="https://… brand logo (leave empty for letter)"
+                  placeholder="BRAND_LOGO/name.png or https://… (empty = letter)"
                   className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm"
                 />
                 <div className="flex flex-wrap gap-2">

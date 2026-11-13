@@ -273,11 +273,23 @@ function mapSheetRowsToCatalog(
     }
 
     // Optional brand logo — independent of product image_link.
+    // Accepts https URL, BRAND_LOGO/… R2 key, or image filename (resolved at import).
     let brandImage = "";
     for (const key of BRAND_IMAGE_HEADERS) {
-      const candidate = httpUrl(row[key]);
+      const raw = cellStr(row[key]);
+      if (!raw) continue;
+      const candidate = httpUrl(raw);
       if (candidate) {
         brandImage = candidate;
+        break;
+      }
+      const keyOrFile = raw.replace(/^\/+/, "").replace(/\\/g, "/");
+      if (
+        /^BRAND_LOGO\//i.test(keyOrFile) ||
+        (/^[^/]+\.(png|jpe?g|webp|gif|svg)$/i.test(keyOrFile) &&
+          !keyOrFile.includes(" "))
+      ) {
+        brandImage = keyOrFile;
         break;
       }
     }

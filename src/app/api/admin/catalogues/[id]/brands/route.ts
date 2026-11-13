@@ -6,6 +6,7 @@ import prisma from "@/lib/db";
 import { touchSiteRevision } from "@/lib/site-revision.server";
 import { persistRuntimeCatalogueDataSafely } from "@/lib/persist-runtime-data.server";
 import { requireCatalogueUnlocked } from "@/lib/catalogue-lock";
+import { normalizeBrandLogoInput } from "@/lib/brand-logo-url";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -109,15 +110,13 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   }
 
   const raw = body.logoUrl == null ? "" : String(body.logoUrl).trim();
-  const logoUrl =
-    raw === ""
-      ? null
-      : raw.startsWith("http://") || raw.startsWith("https://")
-        ? raw
-        : null;
+  const logoUrl = raw === "" ? null : normalizeBrandLogoInput(raw);
   if (raw && !logoUrl) {
     return NextResponse.json(
-      { error: "brand image must be an http(s) URL" },
+      {
+        error:
+          "Use a full https URL or an R2 path like BRAND_LOGO/levi.png",
+      },
       { status: 400 }
     );
   }

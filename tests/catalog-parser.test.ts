@@ -111,7 +111,7 @@ describe("Meta catalogue Excel validation", () => {
     ]);
     expect(parsed.rows[0].title).toContain("Black Pet Hat");
     expect(parsed.rows[0].size).toBe("L");
-    expect(parsed.rows[0].brand_image).toContain("brand-logo");
+    expect(parsed.rows[0].brand_image).toBe("BRAND_LOGO/pawmart.png");
   });
 
   it("reads optional brand_image without treating it as the product image", () => {

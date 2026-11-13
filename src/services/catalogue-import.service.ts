@@ -13,6 +13,7 @@ import {
   classifyProductVariants,
   compareVariantLabels,
 } from "@/lib/product-variants";
+import { normalizeBrandLogoInput } from "@/lib/brand-logo-url";
 
 function yieldEventLoop(ms = 0): Promise<void> {
   return new Promise((resolve) => {
@@ -263,7 +264,7 @@ export async function importCatalogueExcel(options: ImportCatalogueOptions) {
       environmentSlug
     );
     const brandSlug = createCategorySlug(row.brand);
-    const brandLogo = row.brand_image.trim() || null;
+    const brandLogo = normalizeBrandLogoInput(row.brand_image);
     const brand = await tx.brand.upsert({
       where: { slug: brandSlug },
       create: {

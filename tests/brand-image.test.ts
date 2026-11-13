@@ -7,6 +7,10 @@ import {
 import { META_CATALOGUE_TEMPLATE_HEADERS } from "../src/lib/import/meta-catalogue-template";
 import { META_CATALOGUE_HEADERS } from "../src/lib/import/meta-excel-template";
 import { brandInitial, brandAvatarTone } from "../src/lib/brand-avatar";
+import {
+  BRAND_LOGO_R2_PREFIX,
+  normalizeBrandLogoInput,
+} from "../src/lib/brand-logo-url";
 
 function workbookBuffer(rows: Record<string, unknown>[]) {
   const workbook = XLSX.utils.book_new();
@@ -86,5 +90,40 @@ describe("brand_image production readiness", () => {
     const b = brandAvatarTone("Levi");
     expect(a).toEqual(b);
     expect(a.bg).toMatch(/^hsl\(/);
+  });
+
+  it("keeps BRAND_LOGO R2 keys from Excel for import resolution", () => {
+    const parsed = parseExcelBuffer(
+      workbookBuffer([
+        {
+          id: "P4",
+          title: "Item",
+          price: "10",
+          image_link: "https://cdn.example/p.jpg",
+          brand: "Levi",
+          brand_image: "BRAND_LOGO/levi.png",
+        },
+      ]),
+      "Test"
+    );
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.rows[0].brand_image).toBe("BRAND_LOGO/levi.png");
+    expect(rowImages(parsed.rows[0])).not.toContain("BRAND_LOGO/levi.png");
+  });
+
+  it("resolves BRAND_LOGO paths against R2_PUBLIC_URL", () => {
+    const prev = process.env.R2_PUBLIC_URL;
+    process.env.R2_PUBLIC_URL = "https://cdn.example";
+    expect(normalizeBrandLogoInput("BRAND_LOGO/levi.png")).toBe(
+      "https://cdn.example/BRAND_LOGO/levi.png"
+    );
+    expect(normalizeBrandLogoInput("aaa.webp")).toBe(
+      `https://cdn.example/${BRAND_LOGO_R2_PREFIX}/aaa.webp`
+    );
+    expect(normalizeBrandLogoInput("https://cdn.example/BRAND_LOGO/x.png")).toBe(
+      "https://cdn.example/BRAND_LOGO/x.png"
+    );
+    expect(normalizeBrandLogoInput("")).toBeNull();
+    process.env.R2_PUBLIC_URL = prev;
   });
 });

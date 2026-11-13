@@ -40,7 +40,7 @@ const EXAMPLE_ROW = [
   "https://example.com/product.jpg",
   "",
   "Your Brand",
-  "https://example.com/brand-logo.png",
+  "BRAND_LOGO/your-brand.png",
   "",
   "",
   "10",

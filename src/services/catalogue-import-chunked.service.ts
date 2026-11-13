@@ -115,6 +115,7 @@ async function failStaleImports(environmentId: string) {
 }
 
 async function ensureBrands(rows: CatalogRow[]): Promise<Map<string, string>> {
+  const { normalizeBrandLogoInput } = await import("@/lib/brand-logo-url");
   const bySlug = new Map<string, string>();
   /** Last non-empty brand_image wins so a corrected logo on a later row is applied. */
   const logoBySlug = new Map<string, string>();
@@ -122,7 +123,7 @@ async function ensureBrands(rows: CatalogRow[]): Promise<Map<string, string>> {
     const name = row.brand.trim() || "Unknown";
     const slug = createCategorySlug(name);
     if (!bySlug.has(slug)) bySlug.set(slug, name);
-    const logo = row.brand_image.trim();
+    const logo = normalizeBrandLogoInput(row.brand_image);
     if (logo) logoBySlug.set(slug, logo);
   }
   const slugs = [...bySlug.keys()];
