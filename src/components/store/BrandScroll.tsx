@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
 import { getEnvVisual } from "@/lib/env-visuals";
 import { normalizeCatalogueImageSrc } from "@/lib/media-url";
 import { brandInitial, brandAvatarTone } from "@/lib/brand-avatar";
@@ -32,6 +32,8 @@ interface BrandScrollProps {
   onMissingLogoClick?: (brand: StoreBrandItem) => void;
   /** Admin: brand id currently uploading a logo — show spinner on that card. */
   uploadingBrandId?: string | null;
+  /** Admin: remove logo (× on image cards) → letter avatar again. */
+  onClearLogo?: (brand: StoreBrandItem) => void;
 }
 
 const EDGE_ZONE_PX = 72;
@@ -50,6 +52,7 @@ export function BrandScroll({
   onPrefetch,
   onMissingLogoClick,
   uploadingBrandId = null,
+  onClearLogo,
 }: BrandScrollProps) {
   const t = useT();
   const v = getEnvVisual(environmentSlug);
@@ -258,93 +261,112 @@ export function BrandScroll({
             Boolean(image) && !failedBrandIds.has(brand.id);
           const pickLogo =
             Boolean(onMissingLogoClick) && !showImage && !uploading;
+          const canClear = Boolean(onClearLogo) && showImage && !uploading;
 
           return (
-            <button
-              key={brand.id}
-              type="button"
-              disabled={uploading}
-              onClick={() => {
-                if (uploading) return;
-                if (pickLogo) {
-                  onMissingLogoClick?.(brand);
-                  return;
+            <div key={brand.id} className="relative shrink-0" role="listitem">
+              {canClear ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onClearLogo?.(brand);
+                  }}
+                  className="absolute -right-1 -top-1 z-20 flex h-5 w-5 items-center justify-center rounded-full border border-black/10 bg-white text-text shadow-sm hover:bg-red-50 hover:text-red-600"
+                  aria-label={`Remove logo for ${brand.name}`}
+                  title="Remove logo"
+                >
+                  <X className="h-3 w-3" strokeWidth={2.5} />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => {
+                  if (uploading) return;
+                  if (pickLogo) {
+                    onMissingLogoClick?.(brand);
+                    return;
+                  }
+                  onSelect?.(active ? null : brand.slug);
+                }}
+                onPointerEnter={() => onPrefetch?.(brand.slug)}
+                onMouseEnter={(e) => {
+                  onPrefetch?.(brand.slug);
+                  ensureTileVisible(e.currentTarget);
+                }}
+                onFocus={(e) => {
+                  onPrefetch?.(brand.slug);
+                  ensureTileVisible(e.currentTarget);
+                }}
+                className={tileClass}
+                aria-pressed={active}
+                aria-busy={uploading}
+                aria-label={
+                  pickLogo
+                    ? `Upload logo for ${brand.name}`
+                    : uploading
+                      ? `Uploading logo for ${brand.name}`
+                      : undefined
                 }
-                onSelect?.(active ? null : brand.slug);
-              }}
-              onPointerEnter={() => onPrefetch?.(brand.slug)}
-              onMouseEnter={(e) => {
-                onPrefetch?.(brand.slug);
-                ensureTileVisible(e.currentTarget);
-              }}
-              onFocus={(e) => {
-                onPrefetch?.(brand.slug);
-                ensureTileVisible(e.currentTarget);
-              }}
-              className={tileClass}
-              aria-pressed={active}
-              aria-busy={uploading}
-              aria-label={
-                pickLogo
-                  ? `Upload logo for ${brand.name}`
-                  : uploading
-                    ? `Uploading logo for ${brand.name}`
-                    : undefined
-              }
-              title={
-                pickLogo
-                  ? "Choose a photo for this brand"
-                  : uploading
-                    ? "Uploading…"
-                    : undefined
-              }
-              role="listitem"
-            >
-              <span className={`${imageClass} relative`} style={tileShadow(active)}>
-                {showImage ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={image}
-                    src={image}
-                    alt=""
-                    className="max-h-full max-w-full object-contain object-center"
-                    loading="eager"
-                    decoding="async"
-                    onError={() => markImageFailed(brand.id)}
-                  />
-                ) : (
-                  <span
-                    className="flex h-full w-full items-center justify-center rounded-[0.65rem] text-lg font-semibold tracking-tight"
-                    style={(() => {
-                      const tone = brandAvatarTone(brand.name);
-                      return { background: tone.bg, color: tone.fg };
-                    })()}
-                    aria-hidden
-                  >
-                    {brandInitial(brand.name)}
-                  </span>
-                )}
-                {uploading ? (
-                  <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-white/75">
-                    <Loader2
-                      className="h-6 w-6 animate-spin"
-                      style={{ color: v.cta }}
-                    />
-                  </span>
-                ) : null}
-                {pickLogo ? (
-                  <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/55 py-0.5 text-center text-[9px] font-semibold uppercase tracking-wide text-white">
-                    Add photo
-                  </span>
-                ) : null}
-              </span>
-              <span
-                className="mt-1.5 line-clamp-2 w-full text-center text-[11px] font-semibold leading-tight"
-                style={{ color: active ? v.cta : v.heading }}
+                title={
+                  pickLogo
+                    ? "Choose a photo for this brand"
+                    : uploading
+                      ? "Uploading…"
+                      : undefined
+                }
               >
-                {brand.name}
-              </span>
-            </button>
+                <span
+                  className={`${imageClass} relative`}
+                  style={tileShadow(active)}
+                >
+                  {showImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={image}
+                      src={image}
+                      alt=""
+                      className="max-h-full max-w-full object-contain object-center"
+                      loading="eager"
+                      decoding="async"
+                      onError={() => markImageFailed(brand.id)}
+                    />
+                  ) : (
+                    <span
+                      className="flex h-full w-full items-center justify-center rounded-[0.65rem] text-lg font-semibold tracking-tight"
+                      style={(() => {
+                        const tone = brandAvatarTone(brand.name);
+                        return { background: tone.bg, color: tone.fg };
+                      })()}
+                      aria-hidden
+                    >
+                      {brandInitial(brand.name)}
+                    </span>
+                  )}
+                  {uploading ? (
+                    <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-white/75">
+                      <Loader2
+                        className="h-6 w-6 animate-spin"
+                        style={{ color: v.cta }}
+                      />
+                    </span>
+                  ) : null}
+                  {pickLogo ? (
+                    <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/55 py-0.5 text-center text-[9px] font-semibold uppercase tracking-wide text-white">
+                      Add photo
+                    </span>
+                  ) : null}
+                </span>
+                <span
+                  className="mt-1.5 line-clamp-2 w-full text-center text-[11px] font-semibold leading-tight"
+                  style={{ color: active ? v.cta : v.heading }}
+                >
+                  {brand.name}
+                </span>
+              </button>
+            </div>
           );
         })}
       </div>

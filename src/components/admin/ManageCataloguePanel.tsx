@@ -198,6 +198,52 @@ export function ManageCataloguePanel({
     input.click();
   }
 
+  async function clearBrandLogo(brand: StoreBrandItem) {
+    const previous = brand.imageUrl ?? null;
+    // Instant UI → letter card (admin + no refresh needed).
+    setBrands((current) =>
+      current.map((item) =>
+        item.id === brand.id ? { ...item, imageUrl: null } : item
+      )
+    );
+    if (previous?.startsWith("blob:")) URL.revokeObjectURL(previous);
+    setUploadingBrandId(brand.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/catalogues/${catalogueId}/brands`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brandId: brand.id, logoUrl: null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          (data as { error?: string }).error || "Could not remove brand logo"
+        );
+      }
+      setBrands((current) =>
+        current.map((item) =>
+          item.id === brand.id ? { ...item, imageUrl: null } : item
+        )
+      );
+      announceSiteDataUpdate();
+      window.dispatchEvent(new Event("tfrc-brands-updated"));
+      adminNotify(`Removed logo for ${brand.name}`);
+    } catch (cause) {
+      setBrands((current) =>
+        current.map((item) =>
+          item.id === brand.id ? { ...item, imageUrl: previous } : item
+        )
+      );
+      const message =
+        cause instanceof Error ? cause.message : "Could not remove brand logo";
+      setError(message);
+      adminNotify(message);
+    } finally {
+      setUploadingBrandId(null);
+    }
+  }
+
   async function uploadBrandLogoFromFile(file: File) {
     const brand = pendingBrandUploadRef.current;
     pendingBrandUploadRef.current = null;
@@ -630,10 +676,9 @@ export function ManageCataloguePanel({
                     ) : null}
                   </div>
                   <p className="mb-2 text-[11px] text-text-muted">
-                    Letter cards have no logo yet — click one to choose a photo (saved to{" "}
-                    <code className="text-[10px]">brand_logo</code>
-                    ). Logo cards filter products.
-                    {uploadingBrandId ? " Uploading…" : ""}
+                    Letter cards: click to add a photo. Logo cards: click to filter, or × to
+                    remove (back to letter — updates store instantly).
+                    {uploadingBrandId ? " Working…" : ""}
                   </p>
                   <input
                     ref={brandFileInputRef}
@@ -652,6 +697,7 @@ export function ManageCataloguePanel({
                     activeSlug={selectedBrandSlug}
                     onSelect={selectBrand}
                     onMissingLogoClick={openBrandLogoPicker}
+                    onClearLogo={clearBrandLogo}
                     uploadingBrandId={uploadingBrandId}
                   />
                 </div>
