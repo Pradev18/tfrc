@@ -3,9 +3,11 @@
  *
  * Show a card when a real brand name exists (Excel brand / import).
  * - With logoUrl (Excel brand_image or admin device upload) → show logo
- * - Without logo → letter avatar on the card
+ * - Without logo → letter avatar on the card (GGG → G, etc.)
  * Hide the whole strip only when no usable brand names exist at all
  * (e.g. all products are "Unknown" / empty brand).
+ *
+ * Deploy marker: letter-cards-v2 — Hostinger must rebuild main for G/J/K tiles.
  */
 
 export type BrandStripCandidate = {
