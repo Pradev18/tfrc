@@ -41,12 +41,13 @@ export function normalizeBrandLogoInput(raw: string | null | undefined): string 
   if (!base) return null;
 
   let key = value.replace(/^\/+/, "").replace(/\\/g, "/");
-  if (!key.toUpperCase().startsWith(`${BRAND_LOGO_R2_PREFIX}/`)) {
+  // Accept BRAND_LOGO/… or brand_logo/… (R2 folder casing varies).
+  const prefixMatch = key.match(/^(BRAND_LOGO|brand_logo)\//i);
+  if (!prefixMatch) {
     if (!looksLikeImageFile(key) || key.includes("/")) return null;
     key = `${BRAND_LOGO_R2_PREFIX}/${key}`;
   } else {
-    // Preserve folder casing as BRAND_LOGO/
-    key = `${BRAND_LOGO_R2_PREFIX}/${key.slice(BRAND_LOGO_R2_PREFIX.length + 1)}`;
+    key = `${prefixMatch[1]}/${key.slice(prefixMatch[0].length)}`;
   }
 
   if (!looksLikeImageFile(key)) return null;

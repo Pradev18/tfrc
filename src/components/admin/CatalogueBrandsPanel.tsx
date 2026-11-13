@@ -109,8 +109,8 @@ export function CatalogueBrandsPanel({
       <div>
         <h2 className="text-lg font-semibold text-primary">Brand strip</h2>
         <p className="mt-1 text-sm text-text-muted">
-          Applies to every catalogue. Upload logos to R2 <code className="text-xs">BRAND_LOGO/</code>,
-          then set Excel <code className="text-xs">brand_image</code> or paste a URL here.
+          Applies to every catalogue. Upload logos to R2 <code className="text-xs">brand_logo/</code>{" "}
+          (or BRAND_LOGO), then set Excel <code className="text-xs">brand_image</code> or paste a URL here.
           Brands without a logo are hidden from the store and Products browse strip (not shown as
           letter cards).
         </p>

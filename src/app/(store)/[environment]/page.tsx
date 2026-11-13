@@ -9,40 +9,68 @@ import { getProducts } from "@/services/product.service";
 import { STORE_PAGE_SIZE } from "@/lib/store-constants";
 import type { InitialStoreFeed } from "@/hooks/useStoreProductFeed";
 import { brandsForLogoStrip } from "@/lib/brand-strip";
+import prisma from "@/lib/db";
 
-export const revalidate = 60;
+export const revalidate = 30;
 
 interface PageProps {
   params: Promise<{ environment: string }>;
 }
 
-function getBrandsFromCache(slug: string) {
+/**
+ * Brand strip for every catalogue — logos from Neon (same source as admin),
+ * so saves show on the store without waiting on a stale file cache.
+ * Cards only when logoUrl exists.
+ */
+async function getBrandsForStoreStrip(slug: string) {
   const cached = getCachedEnvironment(slug);
-  if (!cached) return [];
+  const environmentId =
+    cached?.id ??
+    (
+      await prisma.environment.findFirst({
+        where: { slug, isActive: true },
+        select: { id: true },
+      })
+    )?.id;
+  if (!environmentId) return [];
 
-  // All catalogues: brand strip only when brand_image / logoUrl exists (no letter cards).
-  const mapped = cached.brands.map((brand) => {
-    const brandProducts = cached.products.filter(
-      (product) => product.brand?.slug === brand.slug
-    );
-    const logo = brand.logoUrl?.trim() || null;
-    const categoryCount = new Set(
-      brandProducts
-        .map((product) => product.shopCategorySlug)
-        .filter((value): value is string => Boolean(value))
-    ).size;
-
-    return {
-      id: brand.id,
-      name: brand.name,
-      slug: brand.slug,
-      imageUrl: logo,
-      productCount: brandProducts.length,
-      categoryCount: categoryCount || (brandProducts.length > 0 ? 1 : 0),
-    };
+  const brands = await prisma.brand.findMany({
+    where: {
+      isActive: true,
+      AND: [{ logoUrl: { not: null } }, { NOT: { logoUrl: "" } }],
+      products: {
+        some: {
+          environmentId,
+          status: "ACTIVE",
+          deletedAt: null,
+        },
+      },
+    },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, slug: true, logoUrl: true },
   });
 
-  return brandsForLogoStrip(mapped);
+  return brandsForLogoStrip(
+    brands.map((brand) => {
+      const brandProducts =
+        cached?.products.filter((product) => product.brand?.slug === brand.slug) ??
+        [];
+      const categoryCount = new Set(
+        brandProducts
+          .map((product) => product.shopCategorySlug)
+          .filter((value): value is string => Boolean(value))
+      ).size;
+
+      return {
+        id: brand.id,
+        name: brand.name,
+        slug: brand.slug,
+        imageUrl: brand.logoUrl?.trim() || null,
+        productCount: brandProducts.length || undefined,
+        categoryCount: categoryCount || (brandProducts.length > 0 ? 1 : 0),
+      };
+    })
+  );
 }
 
 function getActiveProductCountFromCache(slug: string) {
@@ -59,8 +87,7 @@ export default async function EnvironmentHomePage({ params }: PageProps) {
     getWhatsAppSettings(),
   ]);
 
-  // Prefer file cache for brands/count — never block first paint on SQLite scans.
-  const brands = getBrandsFromCache(slug);
+  const brands = await getBrandsForStoreStrip(slug);
   const totalProducts =
     getActiveProductCountFromCache(slug) ||
     shopCategories.reduce((sum, category) => sum + category.productCount, 0);
