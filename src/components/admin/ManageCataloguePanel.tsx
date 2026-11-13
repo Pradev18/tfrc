@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Download } from "lucide-react";
 import { announceSiteDataUpdate } from "@/components/LiveDataRefresh";
 import { CatalogueImportForm } from "@/components/admin/CatalogueImportForm";
@@ -68,6 +68,9 @@ export function ManageCataloguePanel({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [uploadingBrandId, setUploadingBrandId] = useState<string | null>(null);
+  const brandFileInputRef = useRef<HTMLInputElement>(null);
+  const pendingBrandUploadRef = useRef<StoreBrandItem | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const canPaginate = total > pageSize;
@@ -185,6 +188,67 @@ export function ManageCataloguePanel({
     setSelectedBrandSlug(slug);
     setPage(1);
     setTab("products");
+  }
+
+  function openBrandLogoPicker(brand: StoreBrandItem) {
+    pendingBrandUploadRef.current = brand;
+    const input = brandFileInputRef.current;
+    if (!input) return;
+    input.value = "";
+    input.click();
+  }
+
+  async function uploadBrandLogoFromFile(file: File) {
+    const brand = pendingBrandUploadRef.current;
+    pendingBrandUploadRef.current = null;
+    if (!brand) return;
+    if (!file.type.startsWith("image/")) {
+      adminNotify("Choose a JPEG, PNG, WebP, or GIF image");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      adminNotify("Image must be under 5 MB");
+      return;
+    }
+
+    setUploadingBrandId(brand.id);
+    setError("");
+    try {
+      const body = new FormData();
+      body.set("brandId", brand.id);
+      body.set("file", file);
+      const res = await fetch(`/api/admin/catalogues/${catalogueId}/brands`, {
+        method: "POST",
+        body,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          (data as { error?: string }).error || "Brand logo upload failed"
+        );
+      }
+      const logoUrl =
+        (data as { brand?: { logoUrl?: string | null }; url?: string }).brand
+          ?.logoUrl ??
+        (data as { url?: string }).url ??
+        null;
+      setBrands((current) =>
+        current.map((item) =>
+          item.id === brand.id ? { ...item, imageUrl: logoUrl } : item
+        )
+      );
+      announceSiteDataUpdate();
+      window.dispatchEvent(new Event("tfrc-brands-updated"));
+      adminNotify(`Uploaded logo for ${brand.name}`);
+      void loadBrands();
+    } catch (cause) {
+      const message =
+        cause instanceof Error ? cause.message : "Brand logo upload failed";
+      setError(message);
+      adminNotify(message);
+    } finally {
+      setUploadingBrandId(null);
+    }
   }
 
   async function saveProduct(product: ProductRow, patch: Record<string, unknown>) {
@@ -507,11 +571,29 @@ export function ManageCataloguePanel({
                       </button>
                     ) : null}
                   </div>
+                  <p className="mb-2 text-[11px] text-text-muted">
+                    Letter cards have no logo yet — click one to choose a photo (saved to{" "}
+                    <code className="text-[10px]">brand_logo</code>
+                    ). Logo cards filter products.
+                    {uploadingBrandId ? " Uploading…" : ""}
+                  </p>
+                  <input
+                    ref={brandFileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void uploadBrandLogoFromFile(file);
+                      e.target.value = "";
+                    }}
+                  />
                   <BrandScroll
                     brands={brands}
                     environmentSlug={catalogueSlug}
                     activeSlug={selectedBrandSlug}
                     onSelect={selectBrand}
+                    onMissingLogoClick={openBrandLogoPicker}
                   />
                 </div>
               ) : null}

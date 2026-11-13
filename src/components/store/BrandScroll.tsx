@@ -25,6 +25,11 @@ interface BrandScrollProps {
   onSelect?: (slug: string | null) => void;
   /** Warm the product feed before click so brand filtering feels instant. */
   onPrefetch?: (slug: string) => void;
+  /**
+   * Admin: letter cards (no logo) open choose-photo instead of filtering.
+   * Storefront leaves this unset.
+   */
+  onMissingLogoClick?: (brand: StoreBrandItem) => void;
 }
 
 const EDGE_ZONE_PX = 72;
@@ -41,6 +46,7 @@ export function BrandScroll({
   activeSlug = null,
   onSelect,
   onPrefetch,
+  onMissingLogoClick,
 }: BrandScrollProps) {
   const t = useT();
   const v = getEnvVisual(environmentSlug);
@@ -232,12 +238,19 @@ export function BrandScroll({
           const active = activeSlug === brand.slug;
           const image = normalizeCatalogueImageSrc(brand.imageUrl);
           const showImage = Boolean(image) && !failedImageUrls.has(image);
+          const pickLogo = Boolean(onMissingLogoClick) && !showImage;
 
           return (
             <button
               key={brand.id}
               type="button"
-              onClick={() => onSelect?.(active ? null : brand.slug)}
+              onClick={() => {
+                if (pickLogo) {
+                  onMissingLogoClick?.(brand);
+                  return;
+                }
+                onSelect?.(active ? null : brand.slug);
+              }}
               onPointerEnter={() => onPrefetch?.(brand.slug)}
               onMouseEnter={(e) => {
                 onPrefetch?.(brand.slug);
@@ -249,9 +262,15 @@ export function BrandScroll({
               }}
               className={tileClass}
               aria-pressed={active}
+              aria-label={
+                pickLogo
+                  ? `Upload logo for ${brand.name}`
+                  : undefined
+              }
+              title={pickLogo ? "Choose a photo for this brand" : undefined}
               role="listitem"
             >
-              <span className={imageClass} style={tileShadow(active)}>
+              <span className={`${imageClass} relative`} style={tileShadow(active)}>
                 {showImage ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -274,6 +293,11 @@ export function BrandScroll({
                     {brandInitial(brand.name)}
                   </span>
                 )}
+                {pickLogo ? (
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/55 py-0.5 text-center text-[9px] font-semibold uppercase tracking-wide text-white">
+                    Add photo
+                  </span>
+                ) : null}
               </span>
               <span
                 className="mt-1.5 line-clamp-2 w-full text-center text-[11px] font-semibold leading-tight"
